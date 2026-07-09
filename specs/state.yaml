@@ -1,0 +1,28 @@
+# Session state — Fingerprint Engine
+session:
+  started_at: "2026-07-09T00:00:00Z"
+  active_flow: null
+  tools_intro: true
+
+workflow_mode: solo-git
+
+git:
+  branch: master
+  status: no-commits
+
+handoff:
+  next_skill: "elaborate-spec"
+  note: "map-codebase complete — tech-stack.md populated with full deep-scan findings. Found 2 dead imports in fingerprint module, zero tests, and a FeatureValue type gap. Next: elaborate-spec to define what to build first."
+
+map_codebase:
+  completed_at: "2026-07-09T00:00:00Z"
+  files_scanned: 11
+  total_lines: 346
+  findings:
+    dead_imports:
+      [
+        "core/fingerprint/feature.zig -> ../features/id.zig (missing)",
+        "core/fingerprint/feature.zig -> value.zig (missing)",
+      ]
+    no_tests: true
+    stub_targets: ["browser/wasm", "server/native"]

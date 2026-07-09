@@ -1,0 +1,24 @@
+# Vision — Fingerprint Engine
+
+name: Fingerprint Engine
+description: "High-performance, enterprise-grade browser fingerprinting SDK written in Zig."
+version: 0.1.0
+
+targets:
+  - browser: "WebAssembly SDK for in-browser signal collection"
+  - server: "Native static/dynamic library for backend fingerprint processing"
+
+principles:
+  - Correctness first. Performance second. Features third.
+  - Same algorithms must run identically on every platform.
+  - Browser code only collects signals. Core processes. Server analyzes.
+  - Zero runtime allocation in core algorithms.
+  - Deterministic: same input, same output, regardless of browser/OS/architecture.
+
+long_term_goals:
+  - Enterprise quality
+  - Cross-platform
+  - Stable public API
+  - High performance
+  - Minimal dependencies
+  - Production ready
