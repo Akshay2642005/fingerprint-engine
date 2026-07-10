@@ -134,7 +134,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const test_core_module = b.createModule(.{
-        .root_source_file = b.path("tests/features/root.zig"),
+        .root_source_file = b.path("tests/root.zig"),
         .target = native_target,
         .optimize = optimize,
         .imports = &.{

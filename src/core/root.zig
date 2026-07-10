@@ -1,4 +1,5 @@
 pub const features = @import("features/root.zig");
+pub const fingerprint = @import("fingerprint/root.zig");
 
 pub const native_project_name = "fingerprint-engine";
 pub const wasm_project_name = "fingerprint-sdk";

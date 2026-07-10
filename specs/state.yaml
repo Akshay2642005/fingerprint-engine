@@ -7,8 +7,8 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: master
-  status: no-commits
+  branch: phase-2-runtime-model
+  status: clean
 
 handoff:
   next_skill: "develop-tdd"
