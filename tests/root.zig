@@ -9,4 +9,5 @@ test {
     _ = @import("entropy/root.zig");
     _ = @import("risk/root.zig");
     _ = @import("browser/root.zig");
+    _ = @import("server/root.zig");
 }

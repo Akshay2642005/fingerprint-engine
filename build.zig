@@ -143,6 +143,10 @@ pub fn build(b: *std.Build) void {
                 .module = core,
             },
             .{
+                .name = "server",
+                .module = server,
+            },
+            .{
                 .name = "test_utils",
                 .module = test_utils,
             },

@@ -1,28 +1,32 @@
-# Phase 10 — Browser SDK (WebAssembly)
+# Phase 11 — Server SDK (Native C ABI)
 
-> Exposes the fingerprint engine as a WebAssembly module consumable from browser JavaScript.
+> Exposes the fingerprint engine as a C-compatible native static/dynamic library for server-side integration.
 
 ## Scope
 
-1. **WASM entry point** — `src/browser/wasm/root.zig` with exported JS-compatible functions
-2. **Feature buffer** — fixed-size internal buffer for collecting features without heap allocation
-3. **Exported API**: `init`, `add_feature`, `compute_digest`, `get_error`, `reset`
+1. **C ABI entry point** — `src/server/native/root.zig` with exported C-compatible functions
+2. **Opaque handle** — pointer-based API with `create`/`destroy` lifecycle
+3. **Exported API**: `fingerprint_engine_create`, `fingerprint_engine_destroy`, `fingerprint_engine_add_feature`, `fingerprint_engine_compute`, `fingerprint_engine_get_error`
+4. **Test coverage** — native library tests
 
 ### API Design
 
-```
-// JS usage:
-// const m = await WebAssembly.instantiate(bytes, imports);
-// const ptr = m.exports.fingerprint_init();
-// m.exports.fingerprint_add_feature(ptr, CookieEnabled, 1, 0);
-// const digest_ptr = m.exports.fingerprint_compute(ptr);
-// const digest = new Uint8Array(m.exports.memory, digest_ptr, 32);
+```c
+// C header equivalent:
+typedef struct FingerprintEngine FingerprintEngine;
 
-All functions use numeric handles and flat memory — no JS objects cross the boundary.
+FingerprintEngine* fingerprint_engine_create(void);
+void fingerprint_engine_destroy(FingerprintEngine* engine);
+int fingerprint_engine_add_feature(FingerprintEngine* engine,
+    int feature_id, int value_type,
+    const unsigned char* value_data, int value_len);
+int fingerprint_engine_compute(FingerprintEngine* engine,
+    unsigned char* out_digest, int* out_len);
+const char* fingerprint_engine_get_error(FingerprintEngine* engine);
 ```
 
 ### Constraints
 
-- No heap allocation — uses static internal buffer
-- `entry = .disabled` (already set in build.zig)
-- `rdynamic = true` (already set in build.zig)
+- Uses system allocator (native = has heap)
+- C ABI compatible types (int, unsigned char*, etc.)
+- No global state — thread-safe handle-based design
