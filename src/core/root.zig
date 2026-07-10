@@ -6,6 +6,7 @@ pub const hashing = @import("hashing/root.zig");
 pub const validation = @import("validation/root.zig");
 pub const similarity = @import("similarity/root.zig");
 pub const entropy = @import("entropy/root.zig");
+pub const risk = @import("risk/root.zig");
 
 pub const native_project_name = "fingerprint-engine";
 pub const wasm_project_name = "fingerprint-sdk";

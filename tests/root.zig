@@ -7,4 +7,5 @@ test {
     _ = @import("validation/root.zig");
     _ = @import("similarity/root.zig");
     _ = @import("entropy/root.zig");
+    _ = @import("risk/root.zig");
 }
