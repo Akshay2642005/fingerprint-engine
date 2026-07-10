@@ -1,27 +1,10 @@
-# Phase 7 — Similarity
+# Phase 8 — Entropy
 
-> Builds on Phases 1-6 to compute feature-level and fingerprint-level similarity scores.
+> Computes per-feature and overall fingerprint entropy using Shannon entropy.
 
 ## Scope
 
-### In Scope
-
-1. **Feature value similarity** — Compare two FeatureValues of the same type, return score 0.0–1.0
-2. **Weighted fingerprint similarity** — Compare two Fingerprints with per-feature weights from FeatureDefinition
-3. **Wire module** + tests
-4. **Preflight**
-
-### Design
-
-- Boolean: exact match (1.0) or mismatch (0.0)
-- Integer: normalized inverse difference capped at [0, 1]
-- Float: normalized inverse difference capped at [0, 1]
-- String: normalized edit distance (Levenshtein-based)
-- Bytes: Jaccard similarity on n-grams
-- Arrays: Jaccard similarity on elements
-- Fingerprint: weighted average of feature similarities, using FeatureDefinition.weight
-
-### Stories
-
-1. FeatureValue similarity (all 9 types)
-2. Weighted fingerprint similarity
+1. **Shannon entropy** — Compute entropy of a byte slice (bits per byte, 0.0–8.0)
+2. **Feature entropy** — Convert FeatureValue to bytes, compute Shannon entropy
+3. **Fingerprint entropy** — Aggregate per-feature entropies weighted by feature weights
+4. **Wire module** + tests
