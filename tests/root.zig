@@ -4,4 +4,5 @@ test {
     _ = @import("serialization/root.zig");
     _ = @import("normalization/root.zig");
     _ = @import("hashing/root.zig");
+    _ = @import("validation/root.zig");
 }
