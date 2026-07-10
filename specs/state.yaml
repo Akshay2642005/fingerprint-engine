@@ -11,8 +11,8 @@ git:
   status: no-commits
 
 handoff:
-  next_skill: "elaborate-spec"
-  note: "map-codebase complete — tech-stack.md populated with full deep-scan findings. Found 2 dead imports in fingerprint module, zero tests, and a FeatureValue type gap. Next: elaborate-spec to define what to build first."
+  next_skill: "develop-tdd"
+  note: "elaborate-spec complete — specs/plan.md written with full Phase 2 scope (FeatureValue, FeatureCollection, fingerprint module wiring, tests). Stories defined: fix dead imports → FeatureValue tagged union → metadata completion → fingerprint struct → wire module → tests → preflight. Awaiting user confirmation to start develop-tdd."
 
 map_codebase:
   completed_at: "2026-07-09T00:00:00Z"
@@ -26,3 +26,10 @@ map_codebase:
       ]
     no_tests: true
     stub_targets: ["browser/wasm", "server/native"]
+
+elaborate_spec:
+  completed_at: "2026-07-10T00:00:00Z"
+  output: "specs/plan.md"
+  stories: 7
+  files_to_create: 6
+  files_to_edit: 5
