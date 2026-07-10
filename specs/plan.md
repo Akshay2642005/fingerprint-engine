@@ -1,21 +1,27 @@
-# Phase 6 — Validation
+# Phase 7 — Similarity
 
-> Builds on Phases 1-5 to validate fingerprint structure, completeness, and schema compatibility.
+> Builds on Phases 1-6 to compute feature-level and fingerprint-level similarity scores.
 
 ## Scope
 
 ### In Scope
 
-1. **Required feature validation** — All features with `required` flag must be present
-2. **Schema version validation** — Schema version is compatible (non-zero, known)
-3. **Structural validation** — No duplicate FeatureIDs, valid metadata
-4. **Wire module** + tests
-5. **Preflight** — `zig build test` must pass green
+1. **Feature value similarity** — Compare two FeatureValues of the same type, return score 0.0–1.0
+2. **Weighted fingerprint similarity** — Compare two Fingerprints with per-feature weights from FeatureDefinition
+3. **Wire module** + tests
+4. **Preflight**
 
-## Stories
+### Design
 
-### Story 1 — Required feature validation
+- Boolean: exact match (1.0) or mismatch (0.0)
+- Integer: normalized inverse difference capped at [0, 1]
+- Float: normalized inverse difference capped at [0, 1]
+- String: normalized edit distance (Levenshtein-based)
+- Bytes: Jaccard similarity on n-grams
+- Arrays: Jaccard similarity on elements
+- Fingerprint: weighted average of feature similarities, using FeatureDefinition.weight
 
-### Story 2 — Schema & structural validation  
+### Stories
 
-### Story 3 — Full fingerprint validation
+1. FeatureValue similarity (all 9 types)
+2. Weighted fingerprint similarity
