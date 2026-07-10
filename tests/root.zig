@@ -5,4 +5,5 @@ test {
     _ = @import("normalization/root.zig");
     _ = @import("hashing/root.zig");
     _ = @import("validation/root.zig");
+    _ = @import("similarity/root.zig");
 }
