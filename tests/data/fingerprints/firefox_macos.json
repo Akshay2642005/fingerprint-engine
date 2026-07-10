@@ -1,0 +1,41 @@
+{
+  "label": "Firefox 121 on macOS 14",
+  "description": "Realistic browser fingerprint from Firefox 121.0 on macOS 14.2 Sonoma (Apple Silicon)",
+  "metadata": {
+    "schema_version": 1,
+    "sdk_version": "0.1.0",
+    "collected_at": 1704067300000
+  },
+  "features": [
+    { "id": "CookieEnabled", "value": { "Boolean": true } },
+    { "id": "UserAgent", "value": { "String": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0" } },
+    { "id": "Language", "value": { "String": "en-US" } },
+    { "id": "Languages", "value": { "StringArray": ["en-US", "en"] } },
+    { "id": "Platform", "value": { "String": "MacIntel" } },
+    { "id": "Vendor", "value": { "String": "" } },
+    { "id": "VendorSub", "value": { "String": "" } },
+    { "id": "Product", "value": { "String": "Gecko" } },
+    { "id": "ProductSub", "value": { "String": "20100101" } },
+    { "id": "AppName", "value": { "String": "Netscape" } },
+    { "id": "AppVersion", "value": { "String": "5.0 (Macintosh)" } },
+    { "id": "DoNotTrack", "value": { "Boolean": true } },
+    { "id": "HardwareConcurrency", "value": { "Integer": 10 } },
+    { "id": "MaxTouchPoints", "value": { "Integer": 0 } },
+    { "id": "DeviceMemory", "value": { "Float": 16.0 } },
+    { "id": "Timezone", "value": { "String": "America/Los_Angeles" } },
+    { "id": "TimezoneOffset", "value": { "Integer": -480 } },
+    { "id": "ScreenWidth", "value": { "Integer": 2560 } },
+    { "id": "ScreenHeight", "value": { "Integer": 1600 } },
+    { "id": "ScreenAvailWidth", "value": { "Integer": 2560 } },
+    { "id": "ScreenAvailHeight", "value": { "Integer": 1540 } },
+    { "id": "ScreenColorDepth", "value": { "Integer": 24 } },
+    { "id": "ScreenPixelDepth", "value": { "Integer": 24 } },
+    { "id": "ScreenDevicePixelRatio", "value": { "Float": 2.0 } },
+    { "id": "WindowInnerWidth", "value": { "Integer": 1440 } },
+    { "id": "WindowInnerHeight", "value": { "Integer": 875 } },
+    { "id": "WindowOuterWidth", "value": { "Integer": 1440 } },
+    { "id": "WindowOuterHeight", "value": { "Integer": 900 } },
+    { "id": "ConnectionType", "value": { "String": "wifi" } },
+    { "id": "ConnectionDownlink", "value": { "Float": 50.0 } }
+  ]
+}

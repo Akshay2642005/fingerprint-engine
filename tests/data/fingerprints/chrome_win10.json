@@ -1,0 +1,41 @@
+{
+  "label": "Chrome 120 on Windows 10",
+  "description": "Realistic browser fingerprint from Chrome 120.0.6099.109 on Windows 10 x64",
+  "metadata": {
+    "schema_version": 1,
+    "sdk_version": "0.1.0",
+    "collected_at": 1704067200000
+  },
+  "features": [
+    { "id": "CookieEnabled", "value": { "Boolean": true } },
+    { "id": "UserAgent", "value": { "String": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" } },
+    { "id": "Language", "value": { "String": "en-US" } },
+    { "id": "Languages", "value": { "StringArray": ["en-US", "en", "zh-CN"] } },
+    { "id": "Platform", "value": { "String": "Win32" } },
+    { "id": "Vendor", "value": { "String": "Google Inc." } },
+    { "id": "VendorSub", "value": { "String": "" } },
+    { "id": "Product", "value": { "String": "Gecko" } },
+    { "id": "ProductSub", "value": { "String": "20030107" } },
+    { "id": "AppName", "value": { "String": "Netscape" } },
+    { "id": "AppVersion", "value": { "String": "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" } },
+    { "id": "DoNotTrack", "value": { "Boolean": false } },
+    { "id": "HardwareConcurrency", "value": { "Integer": 8 } },
+    { "id": "MaxTouchPoints", "value": { "Integer": 10 } },
+    { "id": "DeviceMemory", "value": { "Float": 8.0 } },
+    { "id": "Timezone", "value": { "String": "America/New_York" } },
+    { "id": "TimezoneOffset", "value": { "Integer": -300 } },
+    { "id": "ScreenWidth", "value": { "Integer": 1920 } },
+    { "id": "ScreenHeight", "value": { "Integer": 1080 } },
+    { "id": "ScreenAvailWidth", "value": { "Integer": 1920 } },
+    { "id": "ScreenAvailHeight", "value": { "Integer": 1040 } },
+    { "id": "ScreenColorDepth", "value": { "Integer": 24 } },
+    { "id": "ScreenPixelDepth", "value": { "Integer": 24 } },
+    { "id": "ScreenDevicePixelRatio", "value": { "Float": 1.0 } },
+    { "id": "WindowInnerWidth", "value": { "Integer": 1920 } },
+    { "id": "WindowInnerHeight", "value": { "Integer": 947 } },
+    { "id": "WindowOuterWidth", "value": { "Integer": 1936 } },
+    { "id": "WindowOuterHeight", "value": { "Integer": 1056 } },
+    { "id": "ConnectionType", "value": { "String": "wifi" } },
+    { "id": "ConnectionDownlink", "value": { "Float": 10.0 } }
+  ]
+}

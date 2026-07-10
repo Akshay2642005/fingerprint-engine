@@ -1,0 +1,24 @@
+{
+  "label": "Similarity Test Dataset",
+  "description": "Three fingerprint pairs for similarity testing: identical, similar (same browser), and different (different browser/OS)",
+  "pairs": [
+    {
+      "name": "identical",
+      "expected_similarity": 1.0,
+      "fingerprint_a": { "label": "Chrome A", "features": ["chrome_win10:all"] },
+      "fingerprint_b": { "label": "Chrome B (same)", "features": ["chrome_win10:all"] }
+    },
+    {
+      "name": "same_browser_different_version",
+      "expected_similarity": ">0.8",
+      "fingerprint_a": { "label": "Chrome 120", "features": ["chrome_win10:all"] },
+      "fingerprint_b": { "label": "Chrome 119", "features": ["chrome_win10:ua_different"] }
+    },
+    {
+      "name": "different_browser",
+      "expected_similarity": "<0.5",
+      "fingerprint_a": { "label": "Chrome Win10", "features": ["chrome_win10:all"] },
+      "fingerprint_b": { "label": "Firefox macOS", "features": ["firefox_macos:all"] }
+    }
+  ]
+}

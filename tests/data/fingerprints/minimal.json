@@ -1,0 +1,35 @@
+{
+  "label": "Minimal fingerprint",
+  "description": "Minimal fingerprint with only required features for testing edge cases",
+  "metadata": {
+    "schema_version": 1,
+    "sdk_version": "0.1.0",
+    "collected_at": 0
+  },
+  "features": [
+    { "id": "CookieEnabled", "value": { "Boolean": true } },
+    { "id": "UserAgent", "value": { "String": "test-agent" } },
+    { "id": "Language", "value": { "String": "en" } },
+    { "id": "Languages", "value": { "StringArray": ["en"] } },
+    { "id": "Platform", "value": { "String": "Unknown" } },
+    { "id": "Vendor", "value": { "String": "" } },
+    { "id": "VendorSub", "value": { "String": "" } },
+    { "id": "Product", "value": { "String": "Gecko" } },
+    { "id": "ProductSub", "value": { "String": "" } },
+    { "id": "AppName", "value": { "String": "Netscape" } },
+    { "id": "AppVersion", "value": { "String": "5.0" } },
+    { "id": "DoNotTrack", "value": { "Boolean": false } },
+    { "id": "HardwareConcurrency", "value": { "Integer": 1 } },
+    { "id": "MaxTouchPoints", "value": { "Integer": 0 } },
+    { "id": "DeviceMemory", "value": { "Float": 0.25 } },
+    { "id": "Timezone", "value": { "String": "UTC" } },
+    { "id": "TimezoneOffset", "value": { "Integer": 0 } },
+    { "id": "ScreenWidth", "value": { "Integer": 1024 } },
+    { "id": "ScreenHeight", "value": { "Integer": 768 } },
+    { "id": "ScreenAvailWidth", "value": { "Integer": 1024 } },
+    { "id": "ScreenAvailHeight", "value": { "Integer": 768 } },
+    { "id": "ScreenColorDepth", "value": { "Integer": 24 } },
+    { "id": "ScreenPixelDepth", "value": { "Integer": 24 } },
+    { "id": "ScreenDevicePixelRatio", "value": { "Float": 1.0 } }
+  ]
+}
