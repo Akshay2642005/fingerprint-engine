@@ -10,6 +10,29 @@ const Sha256 = std.crypto.hash.sha2.Sha256;
 
 const MAX_FEATURES = @typeInfo(FeatureID).@"enum".fields.len;
 
+/// Hashes a buffer of features (sorted by FeatureID) into a 32-byte digest.
+/// Unlike hashFingerprint, this does NOT include metadata — it only hashes features.
+/// The features MUST be sorted by FeatureID for deterministic output.
+pub fn hashFingerprintBuffer(feat_list: []const Feature, out: *[32]u8) void {
+    var ctx = Sha256.init(.{});
+
+    for (feat_list) |feat| {
+        var id_buf: [2]u8 = undefined;
+        std.mem.writeInt(u16, &id_buf, @intFromEnum(feat.id), .little);
+        ctx.update(&id_buf);
+
+        var value_hash: [32]u8 = undefined;
+        hashFeatureUnwrap(feat.value, &value_hash);
+        ctx.update(&value_hash);
+    }
+
+    ctx.final(out);
+}
+
+fn hashFeatureUnwrap(value: fingerprint.FeatureValue, out: *[32]u8) void {
+    @import("feature.zig").hashFeature(value, out) catch unreachable;
+}
+
 /// Hashes a full fingerprint into a 32-byte digest.
 /// Features are sorted by FeatureID before hashing for determinism
 /// regardless of insertion order.
