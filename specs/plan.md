@@ -128,5 +128,5 @@
 | 6 | `m1-package-meta` | build.zig.zon + MIT license | +0 | ✅ Merged |
 | 7 | `m2-npm-package` | npm + browser demo | +0 | ✅ Merged |
 | 8 | `m2-server-packages` | Python SDK + Rust -sys crate | +0 | ✅ Merged |
-| 9 | `m3-benchmarks` | Benchmark harness | +0 (bench) | |
+| 9 | `m3-benchmarks` | Benchmark harness | +0 (bench) | 🏗️ Next |
 | 10 | `m3-fuzz-docs-security` | Fuzz + docs + security audit | +20 | |
