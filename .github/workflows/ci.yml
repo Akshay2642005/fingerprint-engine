@@ -57,6 +57,14 @@ jobs:
       - name: Build WASM module
         run: zig build wasm
 
+      - name: Debug — list zig-out
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo "=== zig-out tree ==="
+          find zig-out -type f 2>/dev/null || echo "zig-out not found"
+          ls -laR zig-out/ 2>/dev/null || echo "zig-out/ not found"
+
       - name: Verify WASM output exists
         run: |
           if [ -f zig-out/bin/fingerprint.wasm ]; then
@@ -92,6 +100,14 @@ jobs:
 
       - name: Build native static library
         run: zig build native
+
+      - name: Debug — list zig-out
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo "=== zig-out tree ==="
+          find zig-out -type f 2>/dev/null || echo "zig-out not found"
+          ls -laR zig-out/ 2>/dev/null || echo "zig-out/ not found"
 
       - name: Verify native library output exists
         shell: bash
