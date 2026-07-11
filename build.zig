@@ -1,30 +1,23 @@
 const std = @import("std");
 
 // Fingerprint Engine Build System
-// This build script defines the compilation pipeline for the Fingerprint
-// Engine. The project is organized around three logical modules:
-//   • Core     - Platform-independent fingerprint engine.
-//   • Browser  - WebAssembly target for browser integration.
-//   • Server   - Native static library for backend integrations (CGO, C, etc.).
+//
+// Build Targets:
+//   zig build           - Build all installable artifacts (WASM + native)
+//   zig build wasm      - Build the browser WebAssembly SDK
+//   zig build native    - Build the native static library
+//   zig build test      - Execute all unit tests and fuzz tests
+//   zig build bench     - Run performance benchmarks
+//
+// Module Architecture:
+//   Core     - Platform-independent fingerprint engine (src/core/)
+//   Browser  - WebAssembly target for browser integration (src/browser/)
+//   Server   - Native static library for backend integrations (src/server/)
+//
 // The Core module contains all fingerprinting algorithms and business logic.
 // Browser and Server are thin platform-specific layers that import and expose
-// the Core functionality.
-// Current Build Targets
-// zig build
-//     Builds every installable artifact.
-// zig build wasm
-//     Builds the WebAssembly browser SDK.
-// zig build native
-//     Builds the native static library.
-// zig build test
-//     Executes the Core unit test suite.
-// Future build targets may include:
-//     zig build benchmark
-//     zig build examples
-//     zig build fuzz
-//     zig build release
-// The build graph is intentionally structured as a Directed Acyclic Graph
-// (DAG), allowing Zig to schedule independent compilation tasks in parallel.
+// the Core functionality. Tests live in tests/ outside src/ — no embedded
+// tests in production code.
 pub fn build(b: *std.Build) void {
     // These settings are shared across every build artifact unless explicitly
     // overridden.

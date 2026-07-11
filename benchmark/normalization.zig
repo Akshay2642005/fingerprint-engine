@@ -41,13 +41,20 @@ pub fn benchValidateTypes(bench_io: *timing.BenchIo) main.BenchmarkResult {
         std.heap.page_allocator.free(result);
     }
 
-    const start = bench_io.timestamp();
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
     i = 0;
     while (i < iters) : (i += 1) {
+        const iter_start = bench_io.timestamp();
         const result = core.normalization.validateTypes(sample_fp, std.heap.page_allocator) catch @panic("validate");
         std.heap.page_allocator.free(result);
+        const iter_ns = bench_io.elapsed(iter_start);
+        total_ns += iter_ns;
+        if (iter_ns < min_ns) min_ns = iter_ns;
+        if (iter_ns > max_ns) max_ns = iter_ns;
     }
-    const total_ns = bench_io.elapsed(start);
 
     return .{
         .name = "normalization: validateTypes",
@@ -55,8 +62,8 @@ pub fn benchValidateTypes(bench_io: *timing.BenchIo) main.BenchmarkResult {
         .total_time_ns = total_ns,
         .ops_per_sec = @as(f64, @floatFromInt(iters)) / (@as(f64, @floatFromInt(total_ns)) / 1_000_000_000.0),
         .avg_ns = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(iters)),
-        .min_ns = 0,
-        .max_ns = 0,
+        .min_ns = min_ns,
+        .max_ns = max_ns,
     };
 }
 
@@ -70,13 +77,20 @@ pub fn benchCheckBounds(bench_io: *timing.BenchIo) main.BenchmarkResult {
         std.heap.page_allocator.free(result);
     }
 
-    const start = bench_io.timestamp();
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
     i = 0;
     while (i < iters) : (i += 1) {
+        const iter_start = bench_io.timestamp();
         const result = core.normalization.checkAllBounds(sample_fp, std.heap.page_allocator) catch @panic("bounds");
         std.heap.page_allocator.free(result);
+        const iter_ns = bench_io.elapsed(iter_start);
+        total_ns += iter_ns;
+        if (iter_ns < min_ns) min_ns = iter_ns;
+        if (iter_ns > max_ns) max_ns = iter_ns;
     }
-    const total_ns = bench_io.elapsed(start);
 
     return .{
         .name = "normalization: checkBounds",
@@ -84,8 +98,8 @@ pub fn benchCheckBounds(bench_io: *timing.BenchIo) main.BenchmarkResult {
         .total_time_ns = total_ns,
         .ops_per_sec = @as(f64, @floatFromInt(iters)) / (@as(f64, @floatFromInt(total_ns)) / 1_000_000_000.0),
         .avg_ns = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(iters)),
-        .min_ns = 0,
-        .max_ns = 0,
+        .min_ns = min_ns,
+        .max_ns = max_ns,
     };
 }
 
@@ -99,13 +113,20 @@ pub fn benchNormalize(bench_io: *timing.BenchIo) main.BenchmarkResult {
         std.heap.page_allocator.free(result);
     }
 
-    const start = bench_io.timestamp();
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
     i = 0;
     while (i < iters) : (i += 1) {
+        const iter_start = bench_io.timestamp();
         const result = core.normalization.normalize(sample_fp, std.heap.page_allocator) catch @panic("normalize");
         std.heap.page_allocator.free(result);
+        const iter_ns = bench_io.elapsed(iter_start);
+        total_ns += iter_ns;
+        if (iter_ns < min_ns) min_ns = iter_ns;
+        if (iter_ns > max_ns) max_ns = iter_ns;
     }
-    const total_ns = bench_io.elapsed(start);
 
     return .{
         .name = "normalization: normalize",
@@ -113,7 +134,7 @@ pub fn benchNormalize(bench_io: *timing.BenchIo) main.BenchmarkResult {
         .total_time_ns = total_ns,
         .ops_per_sec = @as(f64, @floatFromInt(iters)) / (@as(f64, @floatFromInt(total_ns)) / 1_000_000_000.0),
         .avg_ns = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(iters)),
-        .min_ns = 0,
-        .max_ns = 0,
+        .min_ns = min_ns,
+        .max_ns = max_ns,
     };
 }

@@ -1,5 +1,4 @@
 /// Hashing benchmarks: hashFeature, hashFingerprint, incremental hasher.
-
 const std = @import("std");
 const core = @import("core");
 const main = @import("main.zig");
@@ -34,14 +33,21 @@ pub fn benchHashFeature(bench_io: *timing.BenchIo) main.BenchmarkResult {
         }
     }
 
-    const start = bench_io.timestamp();
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
     i = 0;
     while (i < iters) : (i += 1) {
+        const iter_start = bench_io.timestamp();
         for (sample_features) |f| {
             core.hashing.hashFeature(f.value, &out) catch @panic("hash");
         }
+        const iter_ns = bench_io.elapsed(iter_start);
+        total_ns += iter_ns;
+        if (iter_ns < min_ns) min_ns = iter_ns;
+        if (iter_ns > max_ns) max_ns = iter_ns;
     }
-    const total_ns = bench_io.elapsed(start);
 
     return .{
         .name = "hashing: hashFeature",
@@ -49,8 +55,8 @@ pub fn benchHashFeature(bench_io: *timing.BenchIo) main.BenchmarkResult {
         .total_time_ns = total_ns,
         .ops_per_sec = @as(f64, @floatFromInt(iters * sample_features.len)) / (@as(f64, @floatFromInt(total_ns)) / 1_000_000_000.0),
         .avg_ns = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(iters * sample_features.len)),
-        .min_ns = 0,
-        .max_ns = 0,
+        .min_ns = min_ns,
+        .max_ns = max_ns,
     };
 }
 
@@ -72,12 +78,19 @@ pub fn benchHashFingerprint(bench_io: *timing.BenchIo) main.BenchmarkResult {
         core.hashing.hashFingerprint(fp, &out) catch @panic("hash");
     }
 
-    const start = bench_io.timestamp();
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
     i = 0;
     while (i < iters) : (i += 1) {
+        const iter_start = bench_io.timestamp();
         core.hashing.hashFingerprint(fp, &out) catch @panic("hash");
+        const iter_ns = bench_io.elapsed(iter_start);
+        total_ns += iter_ns;
+        if (iter_ns < min_ns) min_ns = iter_ns;
+        if (iter_ns > max_ns) max_ns = iter_ns;
     }
-    const total_ns = bench_io.elapsed(start);
 
     return .{
         .name = "hashing: hashFingerprint",
@@ -85,8 +98,8 @@ pub fn benchHashFingerprint(bench_io: *timing.BenchIo) main.BenchmarkResult {
         .total_time_ns = total_ns,
         .ops_per_sec = @as(f64, @floatFromInt(iters)) / (@as(f64, @floatFromInt(total_ns)) / 1_000_000_000.0),
         .avg_ns = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(iters)),
-        .min_ns = 0,
-        .max_ns = 0,
+        .min_ns = min_ns,
+        .max_ns = max_ns,
     };
 }
 
@@ -104,16 +117,23 @@ pub fn benchIncrementalHasher(bench_io: *timing.BenchIo) main.BenchmarkResult {
         hasher.final(&out);
     }
 
-    const start = bench_io.timestamp();
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
     i = 0;
     while (i < iters) : (i += 1) {
+        const iter_start = bench_io.timestamp();
         var hasher = core.hashing.Hasher.init(1, "0.1.0", 0);
         for (sample_features) |f| {
             hasher.add(f.id, f.value) catch @panic("add");
         }
         hasher.final(&out);
+        const iter_ns = bench_io.elapsed(iter_start);
+        total_ns += iter_ns;
+        if (iter_ns < min_ns) min_ns = iter_ns;
+        if (iter_ns > max_ns) max_ns = iter_ns;
     }
-    const total_ns = bench_io.elapsed(start);
 
     return .{
         .name = "hashing: incremental hasher",
@@ -121,7 +141,7 @@ pub fn benchIncrementalHasher(bench_io: *timing.BenchIo) main.BenchmarkResult {
         .total_time_ns = total_ns,
         .ops_per_sec = @as(f64, @floatFromInt(iters)) / (@as(f64, @floatFromInt(total_ns)) / 1_000_000_000.0),
         .avg_ns = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(iters)),
-        .min_ns = 0,
-        .max_ns = 0,
+        .min_ns = min_ns,
+        .max_ns = max_ns,
     };
 }

@@ -5,7 +5,6 @@
 /// Each benchmark reports throughput (ops/sec) and latency over the
 /// configured number of iterations. Results are printed to stdout in
 /// a tabular format suitable for CI capture and regression tracking.
-
 const std = @import("std");
 const builtin = @import("builtin");
 const timing = @import("timing.zig");
@@ -44,19 +43,27 @@ const benchmarks: []const BenchmarkDescriptor = &.{
 
 pub const warmup_iterations: u64 = 100;
 
-/// Format a duration in nanoseconds to a human-readable string.
-pub fn formatDuration(ns: u64) [32]u8 {
-    var buf: [32]u8 = undefined;
-    if (ns >= 1_000_000_000) {
-        _ = std.fmt.bufPrint(&buf, "{d:.2}s", .{@as(f64, @floatFromInt(ns)) / 1_000_000_000.0}) catch unreachable;
-    } else if (ns >= 1_000_000) {
-        _ = std.fmt.bufPrint(&buf, "{d:.2}ms", .{@as(f64, @floatFromInt(ns)) / 1_000_000.0}) catch unreachable;
-    } else if (ns >= 1_000) {
-        _ = std.fmt.bufPrint(&buf, "{d:.2}µs", .{@as(f64, @floatFromInt(ns)) / 1_000.0}) catch unreachable;
-    } else {
-        _ = std.fmt.bufPrint(&buf, "{d}ns", .{ns}) catch unreachable;
+pub const Duration = struct {
+    buf: [32]u8,
+    len: usize,
+
+    pub fn slice(self: *const Duration) []const u8 {
+        return self.buf[0..self.len];
     }
-    return buf;
+};
+
+/// Format a duration in nanoseconds to a human-readable string.
+pub fn formatDuration(ns: u64) Duration {
+    var buf: [32]u8 = undefined;
+    const result = if (ns >= 1_000_000_000)
+        std.fmt.bufPrint(&buf, "{d:.2}s", .{@as(f64, @floatFromInt(ns)) / 1_000_000_000.0}) catch unreachable
+    else if (ns >= 1_000_000)
+        std.fmt.bufPrint(&buf, "{d:.2}ms", .{@as(f64, @floatFromInt(ns)) / 1_000_000.0}) catch unreachable
+    else if (ns >= 1_000)
+        std.fmt.bufPrint(&buf, "{d:.2}µs", .{@as(f64, @floatFromInt(ns)) / 1_000.0}) catch unreachable
+    else
+        std.fmt.bufPrint(&buf, "{d}ns", .{ns}) catch unreachable;
+    return .{ .buf = buf, .len = result.len };
 }
 
 pub fn main() !void {
@@ -79,12 +86,15 @@ pub fn main() !void {
 
     for (benchmarks) |b| {
         const result = b.func(&bench_io);
+        const avg = formatDuration(@intFromFloat(result.avg_ns));
+        const min = formatDuration(result.min_ns);
+        const max = formatDuration(result.max_ns);
         std.debug.print("  {s:40} {d:>10.0} {s:>10} {s:>10} {s:>10}\n", .{
             result.name,
             result.ops_per_sec,
-            formatDuration(@intFromFloat(result.avg_ns)),
-            formatDuration(result.min_ns),
-            formatDuration(result.max_ns),
+            avg.slice(),
+            min.slice(),
+            max.slice(),
         });
     }
 

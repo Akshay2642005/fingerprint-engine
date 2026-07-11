@@ -44,14 +44,21 @@ pub fn benchFeatureScore(bench_io: *timing.BenchIo) main.BenchmarkResult {
         }
     }
 
-    const start = bench_io.timestamp();
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
     i = 0;
     while (i < iters) : (i += 1) {
+        const iter_start = bench_io.timestamp();
         for (&feats_a, &feats_b) |fa, fb| {
             _ = core.similarity.featureScore(fa.value, fb.value);
         }
+        const iter_ns = bench_io.elapsed(iter_start);
+        total_ns += iter_ns;
+        if (iter_ns < min_ns) min_ns = iter_ns;
+        if (iter_ns > max_ns) max_ns = iter_ns;
     }
-    const total_ns = bench_io.elapsed(start);
 
     return .{
         .name = "similarity: featureScore",
@@ -59,8 +66,8 @@ pub fn benchFeatureScore(bench_io: *timing.BenchIo) main.BenchmarkResult {
         .total_time_ns = total_ns,
         .ops_per_sec = @as(f64, @floatFromInt(iters * feats_a.len)) / (@as(f64, @floatFromInt(total_ns)) / 1_000_000_000.0),
         .avg_ns = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(iters * feats_a.len)),
-        .min_ns = 0,
-        .max_ns = 0,
+        .min_ns = min_ns,
+        .max_ns = max_ns,
     };
 }
 
@@ -73,12 +80,19 @@ pub fn benchFingerprintScore(bench_io: *timing.BenchIo) main.BenchmarkResult {
         _ = core.similarity.fingerprintScore(fp_a, fp_b);
     }
 
-    const start = bench_io.timestamp();
+    var min_ns: u64 = std.math.maxInt(u64);
+    var max_ns: u64 = 0;
+    var total_ns: u64 = 0;
+
     i = 0;
     while (i < iters) : (i += 1) {
+        const iter_start = bench_io.timestamp();
         _ = core.similarity.fingerprintScore(fp_a, fp_b);
+        const iter_ns = bench_io.elapsed(iter_start);
+        total_ns += iter_ns;
+        if (iter_ns < min_ns) min_ns = iter_ns;
+        if (iter_ns > max_ns) max_ns = iter_ns;
     }
-    const total_ns = bench_io.elapsed(start);
 
     return .{
         .name = "similarity: fingerprintScore",
@@ -86,7 +100,7 @@ pub fn benchFingerprintScore(bench_io: *timing.BenchIo) main.BenchmarkResult {
         .total_time_ns = total_ns,
         .ops_per_sec = @as(f64, @floatFromInt(iters)) / (@as(f64, @floatFromInt(total_ns)) / 1_000_000_000.0),
         .avg_ns = @as(f64, @floatFromInt(total_ns)) / @as(f64, @floatFromInt(iters)),
-        .min_ns = 0,
-        .max_ns = 0,
+        .min_ns = min_ns,
+        .max_ns = max_ns,
     };
 }
