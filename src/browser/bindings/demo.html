@@ -572,7 +572,10 @@
           const initCode = wasmExports.fingerprint_init();
           if (initCode !== 0) throw new Error("Init failed: " + initCode);
 
+          // Use the scratch buffer for string/bytes data instead of writing
+          // at memory offset 0 (which corrupts WASM static data).
           window._wasm = wasmExports;
+          window._scratchPtr = wasmExports.fingerprint_get_scratch_ptr();
           window._scratchOffset = 0;
           window._wasmReady = true;
 
@@ -598,6 +601,8 @@
           const raw = collectRawData();
 
           if (window._wasmReady) {
+            // Reset scratch offset for this compute cycle
+            window._scratchOffset = 0;
             // Feed to WASM engine
             const exports = window._wasm;
             const mem = exports.memory;
@@ -608,8 +613,8 @@
               const pages = Math.ceil(needed / 65536);
               const cur = mem.buffer.byteLength / 65536;
               if (pages > cur) mem.grow(pages - cur);
-              new Uint8Array(mem.buffer).set(data, window._scratchOffset);
-              const ptr = window._scratchOffset;
+              new Uint8Array(mem.buffer).set(data, window._scratchPtr + window._scratchOffset);
+              const ptr = window._scratchPtr + window._scratchOffset;
               window._scratchOffset += data.length;
               return ptr;
             }

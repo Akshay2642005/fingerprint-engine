@@ -27,6 +27,7 @@ export class FingerprintEngine {
 		fingerprint_add_bytes: (id: number, ptr: number, len: number) => number;
 		fingerprint_compute: () => number;
 		fingerprint_get_digest_ptr: () => number;
+		fingerprint_get_scratch_ptr: () => number;
 		fingerprint_normalize: () => number;
 		fingerprint_risk: () => number;
 		fingerprint_entropy: () => number;
@@ -34,6 +35,7 @@ export class FingerprintEngine {
 	};
 	private readonly textEncoder: TextEncoder;
 	private scratchOffset = 0;
+	private scratchPtr = 0;
 
 	private constructor(instance: WebAssembly.Instance) {
 		this.exports = instance.exports as typeof this.exports;
@@ -60,6 +62,7 @@ export class FingerprintEngine {
 		if (code !== ErrorCode.Success) {
 			throw new Error(`fingerprint_init failed: ${this.getError()}`);
 		}
+		this.scratchPtr = this.exports.fingerprint_get_scratch_ptr();
 	}
 
 	/** Reset all features. */
@@ -76,6 +79,7 @@ export class FingerprintEngine {
 
 	/** Collect all available device signals. */
 	collect(): void {
+		this.scratchOffset = 0;
 		this.collectNavigator();
 		this.collectScreen();
 		this.collectHardware();
@@ -314,8 +318,8 @@ export class FingerprintEngine {
 			memory.grow(pagesNeeded - currentPages);
 		}
 		const view = new Uint8Array(memory.buffer);
-		view.set(data, this.scratchOffset);
-		const ptr = this.scratchOffset;
+		const ptr = this.scratchPtr + this.scratchOffset;
+		view.set(data, ptr);
 		this.scratchOffset += data.length;
 		return ptr;
 	}

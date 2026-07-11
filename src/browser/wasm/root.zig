@@ -9,6 +9,7 @@ const Fingerprint = core.fingerprint.Fingerprint;
 
 const MAX_FEATURES = 128;
 const MAX_RAW_DATA = 65536;
+const SCRATCH_SIZE = 65536;
 
 /// Error codes returned by exported functions.
 pub const ErrorCode = enum(u32) {
@@ -28,6 +29,12 @@ var initialized: bool = false;
 var digest_buffer: [32]u8 = undefined;
 var error_message: [256]u8 = undefined;
 var error_len: usize = 0;
+
+// Scratch buffer for writing string/bytes data from JavaScript.
+// JS writes encoded strings here before passing the pointer to
+// fingerprint_add_string / fingerprint_add_bytes.
+// The buffer is sized to fit the largest expected feature payload.
+var scratch_buffer: [SCRATCH_SIZE]u8 = undefined;
 
 fn setError(comptime fmt: []const u8, args: anytype) void {
     const msg = std.fmt.bufPrint(&error_message, fmt, args) catch unreachable;
@@ -107,6 +114,13 @@ export fn fingerprint_compute() u32 {
 
 export fn fingerprint_get_digest_ptr() u32 {
     return @as(u32, @intCast(@intFromPtr(&digest_buffer)));
+}
+
+/// Returns a pointer to the scratch buffer for writing string/bytes data.
+/// The JS wrapper writes encoded data here before passing to add_string/add_bytes.
+/// Scratch buffer is 64 KB (SCRATCH_SIZE).
+export fn fingerprint_get_scratch_ptr() u32 {
+    return @as(u32, @intCast(@intFromPtr(&scratch_buffer)));
 }
 
 // ── Processing API ──
