@@ -188,4 +188,31 @@ pub fn build(b: *std.Build) void {
         "Execute features module tests only",
     );
     test_features_step.dependOn(&run_tests_core.step);
+
+    // Benchmark executable
+    // Build as a standalone executable with core as a dep via root module.
+    const bench_module = b.createModule(.{
+        .root_source_file = b.path("benchmark/main.zig"),
+        .target = native_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{
+                .name = "core",
+                .module = core,
+            },
+        },
+    });
+
+    const bench_exe = b.addExecutable(.{
+        .name = "fingerprint-bench",
+        .root_module = bench_module,
+    });
+
+    const run_bench = b.addRunArtifact(bench_exe);
+
+    const bench_step = b.step(
+        "bench",
+        "Run performance benchmarks",
+    );
+    bench_step.dependOn(&run_bench.step);
 }
