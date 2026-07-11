@@ -553,7 +553,7 @@
           // Try to load the actual WASM file; fall back to pure-JS mode
           let wasmExports;
           try {
-            const resp = await fetch("../../zig-out/bin/fingerprint.wasm");
+            const resp = await fetch("../../../zig-out/bin/fingerprint.wasm");
             if (!resp.ok) throw new Error("WASM not found");
             const module = await WebAssembly.instantiateStreaming(resp);
             wasmExports = module.instance.exports;
