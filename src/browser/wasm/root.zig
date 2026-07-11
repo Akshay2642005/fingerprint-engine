@@ -183,3 +183,58 @@ fn deserializeValue(ftype: FeatureType, data: []const u8) !FeatureValue {
         },
     }
 }
+
+// ── Processing API ──
+
+/// Builds a Fingerprint struct from the current feature buffer.
+fn buildFingerprint() Fingerprint {
+    return .{
+        .metadata = .{
+            .schema_version = 1,
+            .sdk_version = "0.1.0",
+            .collected_at = 0,
+        },
+        .features = feature_buffer[0..feature_count],
+    };
+}
+
+/// Normalizes the current fingerprint buffer.
+/// Returns the number of normalization warnings (0 = clean).
+export fn fingerprint_normalize() u32 {
+    if (!initialized or feature_count == 0) return 0;
+
+    const fp = buildFingerprint();
+    const alloc = std.heap.wasm_allocator;
+
+    // Count type warnings
+    var count: u32 = 0;
+    const type_warns = core.normalization.validateTypes(fp, alloc) catch &.{};
+    defer alloc.free(type_warns);
+    count += @intCast(type_warns.len);
+
+    // Count bound warnings
+    const bound_warns = core.normalization.checkAllBounds(fp, alloc) catch &.{};
+    defer alloc.free(bound_warns);
+    count += @intCast(bound_warns.len);
+
+    return count;
+}
+
+/// Computes risk assessment for the current fingerprint.
+/// Returns risk score as f64 (0.0 = no risk, 1.0 = high risk).
+export fn fingerprint_risk() f64 {
+    if (!initialized or feature_count == 0) return 1.0;
+
+    const fp = buildFingerprint();
+    const assessment = core.risk.computeRisk(fp, std.heap.wasm_allocator) catch return 1.0;
+    return assessment.score;
+}
+
+/// Computes entropy of the current fingerprint.
+/// Returns entropy as f64 (0.0 = no entropy, 8.0 = max entropy per byte).
+export fn fingerprint_entropy() f64 {
+    if (!initialized or feature_count == 0) return 0.0;
+
+    const fp = buildFingerprint();
+    return core.entropy.fingerprintEntropy(fp);
+}

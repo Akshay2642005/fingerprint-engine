@@ -137,6 +137,35 @@ int fingerprint_engine_compute(FingerprintEngine* engine,
                                unsigned char* out_digest,
                                int* out_len);
 
+// ── Processing ──
+
+/**
+ * Normalizes the fingerprint, checking for type and bounds issues.
+ * Returns the number of warnings (0 = clean).
+ *
+ * @param engine Handle from fingerprint_engine_create().
+ * @return Number of normalization warnings, or -1 on error.
+ */
+int fingerprint_engine_normalize(FingerprintEngine* engine);
+
+/**
+ * Computes risk assessment score.
+ * Returns 0-100 where 0 = no risk, 100 = high risk.
+ *
+ * @param engine Handle from fingerprint_engine_create().
+ * @return Risk score (0-100), or -1 on error.
+ */
+int fingerprint_engine_risk(FingerprintEngine* engine);
+
+/**
+ * Computes fingerprint entropy.
+ * Returns 0-800 where 0 = no entropy, 800 = 8.0 bits/byte * 100.
+ *
+ * @param engine Handle from fingerprint_engine_create().
+ * @return Entropy score (0-800), or -1 on error.
+ */
+int fingerprint_engine_entropy(FingerprintEngine* engine);
+
 #ifdef __cplusplus
 }
 #endif

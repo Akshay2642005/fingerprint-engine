@@ -42,6 +42,9 @@ export class FingerprintEngine {
     fingerprint_reset: () => void;
     fingerprint_feature_count: () => number;
     fingerprint_get_error: () => number;
+    fingerprint_normalize: () => number;
+    fingerprint_risk: () => number;
+    fingerprint_entropy: () => number;
     memory: WebAssembly.Memory;
   };
   private readonly textEncoder: TextEncoder;
@@ -173,6 +176,32 @@ export class FingerprintEngine {
   clear(): void {
     this.exports.fingerprint_reset();
     this.exports.fingerprint_init();
+  }
+
+  // ── Processing API ──
+
+  /**
+   * Normalizes the fingerprint, checking for type and bounds issues.
+   * @returns Number of warnings (0 = clean).
+   */
+  normalize(): number {
+    return this.exports.fingerprint_normalize();
+  }
+
+  /**
+   * Computes risk assessment score.
+   * @returns Risk score (0-100, where 100 = highest risk).
+   */
+  risk(): number {
+    return this.exports.fingerprint_risk();
+  }
+
+  /**
+   * Computes fingerprint entropy.
+   * @returns Entropy score (0-800, where 800 = 8.0 bits/byte * 100).
+   */
+  entropy(): number {
+    return this.exports.fingerprint_entropy();
   }
 
   // ── Private ──
