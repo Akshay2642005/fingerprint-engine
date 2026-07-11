@@ -5,6 +5,7 @@ const FeatureID = core.features.FeatureID;
 const FeatureType = core.features.FeatureType;
 const FeatureValue = core.fingerprint.FeatureValue;
 const Feature = core.fingerprint.Feature;
+const Fingerprint = core.fingerprint.Fingerprint;
 
 /// Opaque engine handle.
 pub const FingerprintEngine = struct {
@@ -103,6 +104,70 @@ pub export fn fingerprint_engine_compute(
     @memcpy(digest_out[0..32], &digest);
     len_out.* = 32;
     return 0;
+}
+
+// ── Processing API ──
+
+/// Normalizes the current fingerprint buffer.
+/// Returns the number of normalization warnings (0 = clean).
+pub export fn fingerprint_engine_normalize(
+    engine: ?*FingerprintEngine,
+) i32 {
+    const e = engine orelse return -1;
+    const fp = Fingerprint{
+        .metadata = .{
+            .schema_version = 1,
+            .sdk_version = "0.1.0",
+            .collected_at = 0,
+        },
+        .features = e.features.items,
+    };
+
+    const type_warns = core.normalization.validateTypes(fp, e.allocator) catch &.{};
+    defer e.allocator.free(type_warns);
+
+    const bound_warns = core.normalization.checkAllBounds(fp, e.allocator) catch &.{};
+    defer e.allocator.free(bound_warns);
+
+    return @intCast(type_warns.len + bound_warns.len);
+}
+
+/// Computes risk assessment for the fingerprint.
+/// Returns risk score as i32 (0-100, where 100 = highest risk).
+pub export fn fingerprint_engine_risk(
+    engine: ?*FingerprintEngine,
+) i32 {
+    const e = engine orelse return -1;
+    const fp = Fingerprint{
+        .metadata = .{
+            .schema_version = 1,
+            .sdk_version = "0.1.0",
+            .collected_at = 0,
+        },
+        .features = e.features.items,
+    };
+
+    const assessment = core.risk.computeRisk(fp, e.allocator) catch return -1;
+    return @intFromFloat(assessment.score * 100.0);
+}
+
+/// Computes entropy of the fingerprint.
+/// Returns entropy as i32 (0-800, where 800 = 8.0 bits/byte * 100).
+pub export fn fingerprint_engine_entropy(
+    engine: ?*FingerprintEngine,
+) i32 {
+    const e = engine orelse return -1;
+    const fp = Fingerprint{
+        .metadata = .{
+            .schema_version = 1,
+            .sdk_version = "0.1.0",
+            .collected_at = 0,
+        },
+        .features = e.features.items,
+    };
+
+    const entropy = core.entropy.fingerprintEntropy(fp);
+    return @intFromFloat(entropy * 100.0);
 }
 
 // ── Value deserialization ──
