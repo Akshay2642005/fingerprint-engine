@@ -104,10 +104,17 @@ pub fn build(b: *std.Build) void {
     });
 
     // Install Artifacts
-    // Installs build outputs into the Zig installation directory
-    // (typically zig-out/).
-    b.installArtifact(wasm);
-    b.installArtifact(native);
+    // Create install steps and register them with both the default "install" step
+    // (runs on `zig build`) and the custom "wasm" / "native" steps.
+    //
+    // NOTE: We use addInstallArtifact (returns *Step.InstallArtifact) instead of
+    // installArtifact (returns void) so custom steps can depend on the install
+    // step rather than just the compile step. Without this, `zig build wasm`
+    // compiles the binary but never copies it to zig-out/.
+    const wasm_install = b.addInstallArtifact(wasm, .{});
+    const native_install = b.addInstallArtifact(native, .{});
+    b.getInstallStep().dependOn(&wasm_install.step);
+    b.getInstallStep().dependOn(&native_install.step);
 
     // Unit Tests
     // Tests live in tests/ outside src/ — no embedded tests in production code.
@@ -157,18 +164,19 @@ pub fn build(b: *std.Build) void {
     const run_tests_core = b.addRunArtifact(tests_core);
 
     // Custom Build Steps
-    // These commands provide convenient entry points for developers:
+    // These depend on the install steps (not compile steps) so the artifacts
+    // are actually copied to zig-out/.
     const wasm_step = b.step(
         "wasm",
         "Build the browser WebAssembly SDK",
     );
-    wasm_step.dependOn(&wasm.step);
+    wasm_step.dependOn(&wasm_install.step);
 
     const native_step = b.step(
         "native",
         "Build the native static library",
     );
-    native_step.dependOn(&native.step);
+    native_step.dependOn(&native_install.step);
 
     const test_step = b.step(
         "test",

@@ -142,10 +142,7 @@ jobs:
           - \`fingerprint.h\` — C header for native integration
 
           ### SDK Packages
-          Published separately:
           - npm: \`@fingerprint/sdk\`
-          - PyPI: \`fingerprint-sdk\`
-          - crates.io: \`fingerprint-sdk\`
           EOF
 
       - name: Create GitHub Release

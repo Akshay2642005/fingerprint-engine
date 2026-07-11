@@ -55,23 +55,7 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Build WASM module
-        run: |
-          pwd
-          echo "=== zig version ==="
-          zig version
-          echo "=== running zig build wasm ==="
-          zig build wasm --verbose
-          echo "=== build exit: $? ==="
-          ls -la zig-out/ 2>/dev/null || echo "no zig-out"
-          find . -name "*.wasm" 2>/dev/null
-
-      - name: Debug — list zig-out
-        run: |
-          echo "=== Current directory ==="
-          pwd
-          echo "=== zig-out tree ==="
-          find zig-out -type f 2>/dev/null || echo "zig-out not found"
-          ls -laR zig-out/ 2>/dev/null || echo "zig-out/ not found"
+        run: zig build wasm
 
       - name: Verify WASM output exists
         run: |
@@ -107,28 +91,17 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Build native static library
-        run: |
-          pwd
-          echo "=== zig version ==="
-          zig version
-          echo "=== zig build native ==="
-          zig build native --verbose
-          echo "=== build exit: $? ==="
-          ls -la zig-out/ 2>/dev/null || echo "no zig-out"
-
-      - name: Debug — list zig-out
-        run: |
-          echo "=== Current directory ==="
-          pwd
-          echo "=== zig-out tree ==="
-          find zig-out -type f 2>/dev/null || echo "zig-out not found"
-          ls -laR zig-out/ 2>/dev/null || echo "zig-out/ not found"
+        run: zig build native
 
       - name: Verify native library output exists
         shell: bash
         run: |
-          if ls zig-out/lib/libfingerprint.* 2>/dev/null | head -1; then
-            echo "✅ Native library found"
+          # Library naming convention:
+          #   Linux/macOS: libfingerprint.a
+          #   Windows:     fingerprint.lib
+          FOUND=$(ls zig-out/lib/libfingerprint.* zig-out/lib/fingerprint.* 2>/dev/null | head -1)
+          if [ -n "$FOUND" ]; then
+            echo "✅ Native library found: $FOUND"
           else
             echo "❌ Native library not found"
             exit 1
