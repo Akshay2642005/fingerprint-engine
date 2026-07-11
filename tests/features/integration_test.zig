@@ -11,31 +11,15 @@ test "Integration — every FeatureID in definitions has correct category" {
     for (all) |def| {
         switch (def.id) {
             // Navigator (0-16)
-            features.FeatureID.UserAgent, features.FeatureID.Language, features.FeatureID.Languages,
-            features.FeatureID.Vendor, features.FeatureID.Product, features.FeatureID.ProductSub,
-            features.FeatureID.AppName, features.FeatureID.AppVersion, features.FeatureID.CookieEnabled,
-            features.FeatureID.DoNotTrack, features.FeatureID.PdfViewerEnabled,
-            features.FeatureID.VendorSub => {
+            features.FeatureID.UserAgent, features.FeatureID.Language, features.FeatureID.Languages, features.FeatureID.Vendor, features.FeatureID.Product, features.FeatureID.ProductSub, features.FeatureID.AppName, features.FeatureID.AppVersion, features.FeatureID.CookieEnabled, features.FeatureID.DoNotTrack, features.FeatureID.PdfViewerEnabled, features.FeatureID.VendorSub => {
                 try testing.expectEqual(features.FeatureCategory.Navigator, def.category);
             },
             // Platform (3, 45-46, 86-95)
-            features.FeatureID.Platform, features.FeatureID.OperatingSystem, features.FeatureID.OSVersion,
-            features.FeatureID.CSSCustomProperties, features.FeatureID.CSSGridSupport,
-            features.FeatureID.CSSFlexboxSupport, features.FeatureID.CSSContainerQuery,
-            features.FeatureID.CSSHasSelector, features.FeatureID.ServiceWorkerSupport,
-            features.FeatureID.WebWorkerSupport, features.FeatureID.SharedWorkerSupport,
-            features.FeatureID.WebSocketSupport, features.FeatureID.WebRTCSupport,
-            features.FeatureID.KeyboardLayout, features.FeatureID.PointerEvents,
-            features.FeatureID.GamepadSupport => {
+            features.FeatureID.Platform, features.FeatureID.OperatingSystem, features.FeatureID.OSVersion, features.FeatureID.CSSCustomProperties, features.FeatureID.CSSGridSupport, features.FeatureID.CSSFlexboxSupport, features.FeatureID.CSSContainerQuery, features.FeatureID.CSSHasSelector, features.FeatureID.ServiceWorkerSupport, features.FeatureID.WebWorkerSupport, features.FeatureID.SharedWorkerSupport, features.FeatureID.WebSocketSupport, features.FeatureID.WebRTCSupport, features.FeatureID.KeyboardLayout, features.FeatureID.PointerEvents, features.FeatureID.GamepadSupport => {
                 try testing.expectEqual(features.FeatureCategory.Platform, def.category);
             },
             // Screen (17-28)
-            features.FeatureID.ScreenWidth, features.FeatureID.ScreenHeight,
-            features.FeatureID.AvailableWidth, features.FeatureID.AvailableHeight,
-            features.FeatureID.ColorDepth, features.FeatureID.PixelDepth,
-            features.FeatureID.DevicePixelRatio, features.FeatureID.InnerWidth,
-            features.FeatureID.InnerHeight, features.FeatureID.OuterWidth,
-            features.FeatureID.OuterHeight, features.FeatureID.ScreenOrientation => {
+            features.FeatureID.ScreenWidth, features.FeatureID.ScreenHeight, features.FeatureID.AvailableWidth, features.FeatureID.AvailableHeight, features.FeatureID.ColorDepth, features.FeatureID.PixelDepth, features.FeatureID.DevicePixelRatio, features.FeatureID.InnerWidth, features.FeatureID.InnerHeight, features.FeatureID.OuterWidth, features.FeatureID.OuterHeight, features.FeatureID.ScreenOrientation => {
                 try testing.expectEqual(features.FeatureCategory.Screen, def.category);
             },
             // Canvas (35)
@@ -43,10 +27,7 @@ test "Integration — every FeatureID in definitions has correct category" {
                 try testing.expectEqual(features.FeatureCategory.Canvas, def.category);
             },
             // WebGL (36-42)
-            features.FeatureID.WebGLVendor, features.FeatureID.WebGLRenderer,
-            features.FeatureID.WebGLVersion, features.FeatureID.WebGLHash,
-            features.FeatureID.WebGLExtensions, features.FeatureID.WebGLParameters,
-            features.FeatureID.WebGLShaderPrecision => {
+            features.FeatureID.WebGLVendor, features.FeatureID.WebGLRenderer, features.FeatureID.WebGLVersion, features.FeatureID.WebGLHash, features.FeatureID.WebGLExtensions, features.FeatureID.WebGLParameters, features.FeatureID.WebGLShaderPrecision => {
                 try testing.expectEqual(features.FeatureCategory.WebGL, def.category);
             },
             // Audio (43)
@@ -58,34 +39,23 @@ test "Integration — every FeatureID in definitions has correct category" {
                 try testing.expectEqual(features.FeatureCategory.Fonts, def.category);
             },
             // Hardware (11, 13, 16, 29-34)
-            features.FeatureID.HardwareConcurrency, features.FeatureID.DeviceMemory,
-            features.FeatureID.DeviceRam, features.FeatureID.CpuClass,
-            features.FeatureID.CpuCores, features.FeatureID.CpuArchitecture,
-            features.FeatureID.PlatformArchitecture, features.FeatureID.HardwareAcceleration,
-            features.FeatureID.TouchSupport, features.FeatureID.MaxTouchPoints => {
+            features.FeatureID.HardwareConcurrency, features.FeatureID.DeviceMemory, features.FeatureID.DeviceRam, features.FeatureID.CpuClass, features.FeatureID.CpuCores, features.FeatureID.CpuArchitecture, features.FeatureID.PlatformArchitecture, features.FeatureID.HardwareAcceleration, features.FeatureID.TouchSupport, features.FeatureID.MaxTouchPoints => {
                 try testing.expectEqual(features.FeatureCategory.Hardware, def.category);
             },
             // Storage (47-51)
-            features.FeatureID.LocalStorage, features.FeatureID.SessionStorage,
-            features.FeatureID.IndexedDB, features.FeatureID.CacheStorage,
-            features.FeatureID.CookiesEnabled => {
+            features.FeatureID.LocalStorage, features.FeatureID.SessionStorage, features.FeatureID.IndexedDB, features.FeatureID.CacheStorage, features.FeatureID.CookiesEnabled => {
                 try testing.expectEqual(features.FeatureCategory.Storage, def.category);
             },
             // Permissions (52-55)
-            features.FeatureID.NotificationPermission, features.FeatureID.GeolocationPermission,
-            features.FeatureID.CameraPermission, features.FeatureID.MicrophonePermission => {
+            features.FeatureID.NotificationPermission, features.FeatureID.GeolocationPermission, features.FeatureID.CameraPermission, features.FeatureID.MicrophonePermission => {
                 try testing.expectEqual(features.FeatureCategory.Permissions, def.category);
             },
             // Media (56-61)
-            features.FeatureID.AudioInputDevices, features.FeatureID.AudioOutputDevices,
-            features.FeatureID.VideoInputDevices, features.FeatureID.SupportedCodecs,
-            features.FeatureID.MediaFormats, features.FeatureID.AudioFormats => {
+            features.FeatureID.AudioInputDevices, features.FeatureID.AudioOutputDevices, features.FeatureID.VideoInputDevices, features.FeatureID.SupportedCodecs, features.FeatureID.MediaFormats, features.FeatureID.AudioFormats => {
                 try testing.expectEqual(features.FeatureCategory.Media, def.category);
             },
             // Network (62-66)
-            features.FeatureID.ConnectionType, features.FeatureID.ConnectionDownlink,
-            features.FeatureID.ConnectionEffectiveType, features.FeatureID.ConnectionRtt,
-            features.FeatureID.ConnectionSaveData => {
+            features.FeatureID.ConnectionType, features.FeatureID.ConnectionDownlink, features.FeatureID.ConnectionEffectiveType, features.FeatureID.ConnectionRtt, features.FeatureID.ConnectionSaveData => {
                 try testing.expectEqual(features.FeatureCategory.Network, def.category);
             },
             // Locale (67, 70)
@@ -97,13 +67,11 @@ test "Integration — every FeatureID in definitions has correct category" {
                 try testing.expectEqual(features.FeatureCategory.Timezone, def.category);
             },
             // Battery (71-73)
-            features.FeatureID.BatteryLevel, features.FeatureID.BatteryCharging,
-            features.FeatureID.BatteryChargingTime => {
+            features.FeatureID.BatteryLevel, features.FeatureID.BatteryCharging, features.FeatureID.BatteryChargingTime => {
                 try testing.expectEqual(features.FeatureCategory.Battery, def.category);
             },
             // MediaCapabilities (74-76)
-            features.FeatureID.DecodeCapability, features.FeatureID.EncodeCapability,
-            features.FeatureID.HDRSupport => {
+            features.FeatureID.DecodeCapability, features.FeatureID.EncodeCapability, features.FeatureID.HDRSupport => {
                 try testing.expectEqual(features.FeatureCategory.MediaCapabilities, def.category);
             },
             // Crypto (77-78)
@@ -115,18 +83,15 @@ test "Integration — every FeatureID in definitions has correct category" {
                 try testing.expectEqual(features.FeatureCategory.Speech, def.category);
             },
             // GPU (80-82)
-            features.FeatureID.GPUVendor, features.FeatureID.GPURenderer,
-            features.FeatureID.GPUDriverVersion => {
+            features.FeatureID.GPUVendor, features.FeatureID.GPURenderer, features.FeatureID.GPUDriverVersion => {
                 try testing.expectEqual(features.FeatureCategory.GPU, def.category);
             },
             // Performance (83-85)
-            features.FeatureID.HardwareConcurrencyPerformance, features.FeatureID.DeviceMemoryPerformance,
-            features.FeatureID.TimePrecision => {
+            features.FeatureID.HardwareConcurrencyPerformance, features.FeatureID.DeviceMemoryPerformance, features.FeatureID.TimePrecision => {
                 try testing.expectEqual(features.FeatureCategory.Performance, def.category);
             },
             // Metadata (99-101)
-            features.FeatureID.SchemaVersion, features.FeatureID.SDKVersion,
-            features.FeatureID.CollectionTimestamp => {
+            features.FeatureID.SchemaVersion, features.FeatureID.SDKVersion, features.FeatureID.CollectionTimestamp => {
                 try testing.expectEqual(features.FeatureCategory.Metadata, def.category);
             },
             else => {
