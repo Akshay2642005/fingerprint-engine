@@ -613,7 +613,10 @@
               const pages = Math.ceil(needed / 65536);
               const cur = mem.buffer.byteLength / 65536;
               if (pages > cur) mem.grow(pages - cur);
-              new Uint8Array(mem.buffer).set(data, window._scratchPtr + window._scratchOffset);
+              new Uint8Array(mem.buffer).set(
+                data,
+                window._scratchPtr + window._scratchOffset,
+              );
               const ptr = window._scratchPtr + window._scratchOffset;
               window._scratchOffset += data.length;
               return ptr;
