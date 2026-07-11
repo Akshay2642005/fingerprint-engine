@@ -89,24 +89,24 @@ zig build native
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Fingerprint Engine                           │
-│                                                                 │
-│  ┌─────────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐ │
-│  │ Collectors   │  │ WASM    │  │ Native   │  │ Packages    │ │
-│  │ (JS/TS)      │  │ (Zig)   │  │ C ABI    │  │ npm/PyPI/   │ │
-│  │ 11 collectors│─▶│ hash    │  │ matching │  │ crates.io   │ │
-│  │ 102 signals  │  │ normalize│  │ lookup   │  │             │ │
-│  └─────────────┘  │ risk    │  │ entropy  │  └─────────────┘ │
-│                   │ entropy │  │ risk     │                    │
-│                   └──────────┘  └──────────┘                    │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                  Core Engine (Zig)                       │  │
-│  │  features · fingerprint · hashing · normalization        │  │
-│  │  serialization · similarity · entropy · risk             │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                     Fingerprint Engine                            │
+│                                                                   │
+│   ┌──────────────┐  ┌──────────┐  ┌───────────┐  ┌─────────────┐  │
+│   │ Collectors   │  │ WASM     │  │ Native    │  │ Packages    │  │
+│   │ (JS/TS)      │  │ (Zig)    │  │ C ABI     │  │ npm/PyPI/   │  │
+│   │ 11 collectors│─▶│ hash     │  │ matching  │  │ crates.io   │  │
+│   │ 102 signals  │  │ normalize│  │ lookup    │  └─────────────┘  │
+│   └──────────────┘  │ risk     │  │ entropy   │                   │
+│                     │ entropy  │  │ risk      │                   │
+│                     └──────────┘  └───────────┘                   │
+│                                                                   │
+│   ┌──────────────────────────────────────────────────────────┐    │
+│   │                  Core Engine (Zig)                       │    │
+│   │  features · fingerprint · hashing · normalization        │    │
+│   │  serialization · similarity · entropy · risk             │    │
+│   └──────────────────────────────────────────────────────────┘    │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ## License
