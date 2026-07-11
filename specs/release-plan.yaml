@@ -1,0 +1,48 @@
+# Release Plan — Fingerprint Engine
+target_version: 0.2.0
+
+releases:
+  v0.1.0:
+    status: released
+    date: "2026-07-11"
+    epics:
+      - e01-core-engine
+      - e02-browser-sdk
+      - e03-server-sdk
+      - e04-integration-quality
+    summary: |
+      MVP release. Core engine (9 modules), browser WASM SDK with 11 collectors,
+      server C ABI, TypeScript bindings, CI/CD pipelines, npm package.
+
+v0.2.0_planned:
+  status: planning
+  epics:
+    - id: e05-npm-automation
+      title: Automated npm publishing
+      wsjf: 5
+      summary: "Add npm publish step to Release workflow"
+
+    - id: e06-pypi-package
+      title: PyPI package
+      wsjf: 3
+      summary: "Rebuild Python SDK with platform wheels"
+
+    - id: e07-crates-package
+      title: crates.io package
+      wsjf: 3
+      summary: "Publish fingerprint-sys from Rust SDK"
+
+    - id: e08-wasm-optimization
+      title: WASM size optimization
+      wsjf: 4
+      summary: "Reduce WASM binary size with ReleaseSmall + strip"
+
+    - id: e09-docs-site
+      title: Documentation site
+      wsjf: 2
+      summary: "GitHub Pages docs site with API reference"
+
+    - id: e10-matching-engine
+      title: Server matching engine
+      wsjf: 2
+      summary: "Implement matching stubs in src/server/matching/"

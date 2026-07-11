@@ -1,33 +1,55 @@
 # Session state — Fingerprint Engine
 session:
-  started_at: "2026-07-10T00:00:00Z"
-  active_flow: develop-tdd
+  started_at: "2026-07-11T00:00:00Z"
+  active_flow: survey-context
   tools_intro: true
 
 workflow_mode: solo-git
 
 git:
-  branch: phase-3-serialization
+  branch: master
   status: clean
+  latest_tag: v0.1.0
+
+releases:
+  v0.1.0:
+    date: "2026-07-11"
+    status: released
+    artifacts:
+      - GitHub Release (WASM + native libs + C header)
+      - npm package (@fingerprint/sdk v0.1.0)
+
+testing:
+  total_tests: 290
+  status: all_green
+  fuzz_targets: 8
+  benchmarks: 12
+
+modules:
+  core:
+    - features (102 signals, 21 categories)
+    - fingerprint (FeatureValue, Feature, Fingerprint, Metadata)
+    - serialization (binary TLV + JSON)
+    - normalization (type + bounds validation)
+    - hashing (SHA-256, incremental, batch)
+    - validation (required-feature checking)
+    - similarity (feature + fingerprint scoring)
+    - entropy (Shannon entropy analysis)
+    - risk (risk assessment engine)
+  browser:
+    - wasm (Zig WASM exports: hash, normalize, risk, entropy)
+    - bindings (TypeScript wrapper, types, demo)
+    - collectors (11 collectors: canvas, webgl, audio, fonts, battery, media, speech, input, permissions)
+  server:
+    - native (C ABI exports)
+    - api (C header, Rust SDK, Python SDK)
+    - matching (stubs — not built)
+
+ci_cd:
+  ci: green (test, wasm, native across 3 platforms)
+  release: green (creates GitHub Release with all artifacts)
+  npm_publish: manual (not automated)
 
 handoff:
-  next_skill: "develop-tdd"
-  note: "Phase 3 (Serialization) in progress. Stories 1-2 (binary encode/decode) done, round-trip verified for all 9 value types. Stories 3-4 (JSON) remaining."
-
-phase_3_serialization:
-  started_at: "2026-07-10T00:00:00Z"
-  stories_completed: 2
-  stories_remaining: 2
-  tests_added: 14
-  total_tests: 167
-  files_created:
-    - src/core/serialization/binary.zig
-    - src/core/serialization/root.zig
-    - tests/serialization/binary_test.zig
-    - tests/serialization/root.zig
-  files_edited:
-    - src/core/root.zig
-    - tests/root.zig
-  commits:
-    - "feat(core/serialization): add binary encoding of Fingerprint"
-    - "feat(core/serialization): add binary decoding with round-trip tests"
+  next_skill: "elaborate-spec"
+  note: "v0.1.0 released. Specs stale — needs update before planning next phase."

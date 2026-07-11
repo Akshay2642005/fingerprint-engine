@@ -1,0 +1,61 @@
+# Execution Status — Fingerprint Engine
+current_epic: null
+active_story: null
+
+epics:
+  e01-core-engine:
+    status: done
+    stories: 11
+    tests: 200+
+
+  e02-browser-sdk:
+    status: done
+    stories: 5
+    tests: 30+
+
+  e03-server-sdk:
+    status: done
+    stories: 3
+    tests: 20+
+
+  e04-integration-quality:
+    status: done
+    stories:
+      - m1-ts-bindings (done)
+      - m1-c-header (done)
+      - m1-test-data (done)
+      - m1-test-utils (done)
+      - m1-ci-cd (done)
+      - m1-package-meta (done)
+      - m2-npm-package (done)
+      - m2-server-packages (done)
+      - m3-benchmarks (done)
+      - m3-fuzz-docs (done)
+      - m4-collectors (done)
+      - m4-enhanced-sdks (done)
+      - npm-publishing (done)
+    tests: 290
+
+  e05-npm-automation:
+    status: not_started
+    summary: "Automate npm publish in Release workflow"
+
+  e06-pypi-package:
+    status: not_started
+    summary: "Rebuild Python SDK with platform wheels"
+
+  e07-crates-package:
+    status: not_started
+    summary: "Publish fingerprint-sys from Rust SDK"
+
+  e08-wasm-optimization:
+    status: not_started
+    summary: "Reduce WASM binary size"
+
+  e09-docs-site:
+    status: not_started
+    summary: "GitHub Pages documentation site"
+
+  e10-matching-engine:
+    status: not_started
+    summary: "Implement server matching engine"
