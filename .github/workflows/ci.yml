@@ -55,7 +55,15 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Build WASM module
-        run: zig build wasm
+        run: |
+          pwd
+          echo "=== zig version ==="
+          zig version
+          echo "=== running zig build wasm ==="
+          zig build wasm --verbose
+          echo "=== build exit: $? ==="
+          ls -la zig-out/ 2>/dev/null || echo "no zig-out"
+          find . -name "*.wasm" 2>/dev/null
 
       - name: Debug — list zig-out
         run: |
@@ -99,7 +107,14 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Build native static library
-        run: zig build native
+        run: |
+          pwd
+          echo "=== zig version ==="
+          zig version
+          echo "=== zig build native ==="
+          zig build native --verbose
+          echo "=== build exit: $? ==="
+          ls -la zig-out/ 2>/dev/null || echo "no zig-out"
 
       - name: Debug — list zig-out
         run: |
