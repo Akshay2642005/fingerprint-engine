@@ -43,15 +43,15 @@
 - [ ] Example: basic browser demo HTML page
 - [ ] Example: Node.js fingerprint verification script
 
-### 2.2 PyPI package
+### 2.2 PyPI package ✅
 
-- [ ] `packages/server/python/` — Python bindings via ctypes/cffi to native lib
-- [ ] Example: Python server with fingerprint matching
+- [x] `packages/server/python/` — Python bindings via ctypes/cffi to native lib
+- [x] Example: Python server with fingerprint matching
 
-### 2.3 Cargo crate
+### 2.3 Cargo crate ✅
 
-- [ ] `packages/server/rust/` — Rust `-sys` crate wrapping native lib
-- [ ] Example: Rust CLI tool
+- [x] `packages/server/rust/` — Rust `-sys` crate wrapping native lib
+- [x] Example: Rust CLI tool
 
 ### 2.4 Usage examples
 
@@ -127,6 +127,6 @@
 | 5 | `m1-ci-cd` | GitHub Actions + badges | +0 (infra) | ✅ Merged |
 | 6 | `m1-package-meta` | build.zig.zon + MIT license | +0 | ✅ Merged |
 | 7 | `m2-npm-package` | npm + browser demo | +0 | ✅ Merged |
-| 8 | `m2-server-packages` | PyPI + cargo | +0 | 🏗️ Next |
+| 8 | `m2-server-packages` | Python SDK + Rust -sys crate | +0 | ✅ Merged |
 | 9 | `m3-benchmarks` | Benchmark harness | +0 (bench) | |
 | 10 | `m3-fuzz-docs-security` | Fuzz + docs + security audit | +20 | |
