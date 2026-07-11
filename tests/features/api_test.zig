@@ -26,7 +26,7 @@ test "API exposes FeatureFlags" {
 }
 
 test "API exposes FeatureID" {
-    try testing.expectEqual(@as(u16, @intFromEnum(features.FeatureID.Count)), 37);
+    try testing.expectEqual(@as(u16, @intFromEnum(features.FeatureID.Count)), 102);
 }
 
 test "API exposes FeatureDefinition" {

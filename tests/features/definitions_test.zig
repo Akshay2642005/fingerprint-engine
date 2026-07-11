@@ -205,7 +205,7 @@ test "CookieEnabled definition is stable_required navigator boolean with weight 
         20,
         features.FeatureFlags.stable_required,
         "Cookie Enabled",
-        "Whether cookies are enabled in the browser.",
+        "Whether cookies are enabled.",
     );
 }
 
@@ -223,7 +223,7 @@ test "HardwareConcurrency definition is stable_entropy hardware integer with wei
         50,
         features.FeatureFlags.stable_entropy,
         "Hardware Concurrency",
-        "Number of logical CPU cores available.",
+        "Number of logical CPU cores.",
     );
 }
 
@@ -237,7 +237,7 @@ test "DeviceMemory definition is stable_entropy hardware float with weight 40" {
         40,
         features.FeatureFlags.stable_entropy,
         "Device Memory",
-        "Approximate device RAM in gigabytes.",
+        "Approximate device RAM in GB.",
     );
 }
 
@@ -269,7 +269,7 @@ test "AvailableWidth definition is stable_required screen integer with weight 50
         50,
         features.FeatureFlags.stable_required,
         "Available Width",
-        "Available screen width excluding taskbars.",
+        "Available screen width.",
     );
 }
 
@@ -283,7 +283,7 @@ test "AvailableHeight definition is stable_required screen integer with weight 5
         50,
         features.FeatureFlags.stable_required,
         "Available Height",
-        "Available screen height excluding taskbars.",
+        "Available screen height.",
     );
 }
 
@@ -449,7 +449,7 @@ test "AudioInputDevices definition is stable media string array with weight 30" 
         30,
         .{ .stable = true },
         "Audio Input Devices",
-        "Available audio input device labels.",
+        "Available audio input devices.",
     );
 }
 
@@ -463,7 +463,7 @@ test "AudioOutputDevices definition is stable media string array with weight 25"
         25,
         .{ .stable = true },
         "Audio Output Devices",
-        "Available audio output device labels.",
+        "Available audio output devices.",
     );
 }
 
@@ -477,7 +477,7 @@ test "VideoInputDevices definition is stable media string array with weight 30" 
         30,
         .{ .stable = true },
         "Video Input Devices",
-        "Available video input device labels.",
+        "Available video input devices.",
     );
 }
 
@@ -495,7 +495,7 @@ test "ConnectionType definition is stable network string with weight 45" {
         45,
         .{ .stable = true },
         "Connection Type",
-        "Network connection type (e.g. bluetooth, cellular).",
+        "Network connection type.",
     );
 }
 
@@ -541,7 +541,7 @@ test "SchemaVersion definition is required_entropy metadata integer with weight 
         0,
         features.FeatureFlags.required_entropy,
         "Schema Version",
-        "Fingerprint schema version number.",
+        "Fingerprint schema version.",
     );
 }
 
@@ -555,7 +555,7 @@ test "SDKVersion definition is required_entropy metadata string with weight 0" {
         0,
         features.FeatureFlags.required_entropy,
         "SDK Version",
-        "Fingerprint SDK version string.",
+        "Fingerprint SDK version.",
     );
 }
 
@@ -569,7 +569,7 @@ test "CollectionTimestamp definition is required_entropy metadata integer with w
         0,
         features.FeatureFlags.required_entropy,
         "Collection Timestamp",
-        "Unix timestamp of fingerprint collection.",
+        "Unix timestamp of collection.",
     );
 }
 

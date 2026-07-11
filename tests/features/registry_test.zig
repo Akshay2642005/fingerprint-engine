@@ -7,7 +7,7 @@ const features = @import("core").features;
 // ──────────────────────────────────────────────
 
 test "Registry.count returns 37 defined features" {
-    try testing.expectEqual(@as(usize, 37), features.Registry.count());
+    try testing.expectEqual(@as(usize, 102), features.Registry.count());
 }
 
 test "Registry.count matches definitions array length" {
@@ -80,16 +80,16 @@ test "Registry.get lookup is O(1) — direct array indexing" {
     const idx = @intFromEnum(features.FeatureID.WebGLRenderer);
     const def = features.Registry.get(features.FeatureID.WebGLRenderer);
     try testing.expectEqual(def.id, features.FeatureID.WebGLRenderer);
-    try testing.expectEqual(@as(u16, 17), idx);
+    try testing.expectEqual(@as(u16, 37), idx);
 }
 
 // ──────────────────────────────────────────────
 // Registry — individual lookups
 // ──────────────────────────────────────────────
 
-test "Registry.get for all 37 defined features" {
+test "Registry.get for all 102 defined features" {
     const count = features.Registry.count();
-    try testing.expectEqual(@as(usize, 37), count);
+    try testing.expectEqual(@as(usize, 102), count);
     const all = features.Registry.all();
     for (all) |def| {
         const lookup = features.Registry.get(def.id);
