@@ -207,13 +207,16 @@ const assessment = core.risk.computeRisk(fingerprint);
 
 | Function | Description |
 | ---------- | ------------- |
-| `fingerprint_engine_create()` | Create a new engine instance |
-| `fingerprint_engine_add_feature(id, type, ptr, len)` | Add a feature value |
-| `fingerprint_engine_compute()` | Compute the fingerprint digest |
-| `fingerprint_engine_get_digest_ptr()` | Get pointer to 32-byte digest |
-| `fingerprint_engine_reset()` | Reset the engine for reuse |
-| `fingerprint_engine_get_error()` | Get last error code |
-| `fingerprint_engine_feature_count()` | Get number of added features |
+| `fingerprint_init()` | Initialize the engine |
+| `fingerprint_add_feature(id, type, ptr, len)` | Add a feature value |
+| `fingerprint_compute()` | Compute the fingerprint digest |
+| `fingerprint_get_digest_ptr()` | Get pointer to 32-byte digest |
+| `fingerprint_reset()` | Reset the engine for reuse |
+| `fingerprint_get_error()` | Get last error message |
+| `fingerprint_feature_count()` | Get number of added features |
+| `fingerprint_normalize()` | Validate types and bounds (returns warning count) |
+| `fingerprint_risk()` | Compute risk score (0-100) |
+| `fingerprint_entropy()` | Compute entropy (0-800) |
 
 ### Usage
 
@@ -248,13 +251,16 @@ console.log('Fingerprint:', Array.from(digest).map(b => b.toString(16).padStart(
 | `fingerprint_engine_destroy(handle)` | Destroy engine |
 | `fingerprint_engine_add_feature(handle, id, type, data, len)` | Add feature |
 | `fingerprint_engine_compute(handle, out)` | Compute digest |
+| `fingerprint_engine_normalize(handle)` | Validate types and bounds (returns warning count) |
+| `fingerprint_engine_risk(handle)` | Compute risk score (0-100) |
+| `fingerprint_engine_entropy(handle)` | Compute entropy (0-800) |
 
 ### Usage (C)
 
 ```c
 #include "fingerprint.h"
 
-fingerprint_engine_t* engine = fingerprint_engine_create();
+FingerprintEngine* engine = fingerprint_engine_create();
 fingerprint_engine_add_feature(engine, 
     FINGERPRINT_FEATURE_USER_AGENT,
     FINGERPRINT_TYPE_STRING,
@@ -262,6 +268,12 @@ fingerprint_engine_add_feature(engine,
 
 uint8_t digest[32];
 fingerprint_engine_compute(engine, digest);
+
+// Processing
+int warnings = fingerprint_engine_normalize(engine);
+int risk = fingerprint_engine_risk(engine);     // 0-100
+int entropy = fingerprint_engine_entropy(engine); // 0-800
+
 fingerprint_engine_destroy(engine);
 ```
 
