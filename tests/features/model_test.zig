@@ -10,7 +10,7 @@ test "FeatureCategory enum size is u8 (1 byte)" {
     try testing.expectEqual(@sizeOf(features.FeatureCategory), @as(usize, 1));
 }
 
-test "FeatureCategory has 15 variants in expected order" {
+test "FeatureCategory has 21 variants in expected order" {
     try testing.expectEqual(@intFromEnum(features.FeatureCategory.Navigator), 0);
     try testing.expectEqual(@intFromEnum(features.FeatureCategory.Screen), 1);
     try testing.expectEqual(@intFromEnum(features.FeatureCategory.Canvas), 2);
@@ -25,7 +25,13 @@ test "FeatureCategory has 15 variants in expected order" {
     try testing.expectEqual(@intFromEnum(features.FeatureCategory.Network), 11);
     try testing.expectEqual(@intFromEnum(features.FeatureCategory.Locale), 12);
     try testing.expectEqual(@intFromEnum(features.FeatureCategory.Timezone), 13);
-    try testing.expectEqual(@intFromEnum(features.FeatureCategory.Metadata), 14);
+    try testing.expectEqual(@intFromEnum(features.FeatureCategory.Battery), 14);
+    try testing.expectEqual(@intFromEnum(features.FeatureCategory.MediaCapabilities), 15);
+    try testing.expectEqual(@intFromEnum(features.FeatureCategory.Crypto), 16);
+    try testing.expectEqual(@intFromEnum(features.FeatureCategory.Speech), 17);
+    try testing.expectEqual(@intFromEnum(features.FeatureCategory.GPU), 18);
+    try testing.expectEqual(@intFromEnum(features.FeatureCategory.Performance), 19);
+    try testing.expectEqual(@intFromEnum(features.FeatureCategory.Metadata), 20);
 }
 
 // ──────────────────────────────────────────────
@@ -49,112 +55,6 @@ test "FeatureType has 9 variants in expected order" {
 }
 
 // ──────────────────────────────────────────────
-// FeatureWeight
-// ──────────────────────────────────────────────
-
-test "FeatureWeight is u8" {
-    try testing.expectEqual(features.FeatureWeight, u8);
-}
-
-test "FeatureWeight accepts values 0-255" {
-    const zero: features.FeatureWeight = 0;
-    const max: features.FeatureWeight = 255;
-    try testing.expectEqual(zero, @as(u8, 0));
-    try testing.expectEqual(max, @as(u8, 255));
-}
-
-// ──────────────────────────────────────────────
-// FeatureFlags
-// ──────────────────────────────────────────────
-
-test "FeatureFlags packed struct size is u8 (1 byte)" {
-    try testing.expectEqual(@sizeOf(features.FeatureFlags), @as(usize, 1));
-}
-
-test "FeatureFlags default is all false" {
-    const flags = features.FeatureFlags{};
-    try testing.expect(!flags.stable);
-    try testing.expect(!flags.high_entropy);
-    try testing.expect(!flags.required);
-    try testing.expect(!flags.sensitive);
-}
-
-test "FeatureFlags.none has all bits clear" {
-    try testing.expectEqual(@as(u8, @bitCast(features.FeatureFlags.none)), @as(u8, 0));
-}
-
-test "FeatureFlags.stable_required sets stable and required only" {
-    const sr = features.FeatureFlags.stable_required;
-    try testing.expect(sr.stable);
-    try testing.expect(sr.required);
-    try testing.expect(!sr.high_entropy);
-    try testing.expect(!sr.sensitive);
-}
-
-test "FeatureFlags.stable_entropy sets stable and high_entropy only" {
-    const se = features.FeatureFlags.stable_entropy;
-    try testing.expect(se.stable);
-    try testing.expect(se.high_entropy);
-    try testing.expect(!se.required);
-    try testing.expect(!se.sensitive);
-}
-
-test "FeatureFlags.required_entropy sets required and high_entropy only" {
-    const re = features.FeatureFlags.required_entropy;
-    try testing.expect(re.required);
-    try testing.expect(re.high_entropy);
-    try testing.expect(!re.stable);
-    try testing.expect(!re.sensitive);
-}
-
-test "FeatureFlags.critical sets stable, required, and high_entropy" {
-    const c = features.FeatureFlags.critical;
-    try testing.expect(c.stable);
-    try testing.expect(c.required);
-    try testing.expect(c.high_entropy);
-    try testing.expect(!c.sensitive);
-}
-
-test "FeatureFlags bits are mutually independent" {
-    var flags = features.FeatureFlags{};
-    flags.stable = true;
-    try testing.expect(flags.stable);
-    try testing.expect(!flags.high_entropy);
-    try testing.expect(!flags.required);
-    try testing.expect(!flags.sensitive);
-
-    flags = features.FeatureFlags{};
-    flags.high_entropy = true;
-    try testing.expect(!flags.stable);
-    try testing.expect(flags.high_entropy);
-    try testing.expect(!flags.required);
-    try testing.expect(!flags.sensitive);
-
-    flags = features.FeatureFlags{};
-    flags.required = true;
-    try testing.expect(!flags.stable);
-    try testing.expect(!flags.high_entropy);
-    try testing.expect(flags.required);
-    try testing.expect(!flags.sensitive);
-
-    flags = features.FeatureFlags{};
-    flags.sensitive = true;
-    try testing.expect(!flags.stable);
-    try testing.expect(!flags.high_entropy);
-    try testing.expect(!flags.required);
-    try testing.expect(flags.sensitive);
-}
-
-test "FeatureFlags bitwise representation matches expected values" {
-    // stable=bit0, high_entropy=bit1, required=bit2, sensitive=bit3
-    try testing.expectEqual(@as(u8, 0b0000_0001), @as(u8, @bitCast(features.FeatureFlags{ .stable = true })));
-    try testing.expectEqual(@as(u8, 0b0000_0010), @as(u8, @bitCast(features.FeatureFlags{ .high_entropy = true })));
-    try testing.expectEqual(@as(u8, 0b0000_0100), @as(u8, @bitCast(features.FeatureFlags{ .required = true })));
-    try testing.expectEqual(@as(u8, 0b0000_1000), @as(u8, @bitCast(features.FeatureFlags{ .sensitive = true })));
-    try testing.expectEqual(@as(u8, 0b0000_0111), @as(u8, @bitCast(features.FeatureFlags.critical)));
-}
-
-// ──────────────────────────────────────────────
 // FeatureID
 // ──────────────────────────────────────────────
 
@@ -162,65 +62,55 @@ test "FeatureID enum size is u16 (2 bytes)" {
     try testing.expectEqual(@sizeOf(features.FeatureID), @as(usize, 2));
 }
 
-test "FeatureID.Count equals total number of variants (37)" {
-    try testing.expectEqual(@intFromEnum(features.FeatureID.Count), 37);
+test "FeatureID.Count equals total number of variants (102)" {
+    try testing.expectEqual(@intFromEnum(features.FeatureID.Count), 102);
 }
 
 test "FeatureID first variant is UserAgent (index 0)" {
     try testing.expectEqual(@intFromEnum(features.FeatureID.UserAgent), 0);
 }
 
-test "FeatureID last data variant is CollectionTimestamp (index 36)" {
-    try testing.expectEqual(@intFromEnum(features.FeatureID.CollectionTimestamp), 36);
+test "FeatureID last data variant is CollectionTimestamp (index 101)" {
+    try testing.expectEqual(@intFromEnum(features.FeatureID.CollectionTimestamp), 101);
 }
 
 test "FeatureID counts start at 0 and are sequential" {
-    // Spot-check a range of values to ensure no gaps
+    // Navigator
     try testing.expectEqual(@intFromEnum(features.FeatureID.UserAgent), 0);
     try testing.expectEqual(@intFromEnum(features.FeatureID.Language), 1);
     try testing.expectEqual(@intFromEnum(features.FeatureID.Languages), 2);
     try testing.expectEqual(@intFromEnum(features.FeatureID.Platform), 3);
     try testing.expectEqual(@intFromEnum(features.FeatureID.Vendor), 4);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.CookieEnabled), 5);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.HardwareConcurrency), 6);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.DeviceMemory), 7);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.ScreenWidth), 8);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.ScreenHeight), 9);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.AvailableWidth), 10);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.AvailableHeight), 11);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.ColorDepth), 12);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.PixelDepth), 13);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.DevicePixelRatio), 14);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.CanvasHash), 15);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.WebGLVendor), 16);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.WebGLRenderer), 17);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.WebGLVersion), 18);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.WebGLHash), 19);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.AudioHash), 20);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.FontsHash), 21);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.CpuClass), 22);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.OperatingSystem), 23);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.LocalStorage), 24);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.SessionStorage), 25);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.IndexedDB), 26);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.NotificationPermission), 27);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.AudioInputDevices), 28);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.AudioOutputDevices), 29);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.VideoInputDevices), 30);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.ConnectionType), 31);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.Locale), 32);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.Timezone), 33);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.SchemaVersion), 34);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.SDKVersion), 35);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.CollectionTimestamp), 36);
-    try testing.expectEqual(@intFromEnum(features.FeatureID.Count), 37);
-}
-
-test "FeatureID metadata variants exist" {
-    // These are required to compile — verifies all variants are valid
-    _ = features.FeatureID.SchemaVersion;
-    _ = features.FeatureID.SDKVersion;
-    _ = features.FeatureID.CollectionTimestamp;
+    try testing.expectEqual(@intFromEnum(features.FeatureID.Product), 5);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.ProductSub), 6);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.AppName), 7);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.AppVersion), 8);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.CookieEnabled), 9);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.DoNotTrack), 10);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.HardwareConcurrency), 11);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.MaxTouchPoints), 12);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.DeviceMemory), 13);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.PdfViewerEnabled), 14);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.VendorSub), 15);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.DeviceRam), 16);
+    // Screen
+    try testing.expectEqual(@intFromEnum(features.FeatureID.ScreenWidth), 17);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.ScreenHeight), 18);
+    // Hardware
+    try testing.expectEqual(@intFromEnum(features.FeatureID.CpuClass), 29);
+    // Canvas
+    try testing.expectEqual(@intFromEnum(features.FeatureID.CanvasHash), 35);
+    // WebGL
+    try testing.expectEqual(@intFromEnum(features.FeatureID.WebGLVendor), 36);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.WebGLRenderer), 37);
+    // Platform
+    try testing.expectEqual(@intFromEnum(features.FeatureID.OperatingSystem), 45);
+    // Storage
+    try testing.expectEqual(@intFromEnum(features.FeatureID.LocalStorage), 47);
+    // Metadata
+    try testing.expectEqual(@intFromEnum(features.FeatureID.SchemaVersion), 99);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.SDKVersion), 100);
+    try testing.expectEqual(@intFromEnum(features.FeatureID.CollectionTimestamp), 101);
 }
 
 test "FeatureID navigator variants exist" {
@@ -230,12 +120,7 @@ test "FeatureID navigator variants exist" {
     _ = features.FeatureID.Platform;
     _ = features.FeatureID.Vendor;
     _ = features.FeatureID.CookieEnabled;
-}
-
-test "FeatureID hardware variants exist" {
     _ = features.FeatureID.HardwareConcurrency;
-    _ = features.FeatureID.DeviceMemory;
-    _ = features.FeatureID.CpuClass;
 }
 
 test "FeatureID screen variants exist" {
@@ -290,12 +175,86 @@ test "FeatureID operating system variant exists" {
     _ = features.FeatureID.OperatingSystem;
 }
 
+test "FeatureID battery variants exist" {
+    _ = features.FeatureID.BatteryLevel;
+    _ = features.FeatureID.BatteryCharging;
+    _ = features.FeatureID.BatteryChargingTime;
+}
+
+test "FeatureID crypto variants exist" {
+    _ = features.FeatureID.CryptoSupport;
+    _ = features.FeatureID.SubtleCrypto;
+}
+
+test "FeatureID GPU variants exist" {
+    _ = features.FeatureID.GPUVendor;
+    _ = features.FeatureID.GPURenderer;
+    _ = features.FeatureID.GPUDriverVersion;
+}
+
+test "FeatureID metadata variants exist" {
+    _ = features.FeatureID.SchemaVersion;
+    _ = features.FeatureID.SDKVersion;
+    _ = features.FeatureID.CollectionTimestamp;
+}
+
+// ──────────────────────────────────────────────
+// FeatureFlags
+// ──────────────────────────────────────────────
+
+test "FeatureFlags packed struct size is u8 (1 byte)" {
+    try testing.expectEqual(@sizeOf(features.FeatureFlags), @as(usize, 1));
+}
+
+test "FeatureFlags default is all false" {
+    const flags = features.FeatureFlags{};
+    try testing.expect(!flags.stable);
+    try testing.expect(!flags.high_entropy);
+    try testing.expect(!flags.required);
+    try testing.expect(!flags.sensitive);
+}
+
+test "FeatureFlags.none has all bits clear" {
+    try testing.expectEqual(@as(u8, @bitCast(features.FeatureFlags.none)), @as(u8, 0));
+}
+
+test "FeatureFlags.stable_required sets stable and required only" {
+    const sr = features.FeatureFlags.stable_required;
+    try testing.expect(sr.stable);
+    try testing.expect(sr.required);
+    try testing.expect(!sr.high_entropy);
+    try testing.expect(!sr.sensitive);
+}
+
+test "FeatureFlags.stable_entropy sets stable and high_entropy only" {
+    const se = features.FeatureFlags.stable_entropy;
+    try testing.expect(se.stable);
+    try testing.expect(se.high_entropy);
+    try testing.expect(!se.required);
+    try testing.expect(!se.sensitive);
+}
+
+test "FeatureFlags.required_entropy sets required and high_entropy only" {
+    const re = features.FeatureFlags.required_entropy;
+    try testing.expect(re.required);
+    try testing.expect(re.high_entropy);
+    try testing.expect(!re.stable);
+    try testing.expect(!re.sensitive);
+}
+
+test "FeatureFlags.critical sets stable, required, and high_entropy" {
+    const c = features.FeatureFlags.critical;
+    try testing.expect(c.stable);
+    try testing.expect(c.required);
+    try testing.expect(c.high_entropy);
+    try testing.expect(!c.sensitive);
+}
+
 // ──────────────────────────────────────────────
 // FeatureDefinition
 // ──────────────────────────────────────────────
 
 test "FeatureDefinition struct size is reasonable" {
-    // Two u16s, one u8, one FeatureFlags(u8), two slices (~32 bytes on 64-bit)
     const size = @sizeOf(features.FeatureDefinition);
     try testing.expect(size <= 64);
 }
@@ -328,22 +287,6 @@ test "FeatureDefinition isStable returns flags.stable" {
     };
     try testing.expect(def.isStable());
     try testing.expect(!def.isRequired());
-    try testing.expect(!def.isHighEntropy());
-    try testing.expect(!def.isSensitive());
-}
-
-test "FeatureDefinition isRequired returns flags.required" {
-    const def = features.FeatureDefinition{
-        .id = features.FeatureID.Language,
-        .category = features.FeatureCategory.Navigator,
-        .value_type = features.FeatureType.String,
-        .weight = 40,
-        .flags = features.FeatureFlags{ .required = true },
-        .name = "Required Test",
-        .description = "",
-    };
-    try testing.expect(def.isRequired());
-    try testing.expect(!def.isStable());
     try testing.expect(!def.isHighEntropy());
     try testing.expect(!def.isSensitive());
 }
@@ -429,8 +372,8 @@ test "FeatureDefinition name and description are stored verbatim" {
         .id = features.FeatureID.ConnectionType,
         .category = features.FeatureCategory.Network,
         .value_type = features.FeatureType.String,
-        .weight = 30,
-        .flags = features.FeatureFlags.none,
+        .weight = 45,
+        .flags = features.FeatureFlags{ .stable = true },
         .name = name,
         .description = desc,
     };

@@ -83,7 +83,7 @@ test "encode fingerprint with Boolean and String features" {
     try serialization.encode(&w, fp);
 
     const bytes = buf[0..w.end];
-    try testing.expectEqual(@as(u8, 5), bytes[8]);
+    try testing.expectEqual(@as(u8, 9), bytes[8]);
     try testing.expectEqual(@as(u8, 0), bytes[9]);
     try testing.expectEqual(@as(u8, 0), bytes[10]);
     try testing.expectEqual(@as(u8, 1), bytes[11]);

@@ -13,39 +13,29 @@ test "engine add boolean feature and compute" {
     const engine = server.fingerprint_engine_create().?;
     defer server.fingerprint_engine_destroy(engine);
 
-    const rc = server.fingerprint_engine_add_feature(
+    server.fingerprint_engine_add_boolean(
         engine,
         @intFromEnum(core.features.FeatureID.CookieEnabled),
-        @intFromEnum(core.features.FeatureType.Boolean),
-        &[_]u8{1},
         1,
     );
-    try testing.expectEqual(@as(i32, 0), rc);
 
     var digest: [32]u8 = undefined;
-    var digest_len: i32 = 32;
-    const compute_rc = server.fingerprint_engine_compute(engine, &digest, &digest_len);
+    const compute_rc = server.fingerprint_engine_compute(engine, &digest);
     try testing.expectEqual(@as(i32, 0), compute_rc);
-    try testing.expectEqual(@as(i32, 32), digest_len);
 }
 
 test "engine add integer feature" {
     const engine = server.fingerprint_engine_create().?;
     defer server.fingerprint_engine_destroy(engine);
 
-    var value: i64 = 42;
-    const rc = server.fingerprint_engine_add_feature(
+    server.fingerprint_engine_add_integer(
         engine,
         @intFromEnum(core.features.FeatureID.HardwareConcurrency),
-        @intFromEnum(core.features.FeatureType.Integer),
-        std.mem.asBytes(&value),
         8,
     );
-    try testing.expectEqual(@as(i32, 0), rc);
 
     var digest: [32]u8 = undefined;
-    var digest_len: i32 = 32;
-    const compute_rc = server.fingerprint_engine_compute(engine, &digest, &digest_len);
+    const compute_rc = server.fingerprint_engine_compute(engine, &digest);
     try testing.expectEqual(@as(i32, 0), compute_rc);
 }
 
@@ -53,22 +43,17 @@ test "engine compute twice produces same digest" {
     const engine = server.fingerprint_engine_create().?;
     defer server.fingerprint_engine_destroy(engine);
 
-    var value: i64 = 1920;
-    _ = server.fingerprint_engine_add_feature(
+    server.fingerprint_engine_add_integer(
         engine,
         @intFromEnum(core.features.FeatureID.ScreenWidth),
-        @intFromEnum(core.features.FeatureType.Integer),
-        std.mem.asBytes(&value),
-        8,
+        1920,
     );
 
     var digest1: [32]u8 = undefined;
-    var len1: i32 = 32;
-    _ = server.fingerprint_engine_compute(engine, &digest1, &len1);
+    _ = server.fingerprint_engine_compute(engine, &digest1);
 
     var digest2: [32]u8 = undefined;
-    var len2: i32 = 32;
-    _ = server.fingerprint_engine_compute(engine, &digest2, &len2);
+    _ = server.fingerprint_engine_compute(engine, &digest2);
 
     try testing.expectEqualSlices(u8, &digest1, &digest2);
 }
@@ -78,8 +63,7 @@ test "engine with no features still produces digest" {
     defer server.fingerprint_engine_destroy(engine);
 
     var digest: [32]u8 = undefined;
-    var digest_len: i32 = 32;
-    const rc = server.fingerprint_engine_compute(engine, &digest, &digest_len);
+    const rc = server.fingerprint_engine_compute(engine, &digest);
     try testing.expectEqual(@as(i32, 0), rc);
 }
 
@@ -88,17 +72,53 @@ test "engine with string feature" {
     defer server.fingerprint_engine_destroy(engine);
 
     const ua = "Mozilla/5.0";
-    const rc = server.fingerprint_engine_add_feature(
+    const rc = server.fingerprint_engine_add_string(
         engine,
         @intFromEnum(core.features.FeatureID.UserAgent),
-        @intFromEnum(core.features.FeatureType.String),
         ua,
         @as(i32, @intCast(ua.len)),
     );
     try testing.expectEqual(@as(i32, 0), rc);
 
     var digest: [32]u8 = undefined;
-    var digest_len: i32 = 32;
-    const compute_rc = server.fingerprint_engine_compute(engine, &digest, &digest_len);
+    const compute_rc = server.fingerprint_engine_compute(engine, &digest);
     try testing.expectEqual(@as(i32, 0), compute_rc);
+}
+
+test "engine normalize returns count" {
+    const engine = server.fingerprint_engine_create().?;
+    defer server.fingerprint_engine_destroy(engine);
+
+    server.fingerprint_engine_add_boolean(engine, @intFromEnum(core.features.FeatureID.CookieEnabled), 1);
+    _ = server.fingerprint_engine_add_string(
+        engine,
+        @intFromEnum(core.features.FeatureID.UserAgent),
+        "test",
+        4,
+    );
+
+    const warnings = server.fingerprint_engine_normalize(engine);
+    try testing.expect(warnings >= 0);
+}
+
+test "engine risk returns score" {
+    const engine = server.fingerprint_engine_create().?;
+    defer server.fingerprint_engine_destroy(engine);
+
+    server.fingerprint_engine_add_boolean(engine, @intFromEnum(core.features.FeatureID.CookieEnabled), 1);
+    _ = server.fingerprint_engine_add_string(engine, @intFromEnum(core.features.FeatureID.UserAgent), "Mozilla/5.0", 11);
+
+    const risk = server.fingerprint_engine_risk(engine);
+    try testing.expect(risk >= 0 and risk <= 100);
+}
+
+test "engine entropy returns score" {
+    const engine = server.fingerprint_engine_create().?;
+    defer server.fingerprint_engine_destroy(engine);
+
+    server.fingerprint_engine_add_boolean(engine, @intFromEnum(core.features.FeatureID.CookieEnabled), 1);
+    _ = server.fingerprint_engine_add_string(engine, @intFromEnum(core.features.FeatureID.UserAgent), "Mozilla/5.0", 11);
+
+    const entropy = server.fingerprint_engine_entropy(engine);
+    try testing.expect(entropy >= 0);
 }

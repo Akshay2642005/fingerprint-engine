@@ -15,6 +15,7 @@ from fingerprint_sdk.types import FeatureType, ErrorCode
 
 # ── Load native library ──
 
+
 def _find_lib_path() -> Path | None:
     """Search for the compiled fingerprint native library."""
     # Common locations relative to this package
@@ -160,9 +161,7 @@ class FingerprintEngine:
 
     def add_string_array(self, feature_id: int, value: list[str]) -> None:
         encoded = [s.encode("utf-8") for s in value]
-        self._add_raw(
-            feature_id, FeatureType.STRING_ARRAY, b"\x00".join(encoded)
-        )
+        self._add_raw(feature_id, FeatureType.STRING_ARRAY, b"\x00".join(encoded))
 
     def add_integer_array(self, feature_id: int, value: list[int]) -> None:
         data = struct.pack(f"<{len(value)}q", *value)
