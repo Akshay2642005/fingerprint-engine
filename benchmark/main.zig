@@ -66,6 +66,21 @@ pub fn formatDuration(ns: u64) Duration {
     return .{ .buf = buf, .len = result.len };
 }
 
+/// Right-align `s` within `width` display columns (not bytes), writing the
+/// padded result into `out`. Needed because strings containing the
+/// multi-byte `µ` glyph have byte length > display width, so Zig's builtin
+/// `{s:>N}` formatting (which pads based on byte length) under-pads them.
+fn padDisplayRight(out: []u8, s: []const u8) []const u8 {
+    const width: usize = 10;
+    const display_len = std.unicode.utf8CountCodepoints(s) catch s.len;
+    const pad = if (width > display_len) width - display_len else 0;
+
+    var i: usize = 0;
+    while (i < pad) : (i += 1) out[i] = ' ';
+    @memcpy(out[pad..][0..s.len], s);
+    return out[0 .. pad + s.len];
+}
+
 pub fn main() !void {
     var bench_io = timing.BenchIo.init(std.heap.page_allocator);
     defer bench_io.deinit();
@@ -78,26 +93,47 @@ pub fn main() !void {
         @tagName(builtin.mode),
         @tagName(builtin.cpu.arch),
     });
-    std.debug.print("{s:->60}\n", .{"-"});
-    std.debug.print("  {s:40} {s:>10} {s:>10} {s:>10} {s:>10}\n", .{
-        "Benchmark", "Ops/Sec", "Avg", "Min", "Max",
+    std.debug.print("┌──────────────────────────────────────────────────────────────┬──────────────┬────────────┬────────────┬────────────┐\n", .{});
+    std.debug.print("│ {s:<60} │ {s:>12} │ {s:>10} │ {s:>10} │ {s:>10} │\n", .{
+        "Benchmark",
+        "Ops/Sec",
+        "Avg",
+        "Min",
+        "Max",
     });
-    std.debug.print("{s:->60}\n", .{"-"});
+    std.debug.print("├──────────────────────────────────────────────────────────────┼──────────────┼────────────┼────────────┼────────────┤\n", .{});
 
     for (benchmarks) |b| {
         const result = b.func(&bench_io);
+
         const avg = formatDuration(@intFromFloat(result.avg_ns));
         const min = formatDuration(result.min_ns);
         const max = formatDuration(result.max_ns);
-        std.debug.print("  {s:40} {d:>10.0} {s:>10} {s:>10} {s:>10}\n", .{
-            result.name,
-            result.ops_per_sec,
-            avg.slice(),
-            min.slice(),
-            max.slice(),
-        });
+
+        var avg_buf: [32]u8 = undefined;
+        var min_buf: [32]u8 = undefined;
+        var max_buf: [32]u8 = undefined;
+
+        const avg_padded = padDisplayRight(&avg_buf, avg.slice());
+        const min_padded = padDisplayRight(&min_buf, min.slice());
+        const max_padded = padDisplayRight(&max_buf, max.slice());
+
+        std.debug.print(
+            "│ {s:<60} │ {d:>12.0} │ {s} │ {s} │ {s} │\n",
+            .{
+                result.name,
+                result.ops_per_sec,
+                avg_padded,
+                min_padded,
+                max_padded,
+            },
+        );
     }
 
-    std.debug.print("{s:->60}\n", .{"-"});
-    std.debug.print("  {d} benchmarks completed\n", .{benchmarks.len});
+    std.debug.print("└──────────────────────────────────────────────────────────────┴──────────────┴────────────┴────────────┴────────────┘\n", .{});
+    std.debug.print("Completed {d} benchmark{s}.\n\n", .{
+        benchmarks.len,
+        if (benchmarks.len == 1) "" else "s",
+    });
 }
+

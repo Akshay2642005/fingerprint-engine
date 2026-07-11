@@ -1,5 +1,4 @@
 /// Normalization benchmarks: validateTypes, checkBounds, normalize.
-
 const std = @import("std");
 const core = @import("core");
 const main = @import("main.zig");
