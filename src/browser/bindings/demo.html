@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fingerprint Engine Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    h1 { font-size: 2rem; font-weight: 600; margin-bottom: 0.5rem; color: #fff; }
+    .subtitle { color: #888; font-size: 0.9rem; margin-bottom: 2rem; }
+    .status {
+      padding: 0.5rem 1rem; border-radius: 8px; margin-bottom: 1.5rem;
+      font-size: 0.85rem; font-weight: 500;
+    }
+    .status.loading { background: #1a1a2e; color: #4fc3f7; }
+    .status.ready { background: #0d2818; color: #66bb6a; }
+    .status.error { background: #2e0a0a; color: #ef5350; }
+    .status.running { background: #1a1a0a; color: #ffd54f; }
+    button {
+      padding: 0.75rem 2rem; font-size: 1rem; font-weight: 600;
+      border: none; border-radius: 10px; cursor: pointer;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff; transition: all 0.2s; margin-bottom: 2rem;
+    }
+    button:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(102,126,234,0.4); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .result {
+      max-width: 800px; width: 100%;
+      background: #111; border-radius: 12px; padding: 1.5rem;
+      border: 1px solid #222;
+    }
+    .digest {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.8rem; word-break: break-all;
+      background: #1a1a1a; padding: 0.75rem; border-radius: 8px;
+      margin-bottom: 1rem; color: #4fc3f7;
+    }
+    .stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem; margin-bottom: 1.5rem;
+    }
+    .stat {
+      background: #1a1a1a; padding: 0.75rem; border-radius: 8px;
+      text-align: center;
+    }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #fff; }
+    .stat-label { font-size: 0.75rem; color: #888; margin-top: 0.25rem; }
+    .features { max-height: 400px; overflow-y: auto; }
+    .feature-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.4rem 0.75rem; border-bottom: 1px solid #1a1a1a;
+      font-size: 0.8rem;
+    }
+    .feature-row:hover { background: #1a1a1a; }
+    .feature-id { color: #888; font-family: monospace; width: 3rem; }
+    .feature-name { color: #ccc; flex: 1; margin-left: 0.5rem; }
+    .feature-value { color: #4fc3f7; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: #fff; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Fingerprint Engine</h1>
+  <p class="subtitle">Browser fingerprinting SDK — 102 signals, WASM-powered</p>
+
+  <div id="status" class="status loading">Initializing WASM engine...</div>
+
+  <button id="collect-btn" disabled>Collect Fingerprint</button>
+
+  <div id="result" class="result" style="display:none;">
+    <div class="digest" id="digest"></div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value" id="signal-count">0</div>
+        <div class="stat-label">Signals Collected</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="feature-count">0</div>
+        <div class="stat-label">Features Computed</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="risk-score">-</div>
+        <div class="stat-label">Risk Score</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="entropy-score">-</div>
+        <div class="stat-label">Entropy</div>
+      </div>
+    </div>
+
+    <h2>Collected Features</h2>
+    <div class="features" id="features"></div>
+  </div>
+
+  <script type="module">
+    // ── FeatureID mapping (must match Zig model.zig) ──
+    const FeatureID = {
+      0: 'UserAgent', 1: 'Language', 2: 'Languages', 3: 'Platform',
+      4: 'Vendor', 5: 'Product', 6: 'ProductSub', 7: 'AppName',
+      8: 'AppVersion', 9: 'CookieEnabled', 10: 'DoNotTrack',
+      11: 'HardwareConcurrency', 12: 'MaxTouchPoints', 13: 'DeviceMemory',
+      14: 'PdfViewerEnabled', 15: 'VendorSub', 16: 'DeviceRam',
+      17: 'ScreenWidth', 18: 'ScreenHeight', 19: 'AvailableWidth',
+      20: 'AvailableHeight', 21: 'ColorDepth', 22: 'PixelDepth',
+      23: 'DevicePixelRatio', 24: 'InnerWidth', 25: 'InnerHeight',
+      26: 'OuterWidth', 27: 'OuterHeight', 28: 'ScreenOrientation',
+      29: 'CpuClass', 30: 'CpuCores', 31: 'CpuArchitecture',
+      32: 'PlatformArchitecture', 33: 'HardwareAcceleration', 34: 'TouchSupport',
+      35: 'CanvasHash', 36: 'WebGLVendor', 37: 'WebGLRenderer',
+      38: 'WebGLVersion', 39: 'WebGLHash', 40: 'WebGLExtensions',
+      41: 'WebGLParameters', 42: 'WebGLShaderPrecision',
+      43: 'AudioHash', 44: 'FontsHash',
+      45: 'OperatingSystem', 46: 'OSVersion',
+      47: 'LocalStorage', 48: 'SessionStorage', 49: 'IndexedDB',
+      50: 'CacheStorage', 51: 'CookiesEnabled',
+      52: 'NotificationPermission', 53: 'GeolocationPermission',
+      54: 'CameraPermission', 55: 'MicrophonePermission',
+      56: 'AudioInputDevices', 57: 'AudioOutputDevices',
+      58: 'VideoInputDevices', 59: 'SupportedCodecs',
+      60: 'MediaFormats', 61: 'AudioFormats',
+      62: 'ConnectionType', 63: 'ConnectionDownlink',
+      64: 'ConnectionEffectiveType', 65: 'ConnectionRtt', 66: 'ConnectionSaveData',
+      67: 'Locale', 68: 'Timezone', 69: 'TimezoneOffset', 70: 'DateTimeFormat',
+      71: 'BatteryLevel', 72: 'BatteryCharging', 73: 'BatteryChargingTime',
+      74: 'DecodeCapability', 75: 'EncodeCapability', 76: 'HDRSupport',
+      77: 'CryptoSupport', 78: 'SubtleCrypto', 79: 'SpeechSynthesisVoices',
+      80: 'GPUVendor', 81: 'GPURenderer', 82: 'GPUDriverVersion',
+      83: 'HWConcurrencyPerf', 84: 'DeviceMemoryPerf', 85: 'TimePrecision',
+      86: 'CSSCustomProps', 87: 'CSSGridSupport', 88: 'CSSFlexboxSupport',
+      89: 'CSSContainerQuery', 90: 'CSSHasSelector',
+      91: 'ServiceWorker', 92: 'WebWorker', 93: 'SharedWorker',
+      94: 'WebSocket', 95: 'WebRTC',
+      96: 'KeyboardLayout', 97: 'PointerEvents', 98: 'GamepadSupport',
+      99: 'SchemaVersion', 100: 'SDKVersion', 101: 'CollectionTimestamp',
+    };
+
+    const statusEl = document.getElementById('status');
+    const btnEl = document.getElementById('collect-btn');
+    const resultEl = document.getElementById('result');
+
+    // ── Collect raw device data ──
+    function collectRawData() {
+      const data = {};
+
+      // Navigator
+      data.userAgent = navigator.userAgent;
+      data.language = navigator.language;
+      data.languages = [...navigator.languages];
+      data.platform = navigator.platform;
+      data.vendor = navigator.vendor;
+      data.product = navigator.product;
+      data.productSub = navigator.productSub || '';
+      data.appName = navigator.appName;
+      data.appVersion = navigator.appVersion;
+      data.cookieEnabled = navigator.cookieEnabled;
+      data.doNotTrack = navigator.doNotTrack || 'unspecified';
+      data.hardwareConcurrency = navigator.hardwareConcurrency;
+      data.maxTouchPoints = navigator.maxTouchPoints;
+
+      // Hardware
+      const nav2 = navigator;
+      if (nav2.deviceMemory) data.deviceMemory = nav2.deviceMemory;
+      if (nav2.cpuClass) data.cpuClass = nav2.cpuClass;
+
+      // Screen
+      data.screenWidth = screen.width;
+      data.screenHeight = screen.height;
+      data.availableWidth = screen.availWidth;
+      data.availableHeight = screen.availHeight;
+      data.colorDepth = screen.colorDepth;
+      data.pixelDepth = screen.pixelDepth;
+      data.devicePixelRatio = window.devicePixelRatio;
+      data.innerWidth = window.innerWidth;
+      data.innerHeight = window.innerHeight;
+      data.outerWidth = window.outerWidth;
+      data.outerHeight = window.outerHeight;
+      if (screen.orientation) data.screenOrientation = screen.orientation.type;
+
+      // Locale & Timezone
+      data.locale = navigator.language;
+      data.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      data.timezoneOffset = new Date().getTimezoneOffset();
+      data.dateTimeFormat = new Intl.DateTimeFormat().resolvedOptions().locale;
+
+      // Storage
+      data.localStorage = testStorage('localStorage');
+      data.sessionStorage = testStorage('sessionStorage');
+      data.indexedDB = 'indexedDB' in window;
+      data.cacheStorage = 'caches' in window;
+
+      // Network
+      const conn = navigator.connection;
+      if (conn) {
+        data.connectionType = conn.type || 'unknown';
+        data.connectionDownlink = conn.downlink || 0;
+        data.connectionEffectiveType = conn.effectiveType || 'unknown';
+        data.connectionRtt = conn.rtt || 0;
+        data.connectionSaveData = conn.saveData || false;
+      }
+
+      // Crypto
+      data.cryptoSupport = 'crypto' in window;
+      data.subtleCrypto = 'subtle' in (window.crypto || {});
+
+      // WebGL
+      try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl');
+        if (gl) {
+          const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+          if (debugInfo) {
+            data.webglVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+            data.webglRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+          }
+          data.webglVersion = gl.getParameter(gl.VERSION);
+        }
+      } catch (e) {}
+
+      // Canvas (rendered data)
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200; canvas.height = 50;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#f60'; ctx.fillRect(0, 0, 200, 50);
+          ctx.textBaseline = 'top'; ctx.font = '14px Arial';
+          ctx.fillStyle = '#069'; ctx.fillText('fingerprint引擎 🎨', 2, 15);
+          const grad = ctx.createLinearGradient(0, 0, 200, 0);
+          grad.addColorStop(0, 'red'); grad.addColorStop(0.5, 'green'); grad.addColorStop(1, 'blue');
+          ctx.fillStyle = grad; ctx.fillRect(0, 40, 200, 10);
+          data.canvasData = new Uint8Array(ctx.getImageData(0, 0, 200, 50).data.buffer);
+        }
+      } catch (e) {}
+
+      // CSS features
+      data.cssGridSupport = CSS.supports('display', 'grid');
+      data.cssFlexboxSupport = CSS.supports('display', 'flex');
+
+      // Workers & features
+      data.serviceWorkerSupport = 'serviceWorker' in navigator;
+      data.webWorkerSupport = 'Worker' in window;
+      data.webRTCSupport = 'RTCPeerConnection' in window;
+      data.pointerEvents = 'PointerEvent' in window;
+      data.gamepadSupport = 'getGamepads' in navigator;
+
+      return data;
+    }
+
+    function testStorage(type) {
+      try {
+        const s = window[type];
+        s.setItem('__test__', '1'); s.removeItem('__test__');
+        return true;
+      } catch { return false; }
+    }
+
+    // ── Build typed features array from raw data ──
+    function buildFeatures(raw) {
+      const features = [];
+      const addStr = (id, v) => { if (v !== undefined && v !== null && v !== '') features.push({ id, type: 3, value: v }); };
+      const addInt = (id, v) => { if (v !== undefined && v !== null) features.push({ id, type: 1, value: BigInt(Math.round(v)) }); };
+      const addFloat = (id, v) => { if (v !== undefined && v !== null) features.push({ id, type: 2, value: v }); };
+      const addBool = (id, v) => { if (v !== undefined && v !== null) features.push({ id, type: 0, value: v ? 1 : 0 }); };
+      const addBytes = (id, v) => { if (v) features.push({ id, type: 4, value: v }); };
+      const addStrArr = (id, v) => { if (v && v.length > 0) features.push({ id, type: 5, value: v }); };
+
+      // Navigator
+      addStr(0, raw.userAgent); addStr(1, raw.language); addStrArr(2, raw.languages);
+      addStr(3, raw.platform); addStr(4, raw.vendor); addStr(5, raw.product);
+      addStr(6, raw.productSub); addStr(7, raw.appName); addStr(8, raw.appVersion);
+      addBool(9, raw.cookieEnabled); addStr(10, raw.doNotTrack);
+      addInt(11, raw.hardwareConcurrency); addInt(12, raw.maxTouchPoints);
+      if (raw.deviceMemory) addFloat(13, raw.deviceMemory);
+
+      // Screen
+      addInt(17, raw.screenWidth); addInt(18, raw.screenHeight);
+      addInt(19, raw.availableWidth); addInt(20, raw.availableHeight);
+      addInt(21, raw.colorDepth); addInt(22, raw.pixelDepth);
+      addFloat(23, raw.devicePixelRatio);
+      addInt(24, raw.innerWidth); addInt(25, raw.innerHeight);
+      addInt(26, raw.outerWidth); addInt(27, raw.outerHeight);
+      if (raw.screenOrientation) addStr(28, raw.screenOrientation);
+
+      // Canvas
+      addBytes(35, raw.canvasData);
+
+      // WebGL
+      addStr(36, raw.webglVendor); addStr(37, raw.webglRenderer); addStr(38, raw.webglVersion);
+
+      // Storage
+      addBool(47, raw.localStorage); addBool(48, raw.sessionStorage);
+      addBool(49, raw.indexedDB); addBool(50, raw.cacheStorage);
+
+      // Network
+      addStr(62, raw.connectionType); addFloat(63, raw.connectionDownlink);
+      addStr(64, raw.connectionEffectiveType); addInt(65, raw.connectionRtt);
+      addBool(66, raw.connectionSaveData);
+
+      // Locale & Timezone
+      addStr(67, raw.locale); addStr(68, raw.timezone);
+      addInt(69, raw.timezoneOffset); addStr(70, raw.dateTimeFormat);
+
+      // Crypto
+      addBool(77, raw.cryptoSupport); addBool(78, raw.subtleCrypto);
+
+      // CSS
+      addBool(86, raw.cssGridSupport); addBool(88, raw.cssFlexboxSupport);
+
+      // Browser features
+      addBool(91, raw.serviceWorkerSupport); addBool(92, raw.webWorkerSupport);
+      addBool(95, raw.webRTCSupport); addBool(97, raw.pointerEvents);
+      addBool(98, raw.gamepadSupport);
+
+      // Metadata
+      addInt(99, 1); addStr(100, '0.1.0'); addInt(101, Date.now());
+
+      return features;
+    }
+
+    // ── Initialize WASM ──
+    async function init() {
+      try {
+        // Try to load the actual WASM file; fall back to pure-JS mode
+        let wasmExports;
+        try {
+          const resp = await fetch('../../zig-out/lib/fingerprint.wasm');
+          if (!resp.ok) throw new Error('WASM not found');
+          const module = await WebAssembly.instantiateStreaming(resp);
+          wasmExports = module.instance.exports;
+        } catch {
+          // WASM file not available — show the demo in collection-only mode
+          statusEl.className = 'status ready';
+          statusEl.textContent = '✅ Ready (collection mode — WASM not loaded, showing raw signals)';
+          btnEl.disabled = false;
+          window._wasmReady = false;
+          return;
+        }
+
+        const memory = wasmExports.memory;
+        // Initialize
+        const initCode = wasmExports.fingerprint_init();
+        if (initCode !== 0) throw new Error('Init failed: ' + initCode);
+
+        window._wasm = wasmExports;
+        window._scratchOffset = 0;
+        window._wasmReady = true;
+
+        statusEl.className = 'status ready';
+        statusEl.textContent = '✅ Ready — WASM engine loaded';
+        btnEl.disabled = false;
+      } catch (err) {
+        statusEl.className = 'status error';
+        statusEl.textContent = '❌ Failed to load WASM: ' + err.message;
+        console.error(err);
+      }
+    }
+
+    // ── Collect and display ──
+    btnEl.addEventListener('click', async () => {
+      statusEl.className = 'status running';
+      statusEl.textContent = '⏳ Collecting signals...';
+      btnEl.disabled = true;
+
+      await new Promise(r => setTimeout(r, 50)); // Let UI update
+
+      try {
+        const raw = collectRawData();
+
+        if (window._wasmReady) {
+          // Feed to WASM engine
+          const exports = window._wasm;
+          const mem = exports.memory;
+          const encoder = new TextEncoder();
+
+          function writeToMem(data) {
+            const needed = window._scratchOffset + data.length;
+            const pages = Math.ceil(needed / 65536);
+            const cur = mem.buffer.byteLength / 65536;
+            if (pages > cur) mem.grow(pages - cur);
+            new Uint8Array(mem.buffer).set(data, window._scratchOffset);
+            const ptr = window._scratchOffset;
+            window._scratchOffset += data.length;
+            return ptr;
+          }
+
+          function addStr(id, val) {
+            const enc = encoder.encode(val);
+            const ptr = writeToMem(enc);
+            exports.fingerprint_add_string(id, ptr, enc.length);
+          }
+
+          function addInt(id, val) {
+            exports.fingerprint_add_integer(id, BigInt(val));
+          }
+
+          function addFloat(id, val) {
+            exports.fingerprint_add_float(id, val);
+          }
+
+          function addBool(id, val) {
+            exports.fingerprint_add_boolean(id, val ? 1 : 0);
+          }
+
+          function addBytes(id, val) {
+            const ptr = writeToMem(val);
+            exports.fingerprint_add_bytes(id, ptr, val.length);
+          }
+
+          function addStrArr(id, vals) {
+            const parts = vals.map(v => encoder.encode(v));
+            const totalLen = parts.reduce((a, p) => a + p.length, 0) + parts.length;
+            const buf = new Uint8Array(totalLen);
+            let offset = 0;
+            for (const p of parts) {
+              buf.set(p, offset); offset += p.length;
+              buf[offset] = 0; offset += 1;
+            }
+            addBytes(id, buf);
+          }
+
+          // Feed all features
+          if (raw.userAgent) addStr(0, raw.userAgent);
+          if (raw.language) addStr(1, raw.language);
+          if (raw.languages) addStrArr(2, raw.languages);
+          if (raw.platform) addStr(3, raw.platform);
+          if (raw.vendor) addStr(4, raw.vendor);
+          if (raw.cookieEnabled) addBool(9, raw.cookieEnabled);
+          if (raw.hardwareConcurrency) addInt(11, raw.hardwareConcurrency);
+          if (raw.maxTouchPoints) addInt(12, raw.maxTouchPoints);
+          if (raw.screenWidth) addInt(17, raw.screenWidth);
+          if (raw.screenHeight) addInt(18, raw.screenHeight);
+          if (raw.availableWidth) addInt(19, raw.availableWidth);
+          if (raw.availableHeight) addInt(20, raw.availableHeight);
+          if (raw.colorDepth) addInt(21, raw.colorDepth);
+          if (raw.devicePixelRatio) addFloat(23, raw.devicePixelRatio);
+          if (raw.innerWidth) addInt(24, raw.innerWidth);
+          if (raw.innerHeight) addInt(25, raw.innerHeight);
+          if (raw.canvasData) addBytes(35, raw.canvasData);
+          if (raw.webglVendor) addStr(36, raw.webglVendor);
+          if (raw.webglRenderer) addStr(37, raw.webglRenderer);
+          if (raw.webglVersion) addStr(38, raw.webglVersion);
+          addBool(47, !!raw.localStorage);
+          addBool(48, !!raw.sessionStorage);
+          addBool(49, !!raw.indexedDB);
+          if (raw.locale) addStr(67, raw.locale);
+          if (raw.timezone) addStr(68, raw.timezone);
+          if (raw.timezoneOffset !== undefined) addInt(69, raw.timezoneOffset);
+          addBool(77, !!raw.cryptoSupport);
+          addBool(78, !!raw.subtleCrypto);
+          addBool(91, !!raw.serviceWorkerSupport);
+          addBool(92, !!raw.webWorkerSupport);
+          addBool(95, !!raw.webRTCSupport);
+          addInt(99, 1);
+          addStr(100, '0.1.0');
+          addInt(101, Date.now());
+
+          // Compute
+          const ptr = exports.fingerprint_compute();
+          const digest = new Uint8Array(mem.buffer.slice(ptr, ptr + 32));
+          const hex = Array.from(digest).map(b => b.toString(16).padStart(2, '0')).join('');
+
+          // Risk & entropy
+          const risk = exports.fingerprint_risk();
+          const entropy = exports.fingerprint_entropy();
+
+          showResults(hex, raw, risk, entropy);
+        } else {
+          // Collection-only mode
+          const features = buildFeatures(raw);
+          showResults(null, raw, null, null);
+        }
+      } catch (err) {
+        statusEl.className = 'status error';
+        statusEl.textContent = '❌ Error: ' + err.message;
+        console.error(err);
+      }
+
+      btnEl.disabled = false;
+    });
+
+    function showResults(hex, raw, risk, entropy) {
+      statusEl.className = 'status ready';
+      statusEl.textContent = '✅ Collection complete';
+
+      resultEl.style.display = 'block';
+      document.getElementById('digest').textContent = hex
+        ? `SHA-256: ${hex}`
+        : 'Digest: (WASM not loaded — showing collected signals only)';
+
+      // Count collected signals
+      const signalCount = Object.keys(raw).filter(k => raw[k] !== undefined && raw[k] !== null).length;
+      document.getElementById('signal-count').textContent = signalCount;
+      document.getElementById('feature-count').textContent = signalCount;
+      document.getElementById('risk-score').textContent = risk !== null ? `${risk}/100` : '-';
+      document.getElementById('entropy-score').textContent = entropy !== null ? `${(entropy / 100).toFixed(1)}` : '-';
+
+      // Show features
+      const featuresEl = document.getElementById('features');
+      // Clear features list
+      while (featuresEl.firstChild) featuresEl.removeChild(featuresEl.firstChild);
+
+      const categories = {
+        'Navigator': [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],
+        'Screen': [17,18,19,20,21,22,23,24,25,26,27,28],
+        'Hardware': [29,30,31,32,33,34],
+        'Canvas/WebGL': [35,36,37,38,39,40,41,42],
+        'Audio/Fonts': [43,44],
+        'Platform': [45,46],
+        'Storage': [47,48,49,50,51],
+        'Permissions': [52,53,54,55],
+        'Media': [56,57,58,59,60,61],
+        'Network': [62,63,64,65,66],
+        'Locale': [67,68,69,70],
+        'Battery': [71,72,73],
+        'Capabilities': [74,75,76],
+        'Crypto': [77,78],
+        'Speech/GPU': [79,80,81,82],
+        'Performance': [83,84,85],
+        'CSS': [86,87,88,89,90],
+        'Browser': [91,92,93,94,95],
+        'Input': [96,97,98],
+        'Metadata': [99,100,101],
+      };
+
+      for (const [cat, ids] of Object.entries(categories)) {
+        let hasAny = false;
+        for (const id of ids) {
+          const name = FeatureID[id];
+          if (!name) continue;
+          const val = raw[name] ?? raw[camelCase(name)];
+          if (val === undefined || val === null) continue;
+          hasAny = true;
+        }
+        if (!hasAny) continue;
+
+        // Category header
+        const header = document.createElement('div');
+        header.style.cssText = 'padding: 0.5rem 0.75rem; background: #1a1a1a; font-weight: 600; font-size: 0.8rem; color: #888; border-bottom: 1px solid #222;';
+        header.textContent = cat;
+        featuresEl.appendChild(header);
+
+        for (const id of ids) {
+          const name = FeatureID[id];
+          if (!name) continue;
+
+          let val = raw[name];
+          if (val === undefined || val === null) continue;
+
+          const row = document.createElement('div');
+          row.className = 'feature-row';
+
+          let displayVal;
+          if (val instanceof Uint8Array) displayVal = `Bytes(${val.length})`;
+          else if (Array.isArray(val)) displayVal = val.length > 3 ? val.slice(0, 3).join(', ') + ` +${val.length - 3}` : val.join(', ');
+          else if (typeof val === 'boolean') displayVal = val ? '✓' : '✗';
+          else if (typeof val === 'string' && val.length > 50) displayVal = val.substring(0, 47) + '...';
+          else displayVal = String(val);
+
+          const idSpan = document.createElement('span');
+          idSpan.className = 'feature-id';
+          idSpan.textContent = String(id);
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'feature-name';
+          nameSpan.textContent = name;
+          const valSpan = document.createElement('span');
+          valSpan.className = 'feature-value';
+          valSpan.textContent = displayVal;
+          row.appendChild(idSpan);
+          row.appendChild(nameSpan);
+          row.appendChild(valSpan);
+          featuresEl.appendChild(row);
+        }
+      }
+    }
+
+    function camelCase(s) {
+      return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    }
+
+    init();
+  </script>
+</body>
+</html>

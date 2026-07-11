@@ -297,11 +297,11 @@ test "round-trip with all 9 value types" {
             fingerprint.Feature{ .id = features.FeatureID.HardwareConcurrency, .value = fingerprint.FeatureValue{ .Integer = 8 } },
             fingerprint.Feature{ .id = features.FeatureID.DevicePixelRatio, .value = fingerprint.FeatureValue{ .Float = 2.0 } },
             fingerprint.Feature{ .id = features.FeatureID.UserAgent, .value = fingerprint.FeatureValue{ .String = "Test" } },
-            fingerprint.Feature{ .id = features.FeatureID.CanvasHash, .value = fingerprint.FeatureValue{ .Bytes = &[_]u8{ 0x01 } } },
-            fingerprint.Feature{ .id = features.FeatureID.Languages, .value = fingerprint.FeatureValue{ .StringArray = &[_][]const u8{ "a" } } },
-            fingerprint.Feature{ .id = features.FeatureID.AudioInputDevices, .value = fingerprint.FeatureValue{ .IntegerArray = &[_]i64{ 1 } } },
-            fingerprint.Feature{ .id = features.FeatureID.AudioOutputDevices, .value = fingerprint.FeatureValue{ .FloatArray = &[_]f64{ 0.5 } } },
-            fingerprint.Feature{ .id = features.FeatureID.FontsHash, .value = fingerprint.FeatureValue{ .BytesArray = &[_][]const u8{ "x" } } },
+            fingerprint.Feature{ .id = features.FeatureID.CanvasHash, .value = fingerprint.FeatureValue{ .Bytes = &[_]u8{0x01} } },
+            fingerprint.Feature{ .id = features.FeatureID.Languages, .value = fingerprint.FeatureValue{ .StringArray = &[_][]const u8{"a"} } },
+            fingerprint.Feature{ .id = features.FeatureID.AudioInputDevices, .value = fingerprint.FeatureValue{ .IntegerArray = &[_]i64{1} } },
+            fingerprint.Feature{ .id = features.FeatureID.AudioOutputDevices, .value = fingerprint.FeatureValue{ .FloatArray = &[_]f64{0.5} } },
+            fingerprint.Feature{ .id = features.FeatureID.FontsHash, .value = fingerprint.FeatureValue{ .BytesArray = &[_][]const u8{"x"} } },
         },
     };
 
