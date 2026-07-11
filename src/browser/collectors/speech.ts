@@ -8,22 +8,22 @@
  * Returns sorted voice names.
  */
 export function collectSpeechVoices(): string[] {
-  try {
-    if (!window.speechSynthesis) return [];
+	try {
+		if (!window.speechSynthesis) return [];
 
-    const voices = window.speechSynthesis.getVoices();
-    return voices
-      .map(v => v.name)
-      .filter(n => n.length > 0)
-      .sort();
-  } catch {
-    return [];
-  }
+		const voices = window.speechSynthesis.getVoices();
+		return voices
+			.map((v) => v.name)
+			.filter((n) => n.length > 0)
+			.sort();
+	} catch {
+		return [];
+	}
 }
 
 /**
  * Get voice fingerprint as a hashable string.
  */
 export function getSpeechFingerprint(): string {
-  return collectSpeechVoices().join(',');
+	return collectSpeechVoices().join(",");
 }

@@ -1,0 +1,51 @@
+{
+  "name": "@fingerprint/sdk",
+  "version": "0.1.0",
+  "description": "Browser fingerprinting SDK — 102 signals, WASM-powered. Zero setup, just a script tag.",
+  "main": "dist/fingerprint.umd.js",
+  "module": "dist/fingerprint.esm.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/fingerprint.esm.js",
+      "require": "./dist/fingerprint.umd.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build:wasm": "cd ../.. && zig build wasm",
+    "build:bundle": "node build.mjs",
+    "build": "npm run build:bundle",
+    "prepublishOnly": "npm run build",
+    "test:browser": "npx serve . -p 3000"
+  },
+  "keywords": [
+    "fingerprint",
+    "browser-fingerprinting",
+    "fingerprintjs",
+    "webassembly",
+    "wasm",
+    "device-fingerprint",
+    "bot-detection",
+    "fraud-prevention"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/fingerprint-engine"
+  },
+  "homepage": "https://github.com/your-org/fingerprint-engine#readme",
+  "bugs": {
+    "url": "https://github.com/your-org/fingerprint-engine/issues"
+  },
+  "author": "Fingerprint Engine Contributors",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
