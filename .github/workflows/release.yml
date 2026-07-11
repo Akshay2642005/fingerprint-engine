@@ -102,7 +102,9 @@ jobs:
             exit 1
           fi
           cp "$LIB" "staging/fingerprint-${{ matrix.suffix }}.$(echo "$LIB" | sed 's/.*\.//')"
-          echo "✅ Copied $LIB to staging/"
+          # Include the C header with every native build
+          cp src/server/api/c/fingerprint.h staging/
+          echo "✅ Copied $LIB and fingerprint.h to staging/"
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v4
@@ -143,12 +145,9 @@ jobs:
 
           ### Artifacts
           - \`fingerprint-*.wasm\` — WebAssembly module for browser SDK
-          - \`libfingerprint-*.a\` — Static library for Linux/macOS
+          - \`fingerprint-*.a\` — Static library for Linux/macOS
           - \`fingerprint-*.lib\` — Static library for Windows
           - \`fingerprint.h\` — C header for native integration
-
-          ### SDK Packages
-          - npm: \`@fingerprint/sdk\`
           EOF
 
       - name: Create GitHub Release

@@ -1,7 +1,7 @@
 # Fingerprint Engine
 
-[![CI](https://github.com/fingerprint/sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/fingerprint/sdk/actions/workflows/ci.yml)
-[![Release](https://github.com/fingerprint/sdk/actions/workflows/release.yml/badge.svg)](https://github.com/fingerprint/sdk/actions/workflows/release.yml)
+[![CI](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml)
+[![Release](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/release.yml/badge.svg)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/release.yml)
 ![Zig](https://img.shields.io/badge/Zig-0.16.0-%23F7A41D?logo=zig&logoColor=white)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -10,7 +10,7 @@ zero-dependency, deterministic SHA-256 hashing, cross-platform.
 
 ## Features
 
-- **37 feature signals** across 14 categories: navigator, screen, canvas, WebGL, audio, fonts, hardware, platform, storage, permissions, media, network, locale, timezone
+- **102 browser signals** across 21 categories: navigator, screen, canvas, WebGL, audio, fonts, hardware, platform, storage, permissions, media, network, locale, timezone, battery, speech synthesis, input devices, codecs, HDR, pointer, gamepad
 - **Deterministic hashing** — SHA-256 with type-tag prefixes prevents cross-type collisions
 - **Incremental hasher** — absorb features one at a time, final digest matches batch hash
 - **Serialization** — compact TLV binary (`"FNGR"` magic) and human-readable JSON
@@ -24,41 +24,89 @@ zero-dependency, deterministic SHA-256 hashing, cross-platform.
 ## Build
 
 ```bash
-# Unit tests
+# Unit tests (290+ tests)
 zig build test --summary all
 
-# WebAssembly module
+# WebAssembly module (zig-out/bin/fingerprint.wasm)
 zig build wasm
 
-# Native static library
+# Native static library (zig-out/lib/)
 zig build native
 ```
 
-## SDK Integrations
+## Quick Start (Browser)
 
-- **TypeScript/JS** — `src/browser/bindings/` with typed WASM wrapper
-- **C** — `src/server/api/c/fingerprint.h` public header
-- **Node.js, Python, Rust** — planned (see [Integration Plan](specs/plan.md))
+```html
+<script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk"></script>
+<script>
+  const sdk = await Fingerprint.create();
+  const fp = await sdk.collect();
+  const hash = sdk.hashFingerprint(fp);
+  console.log('Fingerprint:', hash);
+  console.log('Risk:', sdk.computeRisk(fp));
+  console.log('Entropy:', sdk.computeEntropy(fp));
+</script>
+```
+
+## SDK Packages
+
+| Package | Platform | Status |
+| --------- | ---------- | -------- |
+| [`@fingerprint/sdk`](https://www.npmjs.com/package/@fingerprint/sdk) | npm (browser WASM) | ✅ Published |
+| `fingerprint-sdk` | PyPI (Python) | 📋 Planned |
+| `fingerprint-sys` | crates.io (Rust) | 📋 Planned |
 
 ## Project Structure
 
 ```
 .
 ├── src/
-│   ├── core/          # Platform-independent fingerprint engine
-│   │   ├── features/  # FeatureID, FeatureType, Registry, FeatureDefinition
-│   │   ├── fingerprint/ # FeatureValue, Feature, Fingerprint, Metadata
+│   ├── core/              # Platform-independent fingerprint engine
+│   │   ├── features/      # FeatureID (102), FeatureType (9), Registry, FeatureDefinition
+│   │   ├── fingerprint/   # FeatureValue, Feature, Fingerprint, Metadata
 │   │   ├── serialization/ # Binary TLV + JSON encode/decode
 │   │   ├── normalization/ # Type validation, bounds checking
-│   │   ├── hashing/   # SHA-256 feature/fingerprint digest
-│   │   ├── validation/ # Required-feature checking
-│   │   ├── similarity/ # Weighted per-feature comparison
-│   │   ├── entropy/   # Shannon entropy analysis
-│   │   └── risk/      # Risk assessment engine
-│   ├── browser/       # WebAssembly SDK + JS bindings
-│   └── server/        # Native C-ABI library + C header
-├── tests/             # Test suite (282+ tests)
-└── build.zig          # Zig build system
+│   │   ├── hashing/       # SHA-256 feature/fingerprint digest
+│   │   ├── validation/    # Required-feature checking
+│   │   ├── similarity/    # Weighted per-feature comparison
+│   │   ├── entropy/       # Shannon entropy analysis
+│   │   └── risk/          # Risk assessment engine
+│   ├── browser/           # WebAssembly SDK + JS bindings + collectors
+│   │   ├── wasm/          # Zig WASM exports (hash, normalize, risk, entropy)
+│   │   ├── bindings/      # TypeScript wrapper, types, demo page
+│   │   └── collectors/    # 11 browser signal collectors (canvas, webgl, audio, etc.)
+│   └── server/            # Native C-ABI library + C header + API bindings
+│       ├── native/        # Zig native library exports
+│       └── api/           # C header, Rust SDK, Python SDK
+├── tests/                 # 290+ tests (features, serialization, hashing, etc.)
+├── benchmark/             # Performance benchmarks (12 targets)
+├── packages/              # Distribution packages
+│   └── browser/           # npm build pipeline
+├── docs/                  # API docs, architecture docs
+└── build.zig              # Zig build system
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Fingerprint Engine                           │
+│                                                                 │
+│  ┌─────────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐ │
+│  │ Collectors   │  │ WASM    │  │ Native   │  │ Packages    │ │
+│  │ (JS/TS)      │  │ (Zig)   │  │ C ABI    │  │ npm/PyPI/   │ │
+│  │ 11 collectors│─▶│ hash    │  │ matching │  │ crates.io   │ │
+│  │ 102 signals  │  │ normalize│  │ lookup   │  │             │ │
+│  └─────────────┘  │ risk    │  │ entropy  │  └─────────────┘ │
+│                   │ entropy │  │ risk     │                    │
+│                   └──────────┘  └──────────┘                    │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                  Core Engine (Zig)                       │  │
+│  │  features · fingerprint · hashing · normalization        │  │
+│  │  serialization · similarity · entropy · risk             │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## License
