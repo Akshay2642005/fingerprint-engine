@@ -1,0 +1,42 @@
+{
+  "name": "@fingerprint/sdk",
+  "version": "0.1.0",
+  "description": "Fingerprint Engine — browser fingerprinting WASM SDK",
+  "keywords": [
+    "fingerprint",
+    "browser-fingerprinting",
+    "webassembly",
+    "wasm",
+    "zig"
+  ],
+  "homepage": "https://github.com/your-org/fingerprint-engine",
+  "license": "MIT",
+  "author": "Fingerprint Engine Contributors",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/fingerprint-engine"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
