@@ -12,4 +12,5 @@ test {
     _ = @import("server/root.zig");
     _ = @import("data/root.zig");
     _ = @import("fixtures/root.zig");
+    _ = @import("utils_test.zig");
 }
