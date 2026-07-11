@@ -66,6 +66,27 @@ def main():
     digest2 = engine2.compute()
     print(f"  Digest: {digest2.hex()}")
 
+    # ── Processing ──
+    print("\n◌ Processing:")
+
+    # Normalize (check for issues)
+    warnings1 = engine1.normalize()
+    warnings2 = engine2.normalize()
+    print(f"  Fingerprint 1 warnings: {warnings1}")
+    print(f"  Fingerprint 2 warnings: {warnings2}")
+
+    # Risk assessment
+    risk1 = engine1.risk()
+    risk2 = engine2.risk()
+    print(f"  Fingerprint 1 risk: {risk1}/100")
+    print(f"  Fingerprint 2 risk: {risk2}/100")
+
+    # Entropy
+    entropy1 = engine1.entropy()
+    entropy2 = engine2.entropy()
+    print(f"  Fingerprint 1 entropy: {entropy1}/800")
+    print(f"  Fingerprint 2 entropy: {entropy2}/800")
+
     # ── Comparison ──
     print("\n◌ Comparison:")
     print(f"  Fingerprint 1: {digest1.hex()[:16]}...")

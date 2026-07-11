@@ -85,6 +85,15 @@ _lib.fingerprint_engine_compute.argtypes = [
     ctypes.POINTER(ctypes.c_int),  # out_len
 ]
 
+_lib.fingerprint_engine_normalize.restype = ctypes.c_int
+_lib.fingerprint_engine_normalize.argtypes = [ctypes.c_void_p]
+
+_lib.fingerprint_engine_risk.restype = ctypes.c_int
+_lib.fingerprint_engine_risk.argtypes = [ctypes.c_void_p]
+
+_lib.fingerprint_engine_entropy.restype = ctypes.c_int
+_lib.fingerprint_engine_entropy.argtypes = [ctypes.c_void_p]
+
 
 class FingerprintError(Exception):
     """Raised when a fingerprint engine operation fails."""
@@ -184,3 +193,38 @@ class FingerprintEngine:
     def compute_hex(self) -> str:
         """Compute the fingerprint digest and return as hex string."""
         return self.compute().hex()
+
+    # ── Processing ──
+
+    def normalize(self) -> int:
+        """Normalize the fingerprint, checking for type and bounds issues.
+
+        Returns:
+            Number of warnings (0 = clean).
+        """
+        rc = _lib.fingerprint_engine_normalize(self._handle)
+        if rc < 0:
+            raise FingerprintError(rc, "normalize failed")
+        return rc
+
+    def risk(self) -> int:
+        """Compute risk assessment score.
+
+        Returns:
+            Risk score (0-100, where 100 = highest risk).
+        """
+        rc = _lib.fingerprint_engine_risk(self._handle)
+        if rc < 0:
+            raise FingerprintError(rc, "risk computation failed")
+        return rc
+
+    def entropy(self) -> int:
+        """Compute fingerprint entropy.
+
+        Returns:
+            Entropy score (0-800, where 800 = 8.0 bits/byte * 100).
+        """
+        rc = _lib.fingerprint_engine_entropy(self._handle)
+        if rc < 0:
+            raise FingerprintError(rc, "entropy computation failed")
+        return rc
