@@ -92,19 +92,23 @@ jobs:
         run: |
           TAG=${GITHUB_REF_NAME#v}
           mkdir -p staging
-          # Find the library file regardless of platform naming convention
-          LIB=$(find zig-out/lib -maxdepth 1 \(
-            -name "libfingerprint.*" -o -name "fingerprint.*"
-          \) 2>/dev/null | head -1)
-          if [ -z "$LIB" ]; then
+          # Detect library file — Linux/macOS: libfingerprint.a, Windows: fingerprint.lib
+          if [ -f zig-out/lib/libfingerprint.a ]; then
+            LIB="zig-out/lib/libfingerprint.a"
+            EXT="a"
+          elif [ -f zig-out/lib/fingerprint.lib ]; then
+            LIB="zig-out/lib/fingerprint.lib"
+            EXT="lib"
+          else
             echo "❌ Native library not found in zig-out/lib/"
             ls -la zig-out/lib/ 2>/dev/null || echo "  (zig-out/lib/ not found)"
             exit 1
           fi
-          cp "$LIB" "staging/fingerprint-${{ matrix.suffix }}.$(echo "$LIB" | sed 's/.*\.//')"
+          cp "$LIB" "staging/fingerprint-${{ matrix.suffix }}.$EXT"
+          echo "✅ Copied $LIB"
           # Include the C header with every native build
           cp src/server/api/c/fingerprint.h staging/
-          echo "✅ Copied $LIB and fingerprint.h to staging/"
+          echo "✅ fingerprint.h copied"
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v4

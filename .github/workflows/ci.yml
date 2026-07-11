@@ -99,11 +99,8 @@ jobs:
           # Library naming convention (platform-dependent):
           #   Linux/macOS: zig-out/lib/libfingerprint.a
           #   Windows:     zig-out/lib/fingerprint.lib
-          FOUND=$(find zig-out/lib -maxdepth 1 \
-            \( -name "libfingerprint.*" -o -name "fingerprint.*" \) \
-            2>/dev/null | head -1)
-          if [ -n "$FOUND" ]; then
-            echo "✅ Native library found: $FOUND"
+          if [ -f zig-out/lib/libfingerprint.a ] || [ -f zig-out/lib/fingerprint.lib ]; then
+            echo "✅ Native library found"
           else
             echo "❌ Native library not found"
             ls -la zig-out/lib/ 2>/dev/null || echo "  (zig-out/lib/ not found)"
