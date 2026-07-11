@@ -125,8 +125,8 @@
 | 3 | `m1-test-data` | Fixtures, datasets, test data | +5 | ✅ Merged |
 | 4 | `m1-test-utils` | Test utility helpers | +14 | ✅ Merged |
 | 5 | `m1-ci-cd` | GitHub Actions + badges | +0 (infra) | ✅ Merged |
-| 6 | `m1-package-meta` | build.zig.zon + CLAs | +0 | |
-| 7 | `m2-npm-package` | npm + browser demo | +5 | |
+| 6 | `m1-package-meta` | build.zig.zon + MIT license | +0 | ✅ Merged |
+| 7 | `m2-npm-package` | npm + browser demo | +5 | 🏗️ Next |
 | 8 | `m2-server-packages` | PyPI + cargo | +5 | |
 | 9 | `m3-benchmarks` | Benchmark harness | +0 (bench) | |
 | 10 | `m3-fuzz-docs-security` | Fuzz + docs + security audit | +20 | |
