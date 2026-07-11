@@ -1,0 +1,108 @@
+# Fingerprint Engine — CI Pipeline
+#
+# Runs on pushes to master and PRs targeting master.
+# Verifies compilation, unit tests, WASM build, and native library build
+# across Linux, macOS, and Windows.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  ZIG_VERSION: 0.16.0
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Show Zig version
+        run: zig version
+
+      - name: Run unit tests
+        run: zig build test --summary all
+
+  wasm-build:
+    name: WASM Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build WASM module
+        run: zig build wasm
+
+      - name: Verify WASM output exists
+        run: |
+          if [ -f zig-out/bin/fingerprint.wasm ]; then
+            echo "✅ WASM binary found: $(ls -lh zig-out/bin/fingerprint.wasm | awk '{print $5}')"
+          else
+            echo "❌ WASM binary not found"
+            exit 1
+          fi
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fingerprint-wasm
+          path: zig-out/bin/fingerprint.wasm
+          retention-days: 30
+
+  native-build:
+    name: Native Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build native static library
+        run: zig build native
+
+      - name: Verify native library output exists
+        shell: bash
+        run: |
+          if ls zig-out/lib/libfingerprint.* 2>/dev/null | head -1; then
+            echo "✅ Native library found"
+          else
+            echo "❌ Native library not found"
+            exit 1
+          fi
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fingerprint-native-${{ matrix.os }}
+          path: zig-out/lib/
+          retention-days: 30
