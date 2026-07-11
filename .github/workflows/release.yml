@@ -1,0 +1,157 @@
+# Fingerprint Engine — Release Pipeline
+#
+# Triggered by tags matching v* (e.g., v0.1.0, v0.2.0).
+# Builds artifacts across platforms and creates a GitHub Release.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  ZIG_VERSION: 0.16.0
+
+jobs:
+  test:
+    name: Pre-release tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Run unit tests
+        run: zig build test --summary all
+
+  build-wasm:
+    name: Build WASM
+    needs: [test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build WASM module
+        run: zig build wasm
+
+      - name: Rename WASM artifact
+        run: |
+          TAG=${GITHUB_REF_NAME#v}
+          mv zig-out/bin/fingerprint.wasm zig-out/bin/fingerprint-${TAG}.wasm
+
+      - name: Upload WASM release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fingerprint-wasm-release
+          path: zig-out/bin/fingerprint-*.wasm
+
+  build-native:
+    name: Build Native (${{ matrix.os }})
+    needs: [test]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            suffix: linux-x86_64
+          - os: macos-latest
+            suffix: macos-x86_64
+          - os: windows-latest
+            suffix: windows-x86_64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build native static library
+        run: zig build native
+
+      - name: Rename and archive
+        shell: bash
+        run: |
+          TAG=${GITHUB_REF_NAME#v}
+          mkdir -p staging
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp zig-out/lib/fingerprint.lib staging/fingerprint-${{ matrix.suffix }}.lib
+          else
+            cp zig-out/lib/libfingerprint.a staging/libfingerprint-${{ matrix.suffix }}.a
+          fi
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fingerprint-native-${{ matrix.suffix }}
+          path: staging/
+
+  create-release:
+    name: Create Release
+    needs: [build-wasm, build-native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create release archive
+        run: |
+          mkdir -p release-assets
+          TAG=${GITHUB_REF_NAME#v}
+          # Flatten artifacts into release-assets/
+          cp -r artifacts/*/* release-assets/ 2>/dev/null || true
+
+      - name: Generate release notes
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          cat > RELEASE_NOTES.md <<EOF
+          ## Fingerprint Engine ${TAG}
+
+          ### Changes
+          See the [changelog](CHANGELOG.md) for a full list of changes in this release.
+
+          ### Artifacts
+          - \`fingerprint-*.wasm\` — WebAssembly module for browser SDK
+          - \`libfingerprint-*.a\` — Static library for Linux/macOS
+          - \`fingerprint-*.lib\` — Static library for Windows
+          - \`fingerprint.h\` — C header for native integration
+
+          ### SDK Packages
+          Published separately:
+          - npm: \`@fingerprint/sdk\`
+          - PyPI: \`fingerprint-sdk\`
+          - crates.io: \`fingerprint-sdk\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Fingerprint Engine ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            release-assets/*
+            RELEASE_NOTES.md
+          draft: false
+          prerelease: false
