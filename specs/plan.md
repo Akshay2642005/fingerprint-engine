@@ -124,7 +124,7 @@
 | 2 | `m1-c-header` | C header + comptime validation | +4 | ✅ Merged |
 | 3 | `m1-test-data` | Fixtures, datasets, test data | +5 | ✅ Merged |
 | 4 | `m1-test-utils` | Test utility helpers | +14 | ✅ Merged |
-| 5 | `m1-ci-cd` | GitHub Actions + badges | +0 (infra) | 🏗️ Next |
+| 5 | `m1-ci-cd` | GitHub Actions + badges | +0 (infra) | ✅ Merged |
 | 6 | `m1-package-meta` | build.zig.zon + CLAs | +0 | |
 | 7 | `m2-npm-package` | npm + browser demo | +5 | |
 | 8 | `m2-server-packages` | PyPI + cargo | +5 | |
