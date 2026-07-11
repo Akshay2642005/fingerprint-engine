@@ -1,32 +1,132 @@
-# Phase 11 — Server SDK (Native C ABI)
+# Fingerprint Engine — Integration & Quality Plan
 
-> Exposes the fingerprint engine as a C-compatible native static/dynamic library for server-side integration.
+## M1 — Fill the Gaps (Immediate)
 
-## Scope
+### 1.1 TypeScript/JS WASM bindings ✅
 
-1. **C ABI entry point** — `src/server/native/root.zig` with exported C-compatible functions
-2. **Opaque handle** — pointer-based API with `create`/`destroy` lifecycle
-3. **Exported API**: `fingerprint_engine_create`, `fingerprint_engine_destroy`, `fingerprint_engine_add_feature`, `fingerprint_engine_compute`, `fingerprint_engine_get_error`
-4. **Test coverage** — native library tests
+- [x] `src/browser/bindings/types.ts` — FeatureID, FeatureType, FeatureValue types
+- [x] `src/browser/bindings/engine.ts` — FingerprintEngine class wrapping wasm exports
+- [x] `src/browser/bindings/index.ts` — barrel export
+- [x] `tests/browser/bindings_test.zig` — test that bindings compile/parse correctly
 
-### API Design
+### 1.2 C header for native library ✅
 
-```c
-// C header equivalent:
-typedef struct FingerprintEngine FingerprintEngine;
+- [x] `src/server/api/c/fingerprint.h` — public C API types and function declarations
+- [x] `tests/server/cheader_test.zig` — validate C header matches zig exports via comptime checks
 
-FingerprintEngine* fingerprint_engine_create(void);
-void fingerprint_engine_destroy(FingerprintEngine* engine);
-int fingerprint_engine_add_feature(FingerprintEngine* engine,
-    int feature_id, int value_type,
-    const unsigned char* value_data, int value_len);
-int fingerprint_engine_compute(FingerprintEngine* engine,
-    unsigned char* out_digest, int* out_len);
-const char* fingerprint_engine_get_error(FingerprintEngine* engine);
-```
+### 1.3 Test data & fixtures ✅
 
-### Constraints
+- [x] `tests/data/fingerprints/` — 5-10 canned fingerprints (JSON + binary) for regression
+- [x] `tests/data/browser/` — realistic browser signal values
+- [x] `tests/fixtures/datasets/` — multi-fingerprint datasets for similarity/entropy/risk testing
 
-- Uses system allocator (native = has heap)
-- C ABI compatible types (int, unsigned char*, etc.)
-- No global state — thread-safe handle-based design
+### 1.4 Test utilities ✅
+
+- [x] `tests/utils/` — generators, mock fingerprint builders, assertion helpers
+- [x] Coverage: reduce test boilerplate across all 11 phases
+
+### 1.5 CI/CD pipeline
+
+- [ ] `.github/workflows/ci.yml` — test on ubuntu/macos/windows, zig build test/wasm/native
+- [ ] `.github/workflows/release.yml` — tag-based publish to npm/GitHub Releases
+- [ ] Badges in README
+
+### 1.6 Package metadata
+
+- [ ] `build.zig.zon` — populate with version, description, dependencies, license
+
+## M2 — Integration SDKs (Short-term)
+
+### 2.1 npm package
+
+- [ ] `packages/browser/` — publish WASM + TS bindings as `@fingerprint/sdk`
+- [ ] Example: basic browser demo HTML page
+- [ ] Example: Node.js fingerprint verification script
+
+### 2.2 PyPI package
+
+- [ ] `packages/server/python/` — Python bindings via ctypes/cffi to native lib
+- [ ] Example: Python server with fingerprint matching
+
+### 2.3 Cargo crate
+
+- [ ] `packages/server/rust/` — Rust `-sys` crate wrapping native lib
+- [ ] Example: Rust CLI tool
+
+### 2.4 Usage examples
+
+- [ ] `examples/browser-demo/` — vanilla HTML + WASM demo
+- [ ] `examples/server-cli/` — CLI that reads fingerprints and computes digest/risk/similarity
+- [ ] `examples/server-http/` — HTTP API server (Zig std.http or via binding)
+
+## M3 — Production Readiness (Medium-term)
+
+### 3.1 Benchmark harness
+
+- [ ] `benchmark/` — zig bench targets for: hashing, serialization, normalization, similarity, entropy
+- [ ] WASM size tracking
+- [ ] Performance regression gate in CI
+
+### 3.2 Fuzz testing
+
+- [ ] Fuzz targets for: binary decode, JSON decode, normalize, deserialize
+- [ ] OSS-Fuzz configuration
+
+### 3.3 Documentation
+
+- [ ] Full API docs (zig-created docgen or manual markdown)
+- [ ] Migration guide (0.1.x → 0.2.x)
+- [ ] Architecture overview updated
+
+### 3.4 Cross-platform verification
+
+- [ ] Test on macOS, Linux, Windows (CI covers this)
+- [ ] Test WASM in Chrome, Firefox, Safari, Node.js
+- [ ] Verify endianness invariance
+
+### 3.5 Security
+
+- [ ] `SECURITY.md` — fill with real policy
+- [ ] Supply chain (lockfile, signed releases)
+- [ ] Input validation audit (decode/deserialize paths)
+
+## M4 — Signal Collection & Matching (Long-term)
+
+### 4.1 Browser signal gatherers
+
+- [ ] Canvas fingerprinting
+- [ ] WebGL / WebGPU renderer
+- [ ] AudioContext
+- [ ] Installed fonts (CSS/Font API)
+- [ ] Screen/display signals
+- [ ] Navigator signals (already defined as feature IDs)
+
+### 4.2 Server-side matching engine
+
+- [ ] Fingerprint database (sqlite or in-memory)
+- [ ] Lookup by digest + similarity fallback
+- [ ] Risk-based scoring pipeline
+- [ ] Anomaly detection over time (entropy drift)
+
+### 4.3 Telemetry API
+
+- [ ] Ingestion endpoint (HTTP/gRPC)
+- [ ] Batch processing pipeline
+- [ ] Dashboard/analytics
+
+---
+
+## Concrete Worktree Plan (Next ~10 branches)
+
+| # | Branch | Epic | Est. Tests | Status |
+| --- | -------- | ------ | ----------- | ------ |
+| 1 | `m1-ts-bindings` | TS/JS WASM bindings | +4 | ✅ Merged |
+| 2 | `m1-c-header` | C header + comptime validation | +4 | ✅ Merged |
+| 3 | `m1-test-data` | Fixtures, datasets, test data | +5 | ✅ Merged |
+| 4 | `m1-test-utils` | Test utility helpers | +14 | ✅ Merged |
+| 5 | `m1-ci-cd` | GitHub Actions + badges | +0 (infra) | 🏗️ Next |
+| 6 | `m1-package-meta` | build.zig.zon + CLAs | +0 | |
+| 7 | `m2-npm-package` | npm + browser demo | +5 | |
+| 8 | `m2-server-packages` | PyPI + cargo | +5 | |
+| 9 | `m3-benchmarks` | Benchmark harness | +0 (bench) | |
+| 10 | `m3-fuzz-docs-security` | Fuzz + docs + security audit | +20 | |

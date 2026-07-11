@@ -1,0 +1,30 @@
+# Project Scope — Fingerprint Engine (Post-11-Phase Refresh)
+
+name: Fingerprint Engine
+version: 0.2.0
+engine_phases: 1-11 (complete)
+current_milestone: "Integration & Quality"
+
+targets:
+  - browser: "WebAssembly SDK for in-browser signal collection"
+  - server: "Native static/dynamic library for backend fingerprint processing"
+
+milestones:
+  - name: "M1 — Fill the gaps"
+    description: "Implement all empty scaffolded directories and missing infrastructure"
+    priority: immediate
+  - name: "M2 — Integration SDKs"
+    description: "Package and distribute for real consumers (npm, PyPI, Cargo)"
+    priority: short-term
+  - name: "M3 — Production readiness"
+    description: "Hardening, benchmarks, security, cross-platform verification"
+    priority: medium-term
+  - name: "M4 — Signal collection & matching"
+    description: "Actual browser signal gatherers and server-side matching engine"
+    priority: long-term
+
+principles:
+  - Non-breaking evolution — 0.1.x API must not break
+  - Fill before expand — complete the empty scaffolds before new features
+  - CI must pass on every commit
+  - Public API gets documented before merged
