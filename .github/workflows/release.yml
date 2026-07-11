@@ -92,11 +92,17 @@ jobs:
         run: |
           TAG=${GITHUB_REF_NAME#v}
           mkdir -p staging
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp zig-out/lib/fingerprint.lib staging/fingerprint-${{ matrix.suffix }}.lib
-          else
-            cp zig-out/lib/libfingerprint.a staging/libfingerprint-${{ matrix.suffix }}.a
+          # Find the library file regardless of platform naming convention
+          LIB=$(find zig-out/lib -maxdepth 1 \(
+            -name "libfingerprint.*" -o -name "fingerprint.*"
+          \) 2>/dev/null | head -1)
+          if [ -z "$LIB" ]; then
+            echo "❌ Native library not found in zig-out/lib/"
+            ls -la zig-out/lib/ 2>/dev/null || echo "  (zig-out/lib/ not found)"
+            exit 1
           fi
+          cp "$LIB" "staging/fingerprint-${{ matrix.suffix }}.$(echo "$LIB" | sed 's/.*\.//')"
+          echo "✅ Copied $LIB to staging/"
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v4

@@ -91,25 +91,23 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Build native static library
-        run: |
-          zig version
-          zig build native
-          echo "=== zig-out check ==="
-          ls -la zig-out/ 2>/dev/null || echo "no zig-out dir"
-          ls -la zig-out/lib/ 2>/dev/null || echo "no zig-out/lib dir"
-          find . -name "*.a" -o -name "*.lib" 2>/dev/null | head -5
+        run: zig build native
 
       - name: Verify native library output exists
         shell: bash
         run: |
-          # Library naming convention:
-          #   Linux/macOS: libfingerprint.a
-          #   Windows:     fingerprint.lib
-          FOUND=$(ls zig-out/lib/libfingerprint.* zig-out/lib/fingerprint.* 2>/dev/null | head -1)
+          # Library naming convention (platform-dependent):
+          #   Linux/macOS: zig-out/lib/libfingerprint.a
+          #   Windows:     zig-out/lib/fingerprint.lib
+          FOUND=$(find zig-out/lib -maxdepth 1 \
+            \( -name "libfingerprint.*" -o -name "fingerprint.*" \) \
+            2>/dev/null | head -1)
           if [ -n "$FOUND" ]; then
             echo "✅ Native library found: $FOUND"
           else
             echo "❌ Native library not found"
+            ls -la zig-out/lib/ 2>/dev/null || echo "  (zig-out/lib/ not found)"
+            ls -la zig-out/ 2>/dev/null || echo "  (zig-out/ not found)"
             exit 1
           fi
 
