@@ -432,7 +432,10 @@
         try {
           data.cssGridSupport = CSS.supports("display", "grid");
           data.cssFlexboxSupport = CSS.supports("display", "flex");
-          data.cssContainerQuery = CSS.supports("container-type", "inline-size");
+          data.cssContainerQuery = CSS.supports(
+            "container-type",
+            "inline-size",
+          );
           data.cssCustomProps = CSS.supports("color", "--test:red");
           data.cssHasSelector = CSS.supports("selector(:has(*))");
         } catch (e) {}
@@ -440,7 +443,8 @@
         // WebGL extensions
         try {
           const c = document.createElement("canvas");
-          const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+          const gl =
+            c.getContext("webgl") || c.getContext("experimental-webgl");
           if (gl) {
             data.webglExtensions = gl.getSupportedExtensions() || [];
           }
@@ -559,7 +563,8 @@
         // Battery
         if (raw.batteryLevel !== undefined) addFloat(71, raw.batteryLevel);
         if (raw.batteryCharging !== undefined) addBool(72, raw.batteryCharging);
-        if (raw.batteryChargingTime !== undefined) addInt(73, raw.batteryChargingTime);
+        if (raw.batteryChargingTime !== undefined)
+          addInt(73, raw.batteryChargingTime);
 
         // HDR
         if (raw.hdrSupport !== undefined) addBool(76, raw.hdrSupport);

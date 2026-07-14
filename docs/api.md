@@ -10,7 +10,7 @@ The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It
 - **Similarity scoring**: Feature-level and fingerprint-level comparison
 - **Entropy analysis**: Shannon entropy measurement
 - **Risk assessment**: Browser fingerprint risk scoring
-- **Cross-platform SDKs**: WASM (browser), C ABI (server), TypeScript, Python, Rust
+- **Cross-platform**: WASM (browser), C ABI (server), Go (cgo), TypeScript
 
 ## Architecture
 
@@ -23,16 +23,29 @@ The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It
 │  102 sigs   │  Fingerprint│ JSON        │  Entropy  │
 │             │  Hasher     │             │  Risk     │
 ├─────────────┴─────────────┴─────────────┴───────────┤
-│                  Platform SDKs                      │
-├─────────────┬─────────────┬─────────────┬───────────┤
-│  WASM       │  C ABI      │ TypeScript  │  Python   │
-│  (browser)  │  (server)   │ (browser)   │  (server) │
-└─────────────┴─────────────┴─────────────┴───────────┘
+│                       SDKs                          │
+├─────────────────────┬───────────────────────────────┤
+│  WASM + TypeScript  │  C ABI / C Header             │
+│  (browser SDK)      │  (server — Go, C, Zig, etc.)  │
+└─────────────────────┴───────────────────────────────┘
 ```
 
 ## Quick Start
 
-### TypeScript (Browser)
+### Browser (WASM + TypeScript)
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk"></script>
+<script>
+  const fp = await Fingerprint.collect();
+  console.log('Fingerprint:', fp.hex);       // 32-byte hex digest
+  console.log('Signals:', fp.features.length); // ~102 signals
+  console.log('Risk:', fp.risk);              // 0.0 – 1.0
+  console.log('Entropy:', fp.entropy);        // bits/signal
+</script>
+```
+
+Or with ES modules:
 
 ```typescript
 import { FingerprintEngine, FeatureID } from '@fingerprint/sdk';
@@ -40,38 +53,34 @@ import { FingerprintEngine, FeatureID } from '@fingerprint/sdk';
 const engine = new FingerprintEngine();
 engine.addBoolean(FeatureID.CookieEnabled, navigator.cookieEnabled);
 engine.addString(FeatureID.UserAgent, navigator.userAgent);
-engine.addInteger(FeatureID.HardwareConcurrency, navigator.hardwareConcurrency);
 
 const result = engine.compute();
 console.log('Fingerprint:', result.hex);
+console.log('Risk:', result.risk);
 ```
 
-### Python (Server)
+### Server (C ABI — Go, C, Zig, etc.)
 
-```python
-from fingerprint_sdk import FingerprintEngine, FeatureID
+```c
+#include "fingerprint.h"
 
-engine = FingerprintEngine()
-engine.add_boolean(FeatureID.CookieEnabled, True)
-engine.add_string(FeatureID.UserAgent, "Mozilla/5.0...")
-engine.add_integer(FeatureID.HardwareConcurrency, 8)
+FingerprintEngine* engine = fingerprint_engine_create();
+fingerprint_engine_add_feature(engine,
+    FINGERPRINT_FEATURE_USER_AGENT,
+    FINGERPRINT_TYPE_STRING,
+    "Mozilla/5.0...", 14);
 
-result = engine.compute()
-print(f"Fingerprint: {result.hex}")
+uint8_t digest[32];
+fingerprint_engine_compute(engine, digest);
+
+int risk = fingerprint_engine_risk(engine);
+int entropy = fingerprint_engine_entropy(engine);
+
+fingerprint_engine_destroy(engine);
 ```
 
-### Rust (Server)
-
-```rust
-use fingerprint_sdk::{FingerprintEngine, FeatureID};
-
-let mut engine = FingerprintEngine::new().unwrap();
-engine.add_boolean(FeatureID::CookieEnabled, true).unwrap();
-engine.add_string(FeatureID::UserAgent, "Mozilla/5.0...").unwrap();
-
-let result = engine.compute().unwrap();
-println!("Fingerprint: {}", result.hex());
-```
+> Any language with C FFI can call the engine.  
+> For Go: `// #include "fingerprint.h"` + `import "C"`.
 
 ## Core Modules
 
