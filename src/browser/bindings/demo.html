@@ -423,9 +423,28 @@
         // Workers & features
         data.serviceWorkerSupport = "serviceWorker" in navigator;
         data.webWorkerSupport = "Worker" in window;
+        data.webSocketSupport = "WebSocket" in window;
         data.webRTCSupport = "RTCPeerConnection" in window;
         data.pointerEvents = "PointerEvent" in window;
         data.gamepadSupport = "getGamepads" in navigator;
+
+        // CSS features
+        try {
+          data.cssGridSupport = CSS.supports("display", "grid");
+          data.cssFlexboxSupport = CSS.supports("display", "flex");
+          data.cssContainerQuery = CSS.supports("container-type", "inline-size");
+          data.cssCustomProps = CSS.supports("color", "--test:red");
+          data.cssHasSelector = CSS.supports("selector(:has(*))");
+        } catch (e) {}
+
+        // WebGL extensions
+        try {
+          const c = document.createElement("canvas");
+          const gl = c.getContext("webgl") || c.getContext("experimental-webgl");
+          if (gl) {
+            data.webglExtensions = gl.getSupportedExtensions() || [];
+          }
+        } catch (e) {}
 
         return data;
       }
@@ -496,6 +515,7 @@
         addInt(26, raw.outerWidth);
         addInt(27, raw.outerHeight);
         if (raw.screenOrientation) addStr(28, raw.screenOrientation);
+        if (raw.cpuClass) addStr(29, raw.cpuClass);
 
         // Canvas
         addBytes(35, raw.canvasData);
@@ -504,12 +524,24 @@
         addStr(36, raw.webglVendor);
         addStr(37, raw.webglRenderer);
         addStr(38, raw.webglVersion);
+        if (raw.webglExtensions) addStrArr(40, raw.webglExtensions);
+
+        // Fonts
+        if (raw.fonts) addStrArr(44, raw.fonts);
 
         // Storage
         addBool(47, raw.localStorage);
         addBool(48, raw.sessionStorage);
         addBool(49, raw.indexedDB);
         addBool(50, raw.cacheStorage);
+        addBool(51, raw.cookieEnabled);
+
+        // Permissions
+        if (raw.notificationPermission) addStr(52, raw.notificationPermission);
+        if (raw.geolocationPermission) addStr(53, raw.geolocationPermission);
+
+        // Codecs
+        if (raw.codecs) addStrArr(59, raw.codecs);
 
         // Network
         addStr(62, raw.connectionType);
@@ -524,24 +556,36 @@
         addInt(69, raw.timezoneOffset);
         addStr(70, raw.dateTimeFormat);
 
+        // Battery
+        if (raw.batteryLevel !== undefined) addFloat(71, raw.batteryLevel);
+        if (raw.batteryCharging !== undefined) addBool(72, raw.batteryCharging);
+        if (raw.batteryChargingTime !== undefined) addInt(73, raw.batteryChargingTime);
+
+        // HDR
+        if (raw.hdrSupport !== undefined) addBool(76, raw.hdrSupport);
+
         // Crypto
         addBool(77, raw.cryptoSupport);
         addBool(78, raw.subtleCrypto);
 
+        // Speech
+        if (raw.voices) addStrArr(79, raw.voices);
+
         // CSS
-        addBool(86, raw.cssGridSupport);
+        addBool(87, raw.cssGridSupport);
         addBool(88, raw.cssFlexboxSupport);
 
         // Browser features
         addBool(91, raw.serviceWorkerSupport);
         addBool(92, raw.webWorkerSupport);
+        addBool(94, raw.webSocketSupport);
         addBool(95, raw.webRTCSupport);
         addBool(97, raw.pointerEvents);
         addBool(98, raw.gamepadSupport);
 
         // Metadata
         addInt(99, 1);
-        addStr(100, "0.1.0");
+        addStr(100, "0.1.2");
         addInt(101, Date.now());
 
         return features;
@@ -660,41 +704,80 @@
               addBytes(id, buf);
             }
 
-            // Feed all features
+            // Feed all features with correct FeatureIDs
             if (raw.userAgent) addStr(0, raw.userAgent);
             if (raw.language) addStr(1, raw.language);
             if (raw.languages) addStrArr(2, raw.languages);
             if (raw.platform) addStr(3, raw.platform);
             if (raw.vendor) addStr(4, raw.vendor);
-            if (raw.cookieEnabled) addBool(9, raw.cookieEnabled);
+            if (raw.product) addStr(5, raw.product);
+            if (raw.productSub !== undefined) addStr(6, raw.productSub);
+            if (raw.appName) addStr(7, raw.appName);
+            if (raw.appVersion) addStr(8, raw.appVersion);
+            addBool(9, !!raw.cookieEnabled);
+            if (raw.doNotTrack) addStr(10, raw.doNotTrack);
             if (raw.hardwareConcurrency) addInt(11, raw.hardwareConcurrency);
             if (raw.maxTouchPoints) addInt(12, raw.maxTouchPoints);
+            if (raw.deviceMemory) addFloat(13, raw.deviceMemory);
             if (raw.screenWidth) addInt(17, raw.screenWidth);
             if (raw.screenHeight) addInt(18, raw.screenHeight);
             if (raw.availableWidth) addInt(19, raw.availableWidth);
             if (raw.availableHeight) addInt(20, raw.availableHeight);
             if (raw.colorDepth) addInt(21, raw.colorDepth);
+            if (raw.pixelDepth) addInt(22, raw.pixelDepth);
             if (raw.devicePixelRatio) addFloat(23, raw.devicePixelRatio);
             if (raw.innerWidth) addInt(24, raw.innerWidth);
             if (raw.innerHeight) addInt(25, raw.innerHeight);
+            if (raw.outerWidth) addInt(26, raw.outerWidth);
+            if (raw.outerHeight) addInt(27, raw.outerHeight);
+            if (raw.screenOrientation) addStr(28, raw.screenOrientation);
+            if (raw.cpuClass) addStr(29, raw.cpuClass);
             if (raw.canvasData) addBytes(35, raw.canvasData);
             if (raw.webglVendor) addStr(36, raw.webglVendor);
             if (raw.webglRenderer) addStr(37, raw.webglRenderer);
             if (raw.webglVersion) addStr(38, raw.webglVersion);
+            if (raw.webglExtensions) addStrArr(40, raw.webglExtensions);
             addBool(47, !!raw.localStorage);
             addBool(48, !!raw.sessionStorage);
             addBool(49, !!raw.indexedDB);
+            addBool(50, !!raw.cacheStorage);
+            addBool(51, !!raw.cookieEnabled);
+            if (raw.connectionType) addStr(62, raw.connectionType);
+            if (raw.connectionDownlink) addFloat(63, raw.connectionDownlink);
+            if (raw.connectionEffectiveType)
+              addStr(64, raw.connectionEffectiveType);
+            if (raw.connectionRtt) addInt(65, raw.connectionRtt);
+            addBool(66, !!raw.connectionSaveData);
             if (raw.locale) addStr(67, raw.locale);
             if (raw.timezone) addStr(68, raw.timezone);
             if (raw.timezoneOffset !== undefined)
               addInt(69, raw.timezoneOffset);
+            if (raw.dateTimeFormat) addStr(70, raw.dateTimeFormat);
+            if (raw.batteryLevel !== undefined) addFloat(71, raw.batteryLevel);
+            if (raw.batteryCharging !== undefined)
+              addBool(72, raw.batteryCharging);
+            if (raw.batteryChargingTime !== undefined)
+              addInt(73, raw.batteryChargingTime);
+            if (raw.codecs) addStrArr(59, raw.codecs);
+            if (raw.hdrSupport !== undefined) addBool(76, raw.hdrSupport);
             addBool(77, !!raw.cryptoSupport);
             addBool(78, !!raw.subtleCrypto);
+            if (raw.fonts) addStrArr(44, raw.fonts);
+            if (raw.voices) addStrArr(79, raw.voices);
+            if (raw.notificationPermission)
+              addStr(52, raw.notificationPermission);
+            if (raw.geolocationPermission)
+              addStr(53, raw.geolocationPermission);
+            addBool(87, !!raw.cssGridSupport);
+            addBool(88, !!raw.cssFlexboxSupport);
             addBool(91, !!raw.serviceWorkerSupport);
             addBool(92, !!raw.webWorkerSupport);
+            addBool(94, !!raw.webSocketSupport);
             addBool(95, !!raw.webRTCSupport);
+            addBool(97, !!raw.pointerEvents);
+            addBool(98, !!raw.gamepadSupport);
             addInt(99, 1);
-            addStr(100, "0.1.0");
+            addStr(100, "0.1.2");
             addInt(101, Date.now());
 
             // Compute
