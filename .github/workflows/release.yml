@@ -165,36 +165,30 @@ jobs:
           draft: false
           prerelease: false
 
-  publish-npm:
-    name: Publish to npm
+  deploy-docs:
+    name: Deploy Docs to GitHub Pages
     needs: [test]
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pages: write
       id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          version: ${{ env.ZIG_VERSION }}
+          path: docs/
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Build npm package
-        run: |
-          cd packages/browser
-          npm run build
-
-      - name: Publish to npm
-        run: |
-          cd packages/browser
-          npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

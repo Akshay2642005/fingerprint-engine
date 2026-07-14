@@ -82,7 +82,8 @@ zig build native
 ├── benchmark/             # Performance benchmarks (12 targets)
 ├── packages/              # Distribution packages
 │   └── browser/           # npm build pipeline
-├── docs/                  # API docs, architecture docs
+├── docs/                  # API docs, architecture docs (GitHub Pages)
+│   └── index.md            # Landing page — https://akshay2642005.github.io/fingerprint-engine/
 └── build.zig              # Zig build system
 ```
 
@@ -94,10 +95,10 @@ zig build native
 │                                                                   │
 │   ┌──────────────┐  ┌──────────┐  ┌───────────┐  ┌─────────────┐  │
 │   │ Collectors   │  │ WASM     │  │ Native    │  │ Packages    │  │
-│   │ (JS/TS)      │  │ (Zig)    │  │ C ABI     │  │ npm/         │  │
-│   │ 11 collectors│─▶│ hash     │  │ matching  │  │ crates.io   │  │
-│   │ 102 signals  │  │ normalize│  │ lookup    │  └─────────────┘  │
-│   └──────────────┘  │ risk     │  │ entropy   │                   │
+│   │ (JS/TS)      │  │ (Zig)    │  │ C ABI     │  │ npm/          │  │
+│   │ 11 collectors│─▶│ hash     │  │ matching  │  │               │  │
+│   │ 102 signals  │  │ normalize│  │ lookup    │  └───────────────┘  │
+│   └──────────────┘  │ risk     │  │ entropy   │                    │
 │                     │ entropy  │  │ risk      │                   │
 │                     └──────────┘  └───────────┘                   │
 │                                                                   │
