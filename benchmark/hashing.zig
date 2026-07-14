@@ -64,7 +64,7 @@ pub fn benchHashFingerprint(bench_io: *timing.BenchIo) main.BenchmarkResult {
     const fp = core.fingerprint.Fingerprint{
         .metadata = .{
             .schema_version = 1,
-            .sdk_version = "0.1.0",
+            .sdk_version = "0.1.1",
             .collected_at = 0,
         },
         .features = &sample_features,
@@ -110,7 +110,7 @@ pub fn benchIncrementalHasher(bench_io: *timing.BenchIo) main.BenchmarkResult {
     // Warmup
     var i: u64 = 0;
     while (i < main.warmup_iterations) : (i += 1) {
-        var hasher = core.hashing.Hasher.init(1, "0.1.0", 0);
+        var hasher = core.hashing.Hasher.init(1, "0.1.1", 0);
         for (sample_features) |f| {
             hasher.add(f.id, f.value) catch @panic("add");
         }
@@ -124,7 +124,7 @@ pub fn benchIncrementalHasher(bench_io: *timing.BenchIo) main.BenchmarkResult {
     i = 0;
     while (i < iters) : (i += 1) {
         const iter_start = bench_io.timestamp();
-        var hasher = core.hashing.Hasher.init(1, "0.1.0", 0);
+        var hasher = core.hashing.Hasher.init(1, "0.1.1", 0);
         for (sample_features) |f| {
             hasher.add(f.id, f.value) catch @panic("add");
         }

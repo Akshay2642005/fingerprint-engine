@@ -9,9 +9,16 @@ workflow_mode: solo-git
 git:
   branch: master
   status: clean
-  latest_tag: v0.1.0
+  latest_tag: v0.1.1
 
 releases:
+  v0.1.1:
+    date: "2026-07-11"
+    status: released
+    artifacts:
+      - GitHub Release (WASM + native libs + C header)
+      - npm package (@fingerprint/sdk v0.1.1)
+
   v0.1.0:
     date: "2026-07-11"
     status: released

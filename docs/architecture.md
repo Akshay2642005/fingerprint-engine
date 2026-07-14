@@ -11,7 +11,7 @@ Platform-independent fingerprint processing with zero external dependencies.
 ```
 src/core/
 ├── features/          # Feature definitions and registry
-│   ├── definitions.zig  # 37 FeatureIDs with types and weights
+│   ├── definitions.zig  # 102 FeatureIDs with types and weights across 21 categories
 │   ├── model.zig        # FeatureType, FeatureDefinition
 │   └── registry.zig     # Compile-time feature registry
 ├── fingerprint/       # Core data model

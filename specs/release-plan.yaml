@@ -2,6 +2,18 @@
 target_version: 0.2.0
 
 releases:
+  v0.1.1:
+    status: released
+    date: "2026-07-11"
+    epics:
+      - scratch-buffer-fix
+      - docs-corrections
+      - version-bump
+    summary: |
+      Bug fix release. Fixes WASM scratch buffer corruption (string/bytes features
+      crashed with unreachable). Corrects docs (37 → 102 signals). Fixes UMD
+      template, package URLs, and version consistency.
+
   v0.1.0:
     status: released
     date: "2026-07-11"

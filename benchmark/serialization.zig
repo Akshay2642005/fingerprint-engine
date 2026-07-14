@@ -20,7 +20,7 @@ const sample_feats: [5]Feature = .{
 const sample_fp: Fingerprint = .{
     .metadata = .{
         .schema_version = 1,
-        .sdk_version = "0.1.0",
+        .sdk_version = "0.1.1",
         .collected_at = 0,
     },
     .features = &sample_feats,

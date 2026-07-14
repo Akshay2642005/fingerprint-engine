@@ -11,7 +11,7 @@ const Fingerprint = core.fingerprint.Fingerprint;
 
 const meta = core.fingerprint.FingerprintMetadata{
     .schema_version = 1,
-    .sdk_version = "0.1.0",
+    .sdk_version = "0.1.1",
     .collected_at = 0,
 };
 

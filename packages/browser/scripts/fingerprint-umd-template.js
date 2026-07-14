@@ -152,6 +152,7 @@
 		// WASM decoding & instantiation
 		let _module = null;
 		let _instance = null;
+		let _scratchPtr = 0;
 
 		async function ensureWasm() {
 			if (_instance) return _instance;
@@ -164,6 +165,7 @@
 			_instance = _module.instance;
 			const code = _instance.exports.fingerprint_init();
 			if (code !== 0) throw new Error("fingerprint_init failed: " + code);
+			_scratchPtr = _instance.exports.fingerprint_get_scratch_ptr();
 			return _instance;
 		}
 
@@ -178,8 +180,8 @@
 			var pagesNeeded = Math.ceil(needed / 65536);
 			var currentPages = mem.buffer.byteLength / 65536;
 			if (pagesNeeded > currentPages) mem.grow(pagesNeeded - currentPages);
-			new Uint8Array(mem.buffer).set(data, _scratchOffset);
-			var ptr = _scratchOffset;
+			new Uint8Array(mem.buffer).set(data, _scratchPtr + _scratchOffset);
+			var ptr = _scratchPtr + _scratchOffset;
 			_scratchOffset += data.length;
 			return ptr;
 		}

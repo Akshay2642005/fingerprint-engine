@@ -1,6 +1,6 @@
 {
   "name": "@fingerprint/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browser fingerprinting SDK — 102 signals, WASM-powered. Zero setup, just a script tag.",
   "main": "dist/fingerprint.umd.js",
   "module": "dist/fingerprint.esm.js",
@@ -35,11 +35,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/fingerprint-engine"
+    "url": "https://github.com/Akshay2642005/fingerprint-engine"
   },
-  "homepage": "https://github.com/your-org/fingerprint-engine#readme",
+  "homepage": "https://github.com/Akshay2642005/fingerprint-engine#readme",
   "bugs": {
-    "url": "https://github.com/your-org/fingerprint-engine/issues"
+    "url": "https://github.com/Akshay2642005/fingerprint-engine/issues"
   },
   "author": "Fingerprint Engine Contributors",
   "publishConfig": {

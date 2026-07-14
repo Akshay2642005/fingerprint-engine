@@ -28,6 +28,11 @@ verify_phase:
   release_green: true
 
 release_phase:
+  v0.1.1:
+    status: released
+    date: "2026-07-11"
+    notes: "Bug fix: scratch buffer corruption, docs corrections, version bump"
+
   v0.1.0:
     status: released
     date: "2026-07-11"

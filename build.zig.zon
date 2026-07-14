@@ -1,6 +1,6 @@
 .{
     .name = .fingerprint_engine,
-    .version = "0.1.0",
+    .version = "0.1.1",
     .fingerprint = 0x116fd345a161f814,
     .minimum_zig_version = "0.16.0",
     .description = "A browser fingerprinting engine — zero-dependency, deterministic SHA-256 hashing, cross-platform.",

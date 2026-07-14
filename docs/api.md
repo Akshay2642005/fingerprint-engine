@@ -4,7 +4,7 @@
 
 The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It provides:
 
-- **Feature collection**: 37 browser features (canvas, WebGL, audio, etc.)
+- **Feature collection**: 102 browser signals across 21 categories (canvas, WebGL, audio, fonts, battery, media codecs, speech, input, permissions, etc.)
 - **Deterministic hashing**: SHA-256 fingerprint digests
 - **Normalization**: Type and bounds validation
 - **Similarity scoring**: Feature-level and fingerprint-level comparison
@@ -20,7 +20,7 @@ The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It
 ├─────────────┬─────────────┬─────────────┬───────────┤
 │  Features   │    Hash     │ Serialize   │  Similar  │
 │  Registry   │  Feature    │ Binary      │  Score    │
-│  37 sigs    │  Fingerprint│ JSON        │  Entropy  │
+│  102 sigs   │  Fingerprint│ JSON        │  Entropy  │
 │             │  Hasher     │             │  Risk     │
 ├─────────────┴─────────────┴─────────────┴───────────┤
 │                  Platform SDKs                      │
@@ -77,7 +77,7 @@ println!("Fingerprint: {}", result.hex());
 
 ### Features (`core.features`)
 
-Defines the 37 browser signals and their metadata.
+Defines the 102 browser signals and their metadata across 21 categories.
 
 ```zig
 const FeatureID = core.features.FeatureID;

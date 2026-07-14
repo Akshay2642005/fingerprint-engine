@@ -2,7 +2,7 @@
 
 name: Fingerprint Engine
 description: "High-performance, enterprise-grade browser fingerprinting SDK written in Zig."
-version: 0.1.0
+version: 0.1.1
 
 targets:
   - browser: "WebAssembly SDK for in-browser signal collection"

@@ -24,7 +24,7 @@ const sample_feats: [10]Feature = .{
 const sample_fp = core.fingerprint.Fingerprint{
     .metadata = .{
         .schema_version = 1,
-        .sdk_version = "0.1.0",
+        .sdk_version = "0.1.1",
         .collected_at = 0,
     },
     .features = &sample_feats,
