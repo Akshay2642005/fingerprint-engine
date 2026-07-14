@@ -16,7 +16,7 @@ The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Core Engine                       │
+│                    Core Engine                      │
 ├─────────────┬─────────────┬─────────────┬───────────┤
 │  Features   │    Hash     │ Serialize   │  Similar  │
 │  Registry   │  Feature    │ Binary      │  Score    │
@@ -35,7 +35,7 @@ The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It
 ### Browser (WASM + TypeScript)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk"></script>
+<script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk"></script>
 <script>
   const fp = await Fingerprint.collect();
   console.log('Fingerprint:', fp.hex);       // 32-byte hex digest
@@ -48,7 +48,7 @@ The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It
 Or with ES modules:
 
 ```typescript
-import { FingerprintEngine, FeatureID } from '@fingerprint/sdk';
+import { FingerprintEngine, FeatureID } from '@akshay2642005/fingerprint-sdk';
 
 const engine = new FingerprintEngine();
 engine.addBoolean(FeatureID.CookieEnabled, navigator.cookieEnabled);

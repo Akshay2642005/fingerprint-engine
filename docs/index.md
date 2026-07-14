@@ -30,7 +30,7 @@ Powers agentic fraud detection platforms via WASM (browser) and C ABI (server).
 ### Browser (npm — 37 KB WASM)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk@0.1.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk@0.1.2"></script>
 <script>
   const fp = await Fingerprint.collect();
   console.log('Digest:',  fp.hex);         // "2e834b51c1db..."
@@ -84,16 +84,16 @@ fingerprint_engine_destroy(engine);
 ## 📐 Architecture
 
 ```
-┌──────────────┐       ┌──────────────────┐       ┌────────────────┐
-│   Browser    │  WASM  │   Core Engine    │  C    │    Backend     │
-│  ─────────── │──────▶│  ──────────────  │──────▶│  ───────────── │
-│  JS/TS       │       │  Features (102)  │  FFI  │  Go (cgo)      │
-│  Collectors  │       │  SHA-256        │       │  Matching      │
-│  Canvas      │       │  Normalization  │       │  Risk/Entropy  │
-│  WebGL       │       │  Similarity     │       │  Storage       │
-│  Audio/Fonts │       │  Serialization  │       │  API Layer     │
-│  + 17 more   │       │  [Zig 0.16.0]   │       │  [Fraud Platform]
-└──────────────┘       └──────────────────┘       └────────────────┘
+┌──────────────┐       ┌──────────────────┐       ┌──────────────────┐
+│   Browser    │  WASM │   Core Engine    │  C    │    Backend       │
+│  ─────────── │──────▶│──────────────────│──────▶│──────────────────│
+│  JS/TS       │       │  Features (102)  │  FFI  │  Go (cgo)        │
+│  Collectors  │       │  SHA-256         │       │  Matching        │
+│  Canvas      │       │  Normalization   │       │  Risk/Entropy    │
+│  WebGL       │       │  Similarity      │       │  Storage         │
+│  Audio/Fonts │       │  Serialization   │       │  API Layer       │
+│  + 17 more   │       │  [Zig 0.16.0]    │       │  [Fraud Platform]│
+└──────────────┘       └──────────────────┘       └──────────────────┘
 ```
 
 **Core engine** is a pure computation library — no database, no gRPC, no HTTP.  

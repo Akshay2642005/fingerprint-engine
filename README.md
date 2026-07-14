@@ -37,7 +37,7 @@ zig build native
 ## Quick Start (Browser)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk"></script>
+<script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk"></script>
 <script>
   const sdk = await Fingerprint.create();
   const fp = await sdk.collect();
@@ -52,9 +52,7 @@ zig build native
 
 | Package | Platform | Status |
 | --------- | ---------- | -------- |
-| [`@fingerprint/sdk`](https://www.npmjs.com/package/@fingerprint/sdk) | npm (browser WASM) | ✅ Published |
-| `fingerprint-sdk` | PyPI (Python) | 📋 Planned |
-| `fingerprint-sys` | crates.io (Rust) | 📋 Planned |
+| [`@akshay2642005/fingerprint-sdk`](https://www.npmjs.com/package/@akshay2642005/fingerprint-sdk) | npm (browser WASM) | ✅ Published |
 
 ## Project Structure
 
