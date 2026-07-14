@@ -39,7 +39,7 @@
 
 ### 2.1 npm package
 
-- [ ] `packages/browser/` — publish WASM + TS bindings as `@fingerprint/sdk`
+- [ ] `packages/browser/` — publish WASM + TS bindings as `@akshay2642005/fingerprint-sdk`
 - [ ] Example: basic browser demo HTML page
 - [ ] Example: Node.js fingerprint verification script
 

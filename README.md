@@ -1,5 +1,6 @@
 # Fingerprint Engine
 
+[![npm](https://img.shields.io/npm/v/%40akshay2642005%2Ffingerprint-sdk?color=%23cb3837&logo=npm)](https://www.npmjs.com/package/@akshay2642005/fingerprint-sdk)
 [![CI](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml)
 [![Release](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/release.yml/badge.svg)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/release.yml)
 ![Zig](https://img.shields.io/badge/Zig-0.16.0-%23F7A41D?logo=zig&logoColor=white)
@@ -37,7 +38,7 @@ zig build native
 ## Quick Start (Browser)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk"></script>
+<script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk@0.1.2"></script>
 <script>
   const sdk = await Fingerprint.create();
   const fp = await sdk.collect();
@@ -52,9 +53,8 @@ zig build native
 
 | Package | Platform | Status |
 | --------- | ---------- | -------- |
-| [`@fingerprint/sdk`](https://www.npmjs.com/package/@fingerprint/sdk) | npm (browser WASM) | ✅ Published |
-| `fingerprint-sdk` | PyPI (Python) | 📋 Planned |
-| `fingerprint-sys` | crates.io (Rust) | 📋 Planned |
+| [`@akshay2642005/fingerprint-sdk`](https://www.npmjs.com/package/@akshay2642005/fingerprint-sdk) | npm (browser WASM) | ✅ Published v0.1.2 |
+| [`libfingerprint.a` + `fingerprint.h`](src/server/api/c/fingerprint.h) | C ABI (server) | ✅ Built with release |
 
 ## Project Structure
 
@@ -77,7 +77,7 @@ zig build native
 │   │   └── collectors/    # 11 browser signal collectors (canvas, webgl, audio, etc.)
 │   └── server/            # Native C-ABI library + C header + API bindings
 │       ├── native/        # Zig native library exports
-│       └── api/           # C header, Rust SDK, Python SDK
+│       └── api/           # C header (Go FFI)
 ├── tests/                 # 290+ tests (features, serialization, hashing, etc.)
 ├── benchmark/             # Performance benchmarks (12 targets)
 ├── packages/              # Distribution packages
@@ -94,7 +94,7 @@ zig build native
 │                                                                   │
 │   ┌──────────────┐  ┌──────────┐  ┌───────────┐  ┌─────────────┐  │
 │   │ Collectors   │  │ WASM     │  │ Native    │  │ Packages    │  │
-│   │ (JS/TS)      │  │ (Zig)    │  │ C ABI     │  │ npm/PyPI/   │  │
+│   │ (JS/TS)      │  │ (Zig)    │  │ C ABI     │  │ npm/         │  │
 │   │ 11 collectors│─▶│ hash     │  │ matching  │  │ crates.io   │  │
 │   │ 102 signals  │  │ normalize│  │ lookup    │  └─────────────┘  │
 │   └──────────────┘  │ risk     │  │ entropy   │                   │

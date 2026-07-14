@@ -30,7 +30,7 @@ Powers agentic fraud detection platforms via WASM (browser) and C ABI (server).
 ### Browser (npm — 37 KB WASM)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk@0.1.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk@0.1.2"></script>
 <script>
   const fp = await Fingerprint.collect();
   console.log('Digest:',  fp.hex);         // "2e834b51c1db..."
@@ -147,7 +147,7 @@ fingerprint_engine_destroy(engine);
 
 - [API Reference](api.md) — all functions, types, and SDK documentation
 - [Architecture Overview](architecture.md) — design decisions and module layout
-- [`@fingerprint/sdk`](https://www.npmjs.com/package/@fingerprint/sdk) — npm package
+- [`@akshay2642005/fingerprint-sdk`](https://www.npmjs.com/package/@akshay2642005/fingerprint-sdk) — npm package
 - [GitHub](https://github.com/Akshay2642005/fingerprint-engine) — source code
 
 ---

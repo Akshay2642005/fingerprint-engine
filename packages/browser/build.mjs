@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @fingerprint/sdk — Build script
+ * @akshay2642005/fingerprint-sdk — Build script
  *
  * Compiles WASM, inlines it as base64, and produces:
  *   dist/fingerprint.umd.js   — UMD bundle (global: Fingerprint)
@@ -26,7 +26,7 @@ const ROOT = join(__dirname, "../..");
 const DIST = join(__dirname, "dist");
 const WASM_PATH = join(ROOT, "zig-out/bin/fingerprint.wasm");
 
-console.log("Building @fingerprint/sdk...\n");
+console.log("Building @akshay2642005/fingerprint-sdk...\n");
 
 // Step 1: Build WASM with ReleaseSmall for minimal binary size
 console.log("1. Compiling WASM (ReleaseSmall)...");
@@ -106,7 +106,7 @@ var factoryBody = template.slice(
 var esmSdkName = "fingerprintSdk";
 var esmCode =
 	"/**\n" +
-	" * @fingerprint/sdk v" +
+	" * @akshay2642005/fingerprint-sdk v" +
 	version +
 	" (ES Module)\n" +
 	" */\n" +
@@ -136,7 +136,7 @@ console.log(
 console.log("7. Writing type declarations...");
 var dtsContent = [
 	"/**",
-	" * @fingerprint/sdk v" + version + " — TypeScript declarations",
+	" * @akshay2642005/fingerprint-sdk v" + version + " — TypeScript declarations",
 	" */",
 	"",
 	"export interface CollectResult {",
@@ -307,7 +307,7 @@ console.log("  dist/demo.html           -- Demo");
 console.log("\nPublish: cd " + __dirname + " && npm publish");
 console.log("\nCDN:");
 console.log(
-	'  <script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk@' +
+	'  <script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk@' +
 		version +
 		'"></script>',
 );

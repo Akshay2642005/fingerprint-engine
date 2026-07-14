@@ -66,7 +66,7 @@ src/
 ```
 packages/
 ├── browser/
-│   └── @fingerprint/sdk   # npm package (UMD + ESM + WASM)
+│   └── @akshay2642005/fingerprint-sdk   # npm package (UMD + ESM + WASM)
 └── server/
     └── api/c/              # C header for native FFI (Go cgo, C, C++, etc.)
 ```

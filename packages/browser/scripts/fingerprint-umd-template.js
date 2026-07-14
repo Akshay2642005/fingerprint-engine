@@ -1,9 +1,9 @@
 /**
- * @fingerprint/sdk v__VERSION__
+ * @akshay2642005/fingerprint-sdk v__VERSION__
  * Browser fingerprinting SDK — 102 signals, WASM-powered
  *
  * Usage:
- *   <script src="https://cdn.jsdelivr.net/npm/@fingerprint/sdk"></script>
+ *   <script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk"></script>
  *   <script>const result = await Fingerprint.collect(); console.log(result.hex);</script>
  */
 ((global, factory) => {

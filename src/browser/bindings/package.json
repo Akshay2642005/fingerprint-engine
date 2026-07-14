@@ -1,6 +1,6 @@
 {
-  "name": "@fingerprint/sdk",
-  "version": "0.1.1",
+  "name": "@akshay2642005/fingerprint-sdk",
+  "version": "0.1.2",
   "description": "Fingerprint Engine — browser fingerprinting WASM SDK",
   "main": "index.ts",
   "types": "index.ts",
