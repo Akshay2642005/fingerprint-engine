@@ -1,6 +1,6 @@
 {
   "name": "@fingerprint/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Browser fingerprinting SDK — 102 signals, WASM-powered. Zero setup, just a script tag.",
   "main": "dist/fingerprint.umd.js",
   "module": "dist/fingerprint.esm.js",
