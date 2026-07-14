@@ -55,7 +55,7 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Build WASM module
-        run: zig build wasm
+        run: zig build wasm -Doptimize=ReleaseSmall
 
       - name: Verify WASM output exists
         run: |

@@ -28,10 +28,13 @@ const WASM_PATH = join(ROOT, "zig-out/bin/fingerprint.wasm");
 
 console.log("Building @fingerprint/sdk...\n");
 
-// Step 1: Build WASM
-console.log("1. Compiling WASM...");
+// Step 1: Build WASM with ReleaseSmall for minimal binary size
+console.log("1. Compiling WASM (ReleaseSmall)...");
 try {
-	execSync("zig build wasm", { cwd: ROOT, stdio: "inherit" });
+	execSync("zig build wasm -Doptimize=ReleaseSmall", {
+		cwd: ROOT,
+		stdio: "inherit",
+	});
 } catch (e) {
 	console.error("WASM build failed:", e.message);
 	process.exit(1);

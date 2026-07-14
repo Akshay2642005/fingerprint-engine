@@ -61,20 +61,18 @@ src/
             └── fingerprint.h  # C header file
 ```
 
-### Layer 3: Consumer SDKs
-
-Language-specific packages for end users.
+### Layer 3: SDKs
 
 ```
 packages/
 ├── browser/
-│   └── @fingerprint/sdk   # npm package
+│   └── @fingerprint/sdk   # npm package (UMD + ESM + WASM)
 └── server/
-    ├── python/
-    │   └── fingerprint-sdk  # PyPI package
-    └── rust/
-        └── fingerprint-sdk  # crates.io crate
+    └── api/c/              # C header for native FFI (Go cgo, C, C++, etc.)
 ```
+
+> The server SDK is a C header (`fingerprint.h`) + static library (`libfingerprint.a`).  
+> Any language that supports C FFI can use it — Go (cgo), C#, Java (JNI), Zig, etc.
 
 ## Data Flow
 
