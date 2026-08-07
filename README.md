@@ -2,11 +2,17 @@
 
 [![CI](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml)
 [![Release](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/release.yml/badge.svg)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/release.yml)
-![Zig](https://img.shields.io/badge/Zig-0.16.0-%23F7A41D?logo=zig&logoColor=white)
+![Zig](https://img.shields.io/badge/Zig-0.14.1-%23F7A41D?logo=zig&logoColor=white)
+[![npm](https://img.shields.io/npm/v/@akshay2642005/fingerprint-sdk)](https://www.npmjs.com/package/@akshay2642005/fingerprint-sdk)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A browser fingerprinting engine written in [Zig](https://ziglang.org) 0.16.0 —
-zero-dependency, deterministic SHA-256 hashing, cross-platform.
+A deterministic, zero-dependency browser fingerprinting engine written in
+[Zig](https://ziglang.org) 0.14.1.
+
+The engine is a **reusable deterministic computation engine**, not a service:
+it ships exactly one artifact — the browser WASM module — and knows nothing
+about transport, queues, databases, or business logic. Everything builds
+through `zig build`.
 
 ## Features
 
@@ -18,20 +24,37 @@ zero-dependency, deterministic SHA-256 hashing, cross-platform.
 - **Similarity scoring** — weighted per-feature comparison (0.0–1.0)
 - **Entropy analysis** — Shannon entropy per feature and weighted fingerprint entropy
 - **Risk assessment** — quantifies missing features, bound violations, coverage, entropy deficit
-- **WASM module** — browser-ready WebAssembly SDK
-- **Native library** — C-compatible static library for backend integration
+- **WASM module** — browser-ready WebAssembly SDK (`ReleaseSmall`), inlined into an npm package generated entirely by Zig
 
 ## Build
 
+Requires [Zig 0.14.1](https://ziglang.org/download/). Everything is a
+`zig build` step — no Node, no scripts, no separate toolchains:
+
 ```bash
-# Unit tests (290+ tests)
+# Unit + integration/e2e tests (274 tests, 9 steps)
 zig build test --summary all
+
+# Only unit tests matching a filter
+zig build test -- "hashing"
+
+# Integration and e2e smoke tests only
+zig build test-integration
 
 # WebAssembly module (zig-out/bin/fingerprint.wasm)
 zig build wasm
 
-# Native static library (zig-out/lib/)
-zig build native
+# Performance benchmarks (12 targets)
+zig build bench
+
+# Browser npm package (src/clients/browser/dist/)
+zig build clients:browser
+
+# Docs snapshot (zig-out/docs/)
+zig build docs
+
+# Automation scripts
+zig build scripts -- help
 ```
 
 ## Quick Start (Browser)
@@ -39,13 +62,23 @@ zig build native
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk"></script>
 <script>
-  const sdk = await Fingerprint.create();
-  const fp = await sdk.collect();
-  const hash = sdk.hashFingerprint(fp);
-  console.log('Fingerprint:', hash);
-  console.log('Risk:', sdk.computeRisk(fp));
-  console.log('Entropy:', sdk.computeEntropy(fp));
+  const result = await Fingerprint.collect();
+  console.log('Digest:',  result.hex);           // 64-char hex digest
+  console.log('Signals:', result.signals);       // ~102
+  console.log('Risk:',    result.risk);          // 0.0 – 1.0
+  console.log('Entropy:', result.entropy);       // bits/signal
+  console.log('Warnings:', result.warnings);     // normalization warnings
 </script>
+```
+
+Or from TypeScript:
+
+```typescript
+import { FingerprintEngine, FeatureID } from '@akshay2642005/fingerprint-sdk';
+
+const engine = await FingerprintEngine.create('/fingerprint.wasm');
+engine.addString(FeatureID.UserAgent, navigator.userAgent);
+const result = engine.compute(); // { digest, featureCount }
 ```
 
 ## SDK Packages
@@ -58,54 +91,58 @@ zig build native
 
 ```
 .
+├── build.zig                 # O(1) build system — every step declared up front
 ├── src/
-│   ├── core/              # Platform-independent fingerprint engine
-│   │   ├── features/      # FeatureID (102), FeatureType (9), Registry, FeatureDefinition
-│   │   ├── fingerprint/   # FeatureValue, Feature, Fingerprint, Metadata
-│   │   ├── serialization/ # Binary TLV + JSON encode/decode
-│   │   ├── normalization/ # Type validation, bounds checking
-│   │   ├── hashing/       # SHA-256 feature/fingerprint digest
-│   │   ├── validation/    # Required-feature checking
-│   │   ├── similarity/    # Weighted per-feature comparison
-│   │   ├── entropy/       # Shannon entropy analysis
-│   │   └── risk/          # Risk assessment engine
-│   ├── browser/           # WebAssembly SDK + JS bindings + collectors
-│   │   ├── wasm/          # Zig WASM exports (hash, normalize, risk, entropy)
-│   │   ├── bindings/      # TypeScript wrapper, types, demo page
-│   │   └── collectors/    # 11 browser signal collectors (canvas, webgl, audio, etc.)
-│   └── server/            # Native C-ABI library + C header + API bindings
-│       ├── native/        # Zig native library exports
-│       └── api/           # C header, Rust SDK, Python SDK
-├── tests/                 # 290+ tests (features, serialization, hashing, etc.)
-├── benchmark/             # Performance benchmarks (12 targets)
-├── packages/              # Distribution packages
-│   └── browser/           # npm build pipeline
-├── docs/                  # API docs, architecture docs
-└── build.zig              # Zig build system
+│   ├── model/                # FeatureID (102), FeatureType, registry, fingerprint model — depends on nothing
+│   ├── core/                 # Deterministic algorithms: hashing, normalization, validation, similarity, entropy, risk — depends on model
+│   ├── serialization/        # Binary TLV + JSON codecs — depends on model
+│   ├── browser/
+│   │   ├── wasm/             # WebAssembly target (ReleaseSmall) — depends on core + model
+│   │   └── bindings/         # TypeScript bindings, demo page
+│   ├── clients/browser/      # npm package source; dist/ generated by `zig build clients:browser`
+│   ├── bench/                # Benchmark harness (12 targets)
+│   ├── build/                # Build-time generators (browser package generator)
+│   ├── scripts/              # Automation dispatcher subcommands
+│   └── docs_website/         # Nested Zig project — `zig build docs`
+├── tests/
+│   ├── root.zig              # Self-verifying test registry (SNAP_UPDATE=1 regenerates)
+│   ├── model/ core/ serialization/ browser/ build/ scoring/
+│   ├── fuzz/                 # Fuzz harnesses (decode, normalize, hashing)
+│   ├── data/ fixtures/       # Test vectors and similarity suites
+│   └── utils/                # Test helpers
+├── specs/                    # Planning docs (decisions, design, migration)
+├── docs/                     # GitHub Pages site (index, api, architecture)
+└── .github/workflows/        # ci.yml (test + wasm-build), release.yml (tags v*)
 ```
+
+Dependencies flow inward: `model` → `core` / `serialization` → `browser`.
+Nothing depends outward; there are no circular imports.
 
 ## Architecture
 
+The engine is layered so that every module depends inward and nothing depends
+outward. The core contains only deterministic computation — no HTTP, no
+queues, no databases, no business logic.
+
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│                     Fingerprint Engine                            │
-│                                                                   │
-│   ┌──────────────┐  ┌──────────┐  ┌───────────┐  ┌─────────────┐  │
-│   │ Collectors   │  │ WASM     │  │ Native    │  │ Packages    │  │
-│   │ (JS/TS)      │  │ (Zig)    │  │ C ABI     │  │ npm/PyPI/   │  │
-│   │ 11 collectors│─▶│ hash     │  │ matching  │  │ crates.io   │  │
-│   │ 102 signals  │  │ normalize│  │ lookup    │  └─────────────┘  │
-│   └──────────────┘  │ risk     │  │ entropy   │                   │
-│                     │ entropy  │  │ risk      │                   │
-│                     └──────────┘  └───────────┘                   │
-│                                                                   │
-│   ┌──────────────────────────────────────────────────────────┐    │
-│   │                  Core Engine (Zig)                       │    │
-│   │  features · fingerprint · hashing · normalization        │    │
-│   │  serialization · similarity · entropy · risk             │    │
-│   └──────────────────────────────────────────────────────────┘    │
-└───────────────────────────────────────────────────────────────────┘
+Browser
+  │  JS/TS collectors (102 signals)
+  ▼
+WASM module
+  │  validate → normalize → package
+  ▼
+SignalPackage          ← the browser never produces the canonical digest
+  ▼
+Ingress → queue → workers   ← deterministic engine; canonical fingerprint
+  ▼
+Fraud platform
 ```
+
+Today the WASM module still computes the canonical digest for compatibility;
+the target flow (per `specs/rework/`) moves canonical fingerprint
+computation to workers that run the engine as a pure, replayable,
+deterministic computation. Workers ship as Docker containers — there is no
+native SDK and no C ABI.
 
 ## License
 

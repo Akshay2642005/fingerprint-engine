@@ -2,8 +2,9 @@
 
 **High-performance browser fingerprinting SDK** — 102 signals · SHA-256 · similarity scoring · risk & entropy analysis
 
-Written in [Zig 0.16.0](https://ziglang.org) with zero external dependencies.  
-Powers agentic fraud detection platforms via WASM (browser) and C ABI (server).
+Written in [Zig 0.14.1](https://ziglang.org) with zero external dependencies.
+A deterministic computation engine — the browser WASM module is the only
+shipped artifact; fingerprint workers run as Docker containers.
 
 ---
 
@@ -13,70 +14,41 @@ Powers agentic fraud detection platforms via WASM (browser) and C ABI (server).
 | ----------- | --------- |
 | **Signals** | **102** browser features across 21 categories |
 | **Hashing** | Deterministic SHA-256 — same input, same digest |
-| **Binary** | Compact TLV format (4+2n bytes per feature) |
+| **Binary** | Compact TLV format (`"FNGR"` magic) |
 | **JSON** | Pretty-printed with registry name keys |
 | **Normalization** | Type validation + bounds checking + warnings |
 | **Similarity** | Feature-level (0–1) and fingerprint-level weighted scoring |
 | **Entropy** | Shannon entropy — per-signal and aggregate bits |
 | **Risk** | Multi-factor risk assessment (low/medium/high/critical) |
-| **WASM** | **37 KB** with `ReleaseSmall` — zero-setup browser SDK |
-| **C ABI** | Static library + header — link from Go (cgo), C, C++, Zig, etc. |
-| **Tests** | **290 passing** · 8 fuzz targets · 12 benchmarks |
+| **WASM** | `ReleaseSmall` — zero-setup browser SDK, built entirely by Zig |
+| **Tests** | **274 passing** · 3 fuzz targets · 12 benchmarks |
 
 ---
 
 ## 🚀 Quick Start
 
-### Browser (npm — 37 KB WASM)
+### Browser (npm — WASM)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk@0.1.2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk"></script>
 <script>
-  const fp = await Fingerprint.collect();
-  console.log('Digest:',  fp.hex);         // "2e834b51c1db..."
-  console.log('Signals:', fp.features.length); // ~102
-  console.log('Risk:',    fp.risk);         // 0.0 – 1.0
-  console.log('Entropy:', fp.entropy);      // bits/signal
+  const result = await Fingerprint.collect();
+  console.log('Digest:',  result.hex);      // "2e834b51c1db..."
+  console.log('Signals:', result.signals);  // ~102
+  console.log('Risk:',    result.risk);     // 0.0 – 1.0
+  console.log('Entropy:', result.entropy);  // bits/signal
 </script>
 ```
 
-### Server (Go via C ABI)
+Or from TypeScript:
 
-```go
-// #cgo LDFLAGS: -L. -lfingerprint
-// #include "fingerprint.h"
-import "C"
+```typescript
+import { FingerprintEngine, FeatureID } from '@akshay2642005/fingerprint-sdk';
 
-engine := C.fingerprint_engine_create()
-defer C.fingerprint_engine_destroy(engine)
-
-C.fingerprint_engine_add_feature(engine,
-    C.FINGERPRINT_FEATURE_USER_AGENT,
-    C.FINGERPRINT_TYPE_STRING,
-    C.CString("Mozilla/5.0..."), 14)
-
-var digest [32]C.uint8_t
-C.fingerprint_engine_compute(engine, &digest[0])
-
-risk := int(C.fingerprint_engine_risk(engine))
-entropy := int(C.fingerprint_engine_entropy(engine))
-```
-
-### C / C++ / Zig (any FFI language)
-
-```c
-// Same C ABI — works with any language that supports C FFI
-#include "fingerprint.h"
-
-FingerprintEngine* engine = fingerprint_engine_create();
-fingerprint_engine_add_feature(engine,
-    FINGERPRINT_FEATURE_USER_AGENT,
-    FINGERPRINT_TYPE_STRING,
-    "Mozilla/5.0...", 14);
-
-uint8_t digest[32];
-fingerprint_engine_compute(engine, digest);
-fingerprint_engine_destroy(engine);
+const engine = await FingerprintEngine.create('/fingerprint.wasm');
+engine.addString(FeatureID.UserAgent, navigator.userAgent);
+const result = engine.compute();
+console.log('Fingerprint:', result.digest);
 ```
 
 ---
@@ -84,20 +56,37 @@ fingerprint_engine_destroy(engine);
 ## 📐 Architecture
 
 ```
-┌──────────────┐       ┌──────────────────┐       ┌──────────────────┐
-│   Browser    │  WASM │   Core Engine    │  C    │    Backend       │
-│  ─────────── │──────▶│──────────────────│──────▶│──────────────────│
-│  JS/TS       │       │  Features (102)  │  FFI  │  Go (cgo)        │
-│  Collectors  │       │  SHA-256         │       │  Matching        │
-│  Canvas      │       │  Normalization   │       │  Risk/Entropy    │
-│  WebGL       │       │  Similarity      │       │  Storage         │
-│  Audio/Fonts │       │  Serialization   │       │  API Layer       │
-│  + 17 more   │       │  [Zig 0.16.0]    │       │  [Fraud Platform]│
-└──────────────┘       └──────────────────┘       └──────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     Fingerprint Engine (Zig)                     │
+│                                                                  │
+│   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│   │    model     │  │     core     │  │    serialization     │  │
+│   │  FeatureID   │─▶│  hashing     │  │  binary TLV + JSON   │  │
+│   │  registry    │  │  normalize   │  │  (codecs, no I/O)    │  │
+│   │  fingerprint │  │  validate    │  └──────────────────────┘  │
+│   └──────────────┘  │  similarity  │                            │
+│                     │  entropy     │                            │
+│                     │  risk        │                            │
+│                     └──────┬───────┘                            │
+│                            │                                    │
+│                  ┌─────────▼─────────┐                          │
+│                  │   browser (WASM)  │                          │
+│                  │   validate ·      │                          │
+│                  │   package         │                          │
+│                  └───────────────────┘                          │
+└──────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+SignalPackage (browser never produces the canonical digest)
+        │
+        ▼
+Ingress → queue → workers → canonical fingerprint → fraud platform
 ```
 
-**Core engine** is a pure computation library — no database, no gRPC, no HTTP.  
-**Backend** (your Go application) handles storage, routing, and business logic via C FFI.
+**Everything depends inward.** `model` depends on nothing; `core` and
+`serialization` depend on `model`; `browser` depends on `core`. The core is a
+pure computation library — no HTTP, no queues, no databases, no business
+logic. Workers run the same deterministic engine as containers.
 
 ---
 
@@ -106,11 +95,10 @@ fingerprint_engine_destroy(engine);
 | Metric | Value |
 | -------- | ------- |
 | Browser signals | **102** across 21 categories |
-| Tests | **290** (all passing) |
-| WASM binary | **37 KB** (`ReleaseSmall`) |
-| Fuzz targets | **8** |
+| Tests | **274** (all passing) |
+| Fuzz targets | **3** |
 | Benchmarks | **12** |
-| Zig version | **0.16.0** |
+| Zig version | **0.14.1** |
 | License | MIT |
 
 ---
@@ -145,9 +133,9 @@ fingerprint_engine_destroy(engine);
 
 ## 📖 Documentation
 
-- [API Reference](api.md) — all functions, types, and SDK documentation
-- [Architecture Overview](architecture.md) — design decisions and module layout
-- [`@fingerprint/sdk`](https://www.npmjs.com/package/@fingerprint/sdk) — npm package
+- [API Reference](api.md) — Zig engine modules, WASM exports, TypeScript SDK
+- [Architecture Overview](architecture.md) — layers, dependency rule, event flows
+- [`@akshay2642005/fingerprint-sdk`](https://www.npmjs.com/package/@akshay2642005/fingerprint-sdk) — npm package
 - [GitHub](https://github.com/Akshay2642005/fingerprint-engine) — source code
 
 ---

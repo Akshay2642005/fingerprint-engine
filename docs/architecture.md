@@ -1,137 +1,111 @@
 # Architecture Overview
 
-## System Design
+## Design Principle
 
-The Fingerprint Engine is designed as a layered architecture with clear separation between core logic, platform integration, and consumer SDKs.
+The Fingerprint Engine is a **deterministic computation engine**. It is not
+a service: it knows nothing about transport, queues, databases,
+authentication, or business logic. Every module depends **inward**:
 
-### Layer 1: Core Engine (`src/core/`)
+```
+model ──▶ core ──▶ browser (WASM)
+   └────▶ serialization
+```
 
-Platform-independent fingerprint processing with zero external dependencies.
+`model` depends on nothing. `core` and `serialization` depend on `model`
+only. `browser` (the WASM target) depends on `core` and `model`. There are
+no circular imports, no global mutable state, and no hidden allocations in
+the core algorithms.
+
+## Layer 1: Model (`src/model/`)
+
+The runtime data model — feature definitions, the compile-time registry, and
+the fingerprint value types. Depends on nothing.
+
+```
+src/model/
+├── feature.zig        # FeatureType, FeatureDefinition
+├── definitions.zig    # 102 FeatureIDs with types and weights across 21 categories
+├── registry.zig       # Compile-time feature registry
+├── value.zig          # FeatureValue tagged union
+├── feature_binding.zig # Feature (id + value)
+├── metadata.zig       # FingerprintMetadata
+├── fingerprint.zig    # Fingerprint
+└── root.zig           # Public facade
+```
+
+## Layer 2: Core (`src/core/`)
+
+Deterministic algorithms only — same input, same output, any platform.
 
 ```
 src/core/
-├── features/          # Feature definitions and registry
-│   ├── definitions.zig  # 102 FeatureIDs with types and weights across 21 categories
-│   ├── model.zig        # FeatureType, FeatureDefinition
-│   └── registry.zig     # Compile-time feature registry
-├── fingerprint/       # Core data model
-│   ├── feature.zig      # Feature struct
-│   ├── value.zig        # FeatureValue tagged union
-│   └── metadata.zig     # FingerprintMetadata
-├── hashing/           # Deterministic SHA-256 hashing
-│   ├── feature.zig      # Single feature hashing
-│   ├── fingerprint.zig  # Full fingerprint hashing
-│   └── hasher.zig       # Incremental hasher
-├── serialization/     # Binary and JSON encoding
-│   ├── binary.zig       # TLV binary format
-│   └── json.zig         # Human-readable JSON
-├── normalization/     # Input validation
-│   ├── types.zig        # Type checking
-│   ├── bounds.zig       # Range validation
-│   └── normalize.zig    # Combined validation
-├── validation/        # Required feature checking
-│   └── required.zig     # Static bitset presence check
-├── similarity/        # Fingerprint comparison
-│   ├── feature.zig      # Feature-level scoring
-│   └── fingerprint.zig  # Weighted fingerprint scoring
-├── entropy/           # Information theory metrics
-│   └── entropy.zig      # Shannon entropy calculation
-└── risk/              # Risk assessment
-    └── risk.zig         # Risk scoring and flagging
+├── hashing/           # SHA-256: feature, fingerprint, incremental hasher
+├── normalization/     # Type + bounds validation
+├── validation/        # Required-feature checking
+├── similarity/        # Feature-level and weighted fingerprint scoring
+├── entropy/           # Shannon entropy
+├── risk/              # Risk scoring and flagging
+└── root.zig           # Public facade
 ```
 
-### Layer 2: Platform SDKs
+## Layer 2: Serialization (`src/serialization/`)
 
-Platform-specific wrappers that import the core engine.
-
-```
-src/
-├── browser/
-│   ├── wasm/
-│   │   └── root.zig      # WASM exports for browsers
-│   └── bindings/
-│       ├── types.ts       # TypeScript type definitions
-│       ├── engine.ts      # FingerprintEngine class
-│       └── index.ts       # Barrel exports
-└── server/
-    ├── native/
-    │   └── root.zig       # C ABI for native linking
-    └── api/
-        └── c/
-            └── fingerprint.h  # C header file
-```
-
-### Layer 3: SDKs
+Binary and JSON codecs for the model.
 
 ```
-packages/
-├── browser/
-│   └── @fingerprint/sdk   # npm package (UMD + ESM + WASM)
-└── server/
-    └── api/c/              # C header for native FFI (Go cgo, C, C++, etc.)
+src/serialization/
+├── binary.zig         # Compact TLV ("FNGR" magic)
+├── json.zig           # Human-readable JSON
+└── root.zig
 ```
 
-> The server SDK is a C header (`fingerprint.h`) + static library (`libfingerprint.a`).  
-> Any language that supports C FFI can use it — Go (cgo), C#, Java (JNI), Zig, etc.
+## Layer 3: Browser (`src/browser/`)
 
-## Data Flow
-
-### Browser Collection Flow
+The WebAssembly target. Collectors (TypeScript) gather raw device signals,
+and the WASM module validates, normalizes, and packages them.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Browser                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │ navigator   │  │ screen      │  │ canvas      │     │
-│  │ userAgent   │  │ width       │  │ hash        │     │
-│  │ language    │  │ height      │  │             │     │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
-│         │                │                │             │
-│         └────────────────┼────────────────┘             │
-│                          │                              │
-│                  ┌───────▼───────┐                      │
-│                  │ WASM Engine   │                      │
-│                  │ add_feature() │                      │
-│                  │ compute()     │                      │
-│                  └───────┬───────┘                      │
-│                          │                              │
-│                  ┌───────▼───────┐                      │
-│                  │ 32-byte hash  │                      │
-│                  └───────────────┘                      │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-                  ┌───────────────┐
-                  │   Server      │
-                  │  (match/track)│
-                  └───────────────┘
+src/browser/
+├── wasm/              # Zig WASM exports (ReleaseSmall)
+└── bindings/          # TypeScript bindings, demo page
 ```
 
-### Server Processing Flow
+The npm package (`src/clients/browser/`) is generated by Zig:
+`zig build clients:browser` inlines the WASM binary and derives
+`FeatureID`/`FeatureType` from the Zig model.
+
+## Event Flow
+
+### Current
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Server                                │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
-│  │ Receive     │  │ Decode      │  │ Normalize   │     │
-│  │ fingerprint │  │ binary/JSON │  │ validate    │     │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
-│         │                │                │             │
-│         └────────────────┼────────────────┘             │
-│                          │                              │
-│                  ┌───────▼───────┐                      │
-│                  │   Hash        │                      │
-│                  │ SHA-256       │                      │
-│                  └───────┬───────┘                      │
-│                          │                              │
-│         ┌────────────────┼────────────────┐             │
-│         │                │                │             │
-│  ┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼──────┐     │
-│  │ Similarity  │  │ Entropy     │  │ Risk        │     │
-│  │ score       │  │ analysis    │  │ assessment  │     │
-│  └─────────────┘  └─────────────┘  └─────────────┘     │
-└─────────────────────────────────────────────────────────┘
+Browser
+  │  JS/TS collectors (102 signals)
+  ▼
+WASM: validate → normalize → hash → risk → entropy
+  ▼
+{ hex, signals, risk, entropy, warnings }   ← digest computed in browser
 ```
+
+### Target (per `specs/rework/`)
+
+The canonical fingerprint moves out of the browser entirely:
+
+```
+Browser
+  │  JS/TS collectors (102 signals)
+  ▼
+WASM: validate → normalize → package
+  ▼
+SignalPackage                     ← integrity-checked, versioned envelope
+  ▼
+Ingress → queue → workers         ← deterministic engine; replayable
+  ▼
+Canonical fingerprint → risk → metadata → fraud platform
+```
+
+Workers run the same Zig engine as a stateless, replayable computation and
+ship as Docker containers. There is **no native SDK and no C ABI**.
 
 ## Binary Format
 
@@ -218,44 +192,32 @@ The core engine is designed for single-threaded use:
 - Thread safety via separate engine instances
 - WASM is inherently single-threaded
 
-## Platform Considerations
-
-### WASM (Browser)
-
-- Linear memory model
-- No filesystem access
-- No network access
-- Byte-level ABI crossing
-
-### Native (Server)
-
-- C ABI for maximum compatibility
-- Handle-based resource management
-- Page allocator for simplicity
-- No libc dependency
+The rework plan (`specs/rework/DESIGN.md`) adds async IO primitives
+(message, ring buffer, channel, completion, executor, frame, reader, writer,
+dispatcher) at the transport boundary only — the core stays synchronous and
+deterministic.
 
 ## Testing Strategy
 
 ### Unit Tests
 
-- Each module has its own test file
-- Tests live in `tests/` outside `src/`
-- Public API only via `root.zig`
+- 270 unit tests across `tests/{model,core,serialization,browser,build,scoring}/`
+- Self-verifying registry (`tests/root.zig`) — `SNAP_UPDATE=1` regenerates the
+  import list when it drifts
+- `zig build test -- <filter>` runs only matching unit tests
 
 ### Fuzz Tests
 
-- Binary decode with arbitrary bytes
-- Normalization with random features
-- Hashing determinism verification
+- `tests/fuzz/` — binary decode, normalization, hashing determinism (3 targets)
 
-### Integration Tests
+### Integration / E2E Tests
 
-- Cross-platform CI (Linux, macOS, Windows)
-- WASM build verification
-- Native library build verification
+- `src/integration_tests.zig` — the test binary contains no engine code and
+  drives pre-built executables as subprocesses (`zig build test-integration`)
+- CI verifies the full test suite and the WASM build on Linux
 
 ### Test Data
 
-- Real browser fingerprints (Chrome, Firefox)
-- Similarity matrix with expected scores
+- Real browser fingerprints (Chrome, Firefox) in `tests/data/fingerprints/`
+- Similarity matrix with expected scores in `tests/fixtures/`
 - Binary round-trip fixtures

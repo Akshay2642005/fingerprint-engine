@@ -2,7 +2,8 @@
 
 ## Overview
 
-The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It provides:
+The Fingerprint Engine is a browser fingerprinting engine written in
+Zig 0.14.1. It provides:
 
 - **Feature collection**: 102 browser signals across 21 categories (canvas, WebGL, audio, fonts, battery, media codecs, speech, input, permissions, etc.)
 - **Deterministic hashing**: SHA-256 fingerprint digests
@@ -10,101 +11,94 @@ The Fingerprint Engine is a browser fingerprinting SDK written in Zig 0.16.0. It
 - **Similarity scoring**: Feature-level and fingerprint-level comparison
 - **Entropy analysis**: Shannon entropy measurement
 - **Risk assessment**: Browser fingerprint risk scoring
-- **Cross-platform**: WASM (browser), C ABI (server), Go (cgo), TypeScript
+- **Serialization**: Compact TLV binary and JSON codecs
+- **WASM**: The only shipped artifact — `ReleaseSmall`, built by Zig
+
+There is no native SDK and no C ABI. Fingerprint workers run the engine as
+Docker containers.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Core Engine                      │
+│                    Engine (Zig)                     │
 ├─────────────┬─────────────┬─────────────┬───────────┤
-│  Features   │    Hash     │ Serialize   │  Similar  │
-│  Registry   │  Feature    │ Binary      │  Score    │
-│  102 sigs   │  Fingerprint│ JSON        │  Entropy  │
-│             │  Hasher     │             │  Risk     │
+│   model     │    core     │serialization│  browser  │
+│  registry   │  hashing    │ binary      │  (WASM)   │
+│  102 sigs   │  normalize  │ JSON        │  exports  │
+│  fingerprint│  similarity │             │           │
+│             │  entropy    │             │           │
+│             │  risk       │             │           │
 ├─────────────┴─────────────┴─────────────┴───────────┤
-│                       SDKs                          │
-├─────────────────────┬───────────────────────────────┤
-│  WASM + TypeScript  │  C ABI / C Header             │
-│  (browser SDK)      │  (server — Go, C, Zig, etc.)  │
-└─────────────────────┴───────────────────────────────┘
+│  dependencies flow inward; no transport, no I/O     │
+└─────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
 
-### Browser (WASM + TypeScript)
+### Browser (WASM — script tag)
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk"></script>
 <script>
-  const fp = await Fingerprint.collect();
-  console.log('Fingerprint:', fp.hex);       // 32-byte hex digest
-  console.log('Signals:', fp.features.length); // ~102 signals
-  console.log('Risk:', fp.risk);              // 0.0 – 1.0
-  console.log('Entropy:', fp.entropy);        // bits/signal
+  const result = await Fingerprint.collect();
+  console.log('Digest:',  result.hex);      // 64-char hex digest
+  console.log('Signals:', result.signals);  // ~102
+  console.log('Risk:',    result.risk);     // 0.0 – 1.0
+  console.log('Entropy:', result.entropy);  // bits/signal
+  console.log('Warnings:', result.warnings);// normalization warning count
 </script>
 ```
 
-Or with ES modules:
+`Fingerprint.collect()` returns:
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `hex` | `string` | 64-char hex digest |
+| `digest` | `Uint8Array` | 32-byte digest |
+| `risk` | `number` | 0.0 (low) – 1.0 (high) |
+| `entropy` | `number` | bits/signal |
+| `warnings` | `number` | normalization warning count |
+| `signals` | `number` | feature count |
+| `collectedAt` | `number` | epoch ms |
+
+### Browser (TypeScript — lower level)
 
 ```typescript
 import { FingerprintEngine, FeatureID } from '@akshay2642005/fingerprint-sdk';
 
-const engine = new FingerprintEngine();
-engine.addBoolean(FeatureID.CookieEnabled, navigator.cookieEnabled);
+const engine = await FingerprintEngine.create('/fingerprint.wasm');
 engine.addString(FeatureID.UserAgent, navigator.userAgent);
+engine.addBoolean(FeatureID.CookieEnabled, navigator.cookieEnabled);
 
-const result = engine.compute();
-console.log('Fingerprint:', result.hex);
-console.log('Risk:', result.risk);
+const result = engine.compute();          // { digest, featureCount }
+const risk = engine.risk();               // 0.0 – 1.0
+const entropy = engine.entropy();         // bits/signal
+const warnings = engine.normalize();      // warning count
 ```
-
-### Server (C ABI — Go, C, Zig, etc.)
-
-```c
-#include "fingerprint.h"
-
-FingerprintEngine* engine = fingerprint_engine_create();
-fingerprint_engine_add_feature(engine,
-    FINGERPRINT_FEATURE_USER_AGENT,
-    FINGERPRINT_TYPE_STRING,
-    "Mozilla/5.0...", 14);
-
-uint8_t digest[32];
-fingerprint_engine_compute(engine, digest);
-
-int risk = fingerprint_engine_risk(engine);
-int entropy = fingerprint_engine_entropy(engine);
-
-fingerprint_engine_destroy(engine);
-```
-
-> Any language with C FFI can call the engine.  
-> For Go: `// #include "fingerprint.h"` + `import "C"`.
 
 ## Core Modules
 
-### Features (`core.features`)
+### Model (`model`)
 
 Defines the 102 browser signals and their metadata across 21 categories.
 
 ```zig
-const FeatureID = core.features.FeatureID;
-const FeatureType = core.features.FeatureType;
+const model = @import("model");
 
 // FeatureID enum values:
 // .UserAgent, .Language, .Platform, .HardwareConcurrency,
 // .DeviceMemory, .ScreenWidth, .ScreenHeight, .Timezone, etc.
 ```
 
-### Fingerprint (`core.fingerprint`)
+### Fingerprint model (`model`)
 
 The core data model for fingerprints.
 
 ```zig
-const Fingerprint = core.fingerprint.Fingerprint;
-const Feature = core.fingerprint.Feature;
-const FeatureValue = core.fingerprint.FeatureValue;
+const Fingerprint = model.Fingerprint;
+const Feature = model.Feature;
+const FeatureValue = model.FeatureValue;
 
 // FeatureValue is a tagged union:
 // .Boolean(bool)
@@ -123,6 +117,8 @@ const FeatureValue = core.fingerprint.FeatureValue;
 Deterministic SHA-256 fingerprinting.
 
 ```zig
+const core = @import("core");
+
 // Hash a single feature
 var hash: [32]u8 = undefined;
 try core.hashing.hashFeature(feature.value, &hash);
@@ -130,31 +126,33 @@ try core.hashing.hashFeature(feature.value, &hash);
 // Hash an entire fingerprint
 try core.hashing.hashFingerprint(fingerprint, &hash);
 
+// Hash a feature slice (used by the WASM target)
+try core.hashing.hashFingerprintBuffer(features, &hash);
+
 // Incremental hashing
 var hasher = core.hashing.Hasher.init(schema_version, sdk_version, collected_at);
 try hasher.add(feature.id, feature.value);
 hasher.final(&hash);
 ```
 
-### Serialization (`core.serialization`)
+### Serialization (`serialization`)
 
 Binary and JSON encoding/decoding.
 
 ```zig
+const serialization = @import("serialization");
+
 // Binary encode
 var buf: [1024]u8 = undefined;
-var w = std.Io.Writer.fromArrayList(&buf);
-try core.serialization.encode(&w, fingerprint);
+var w = std.io.Writer(...);
+try serialization.encode(&w, fingerprint);
 
 // Binary decode
-var r = testing.Reader.init(&buf, &.{.{ .buffer = buf[0..len] }});
-var decoded = try core.serialization.decode(&r, allocator);
+var decoded = try serialization.decode(&r, allocator);
 defer decoded.deinit();
 
 // JSON encode
-var json_buf: [4096]u8 = undefined;
-var json_w = std.Io.Writer.fromArrayList(&json_buf);
-try core.serialization.jsonEncode(&json_w, fingerprint);
+try serialization.jsonEncode(&json_w, fingerprint);
 ```
 
 ### Normalization (`core.normalization`)
@@ -169,10 +167,6 @@ defer allocator.free(type_warnings);
 // Check value bounds
 const bound_warnings = try core.normalization.checkAllBounds(fingerprint, allocator);
 defer allocator.free(bound_warnings);
-
-// Full normalization (types + bounds)
-const warnings = try core.normalization.normalize(fingerprint, allocator);
-defer allocator.free(warnings);
 ```
 
 ### Similarity (`core.similarity`)
@@ -204,7 +198,7 @@ const fp_entropy = core.entropy.fingerprintEntropy(fingerprint);
 Browser fingerprint risk assessment.
 
 ```zig
-const assessment = core.risk.computeRisk(fingerprint);
+const assessment = core.risk.computeRisk(fingerprint, allocator);
 // assessment.score: 0.0 (low risk) to 1.0 (high risk)
 // assessment.label: .low, .medium, .high, .critical
 // assessment.flags: missing_features, bound_violations, etc.
@@ -212,79 +206,36 @@ const assessment = core.risk.computeRisk(fingerprint);
 
 ## Browser SDK (WASM)
 
-### Functions
+### Exported Functions
 
 | Function | Description |
 | ---------- | ------------- |
 | `fingerprint_init()` | Initialize the engine |
-| `fingerprint_add_feature(id, type, ptr, len)` | Add a feature value |
-| `fingerprint_compute()` | Compute the fingerprint digest |
-| `fingerprint_get_digest_ptr()` | Get pointer to 32-byte digest |
-| `fingerprint_reset()` | Reset the engine for reuse |
-| `fingerprint_get_error()` | Get last error message |
-| `fingerprint_feature_count()` | Get number of added features |
-| `fingerprint_normalize()` | Validate types and bounds (returns warning count) |
-| `fingerprint_risk()` | Compute risk score (0-100) |
-| `fingerprint_entropy()` | Compute entropy (0-800) |
+| `fingerprint_reset()` | Reset all features |
+| `fingerprint_feature_count()` | Number of added features |
+| `fingerprint_get_error()` | Pointer to last error message |
+| `fingerprint_add_boolean(id, value)` | Add a boolean feature |
+| `fingerprint_add_integer(id, value)` | Add an integer feature |
+| `fingerprint_add_float(id, value)` | Add a float feature |
+| `fingerprint_add_string(id, ptr, len)` | Add a string feature |
+| `fingerprint_add_bytes(id, ptr, len)` | Add a bytes feature |
+| `fingerprint_compute()` | Compute digest (returns pointer) |
+| `fingerprint_get_digest_ptr()` | Pointer to the 32-byte digest |
+| `fingerprint_get_scratch_ptr()` | Pointer to the 64 KB scratch buffer |
+| `fingerprint_normalize()` | Validate types and bounds (warning count) |
+| `fingerprint_risk()` | Risk score (0.0–1.0) |
+| `fingerprint_entropy()` | Entropy (bits/signal × 100) |
 
-### Usage
+### Error Codes
 
-```javascript
-// Load WASM module
-const module = await WebAssembly.instantiateStreaming(fetch('fingerprint.wasm'));
-const { memory, fingerprint_engine_create, ... } = module.instance.exports;
-
-// Create engine
-const engine = fingerprint_engine_create();
-
-// Add features (write to linear memory)
-const encoder = new TextEncoder();
-const ua = encoder.encode("Mozilla/5.0...");
-const ptr = fingerprint_engine_alloc(ua.length);
-new Uint8Array(memory.buffer, ptr, ua.length).set(ua);
-fingerprint_engine_add_feature(1, 2, ptr, ua.length); // UserAgent, String
-
-// Compute fingerprint
-fingerprint_engine_compute();
-const digest = new Uint8Array(memory.buffer, fingerprint_engine_get_digest_ptr(), 32);
-console.log('Fingerprint:', Array.from(digest).map(b => b.toString(16).padStart(2, '0')).join(''));
-```
-
-## Server SDK (C ABI)
-
-### Functions
-
-| Function | Description |
-| ---------- | ------------- |
-| `fingerprint_engine_create()` | Create engine (returns handle) |
-| `fingerprint_engine_destroy(handle)` | Destroy engine |
-| `fingerprint_engine_add_feature(handle, id, type, data, len)` | Add feature |
-| `fingerprint_engine_compute(handle, out)` | Compute digest |
-| `fingerprint_engine_normalize(handle)` | Validate types and bounds (returns warning count) |
-| `fingerprint_engine_risk(handle)` | Compute risk score (0-100) |
-| `fingerprint_engine_entropy(handle)` | Compute entropy (0-800) |
-
-### Usage (C)
-
-```c
-#include "fingerprint.h"
-
-FingerprintEngine* engine = fingerprint_engine_create();
-fingerprint_engine_add_feature(engine, 
-    FINGERPRINT_FEATURE_USER_AGENT,
-    FINGERPRINT_TYPE_STRING,
-    "Mozilla/5.0...", 14);
-
-uint8_t digest[32];
-fingerprint_engine_compute(engine, digest);
-
-// Processing
-int warnings = fingerprint_engine_normalize(engine);
-int risk = fingerprint_engine_risk(engine);     // 0-100
-int entropy = fingerprint_engine_entropy(engine); // 0-800
-
-fingerprint_engine_destroy(engine);
-```
+| Code | Value |
+| ---- | ----- |
+| `success` | 0 |
+| `buffer_full` | 1 |
+| `invalid_feature_id` | 2 |
+| `invalid_value_type` | 3 |
+| `not_initialized` | 4 |
+| `invalid_input` | 5 |
 
 ## Test Data
 
@@ -296,7 +247,7 @@ fingerprint_engine_destroy(engine);
 
 ### Similarity Matrix
 
-- `tests/fixtures/datasets/similarity_suite.json` — 5 fingerprints with expected similarity scores
+- `tests/fixtures/datasets/similarity_suite.json` — fingerprints with expected similarity scores
 
 ## Benchmarking
 
@@ -306,38 +257,33 @@ Run performance benchmarks:
 zig build bench
 ```
 
-Output:
+12 benchmark targets cover hashing, serialization, normalization, similarity,
+and entropy (illustrative output):
 
 ```
 Fingerprint Engine — Benchmark Harness
-Zig 0.16.0 | Debug | x86_64
+Zig 0.14.1 | ReleaseSafe | x86_64
 ------------------------------------------------------------
-                         Benchmark    Ops/Sec        Avg
+                    Benchmark    Ops/Sec        Avg
 ------------------------------------------------------------
-                  hashing: hashFeature    2659221 376ns
-              hashing: hashFingerprint     171656 5.83µs
-           hashing: incremental hasher     182705 5.47µs
-          serialization: binary encode     274816 3.64µs
-            serialization: json encode     165755 6.03µs
-          normalization: validateTypes     300409 3.33µs
-            normalization: checkBounds    1513317 660ns
-              normalization: normalize     124247 8.05µs
-              similarity: featureScore     330737 3.02µs
-          similarity: fingerprintScore      56700 17.64µs
-               entropy: shannonEntropy    1222344 818ns
-           entropy: fingerprintEntropy     258572 3.87µs
+             hashing: hashFeature    2659221 376ns
+         hashing: hashFingerprint     171656 5.83µs
+      hashing: incremental hasher     182705 5.47µs
+     serialization: binary encode     274816 3.64µs
+       serialization: json encode     165755 6.03µs
+     normalization: validateTypes     300409 3.33µs
+       normalization: checkBounds    1513317 660ns
+         normalization: normalize     124247 8.05µs
+         similarity: featureScore     330737 3.02µs
+     similarity: fingerprintScore      56700 17.64µs
+          entropy: shannonEntropy    1222344 818ns
+      entropy: fingerprintEntropy     258572 3.87µs
 ------------------------------------------------------------
 ```
 
 ## Fuzz Testing
 
-Run fuzz tests:
-
-```bash
-zig build test -- --fuzz
-```
-
-Fuzz targets:
+Fuzz targets live in `tests/fuzz/` and run as part of the test suite:
 
 - `fuzz_decode.zig` — Binary decode with arbitrary bytes
 - `fuzz_normalize.zig` — Normalization with arbitrary features
