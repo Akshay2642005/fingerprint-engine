@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a new feature or improvement
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature! Before filing, please check the
+        existing issues and the [contributing guide](../../CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve? Who is affected?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should the feature work? Keep it concrete.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you consider, and why is this approach better?
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      description: The engine core must stay a deterministic computation engine.
+      options:
+        - label: This feature keeps transport, queue, database, and business logic out of the Zig core
+        - label: This feature is versioned and deterministic (same input, same output)
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Links, mockups, or references that support the request.
