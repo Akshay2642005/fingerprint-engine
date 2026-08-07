@@ -133,8 +133,9 @@ jobs:
           zig build clients:browser
 
       - name: Publish to npm
+        # OIDC trusted publisher: no NODE_AUTH_TOKEN. npm exchanges the
+        # GitHub OIDC token (id-token: write) for a publish token, which
+        # requires the trusted publisher to be configured on the npm package.
         run: |
           cd src/clients/browser
           npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
