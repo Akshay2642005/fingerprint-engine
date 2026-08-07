@@ -112,8 +112,8 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    // Single test binary importing every test module for fast iteration.
-    // Tests live in tests/ outside src/.
+    // Single test binary. tests/root.zig auto-discovers
+    // and imports every test file under tests/.
     const test_core_module = b.createModule(.{
         .root_source_file = b.path("tests/root.zig"),
         .target = target,
@@ -170,11 +170,22 @@ pub fn build(b: *std.Build) !void {
 fn build_test(b: *std.Build, step: *std.Build.Step, options: struct {
     test_core_module: *std.Build.Module,
 }) void {
-    // Run tests via IPC protocol so the build runner can format results.
-    // Use `zig build test --summary all` for the full build summary with
-    // pass/fail counts, timing, and cache info.
-    const tests = b.addTest(.{ .root_module = options.test_core_module });
+    // Single test binary rooted at tests/root.zig, which
+    // discovers and imports every test file under tests/ and verifies its own
+    // import list (SNAP_UPDATE=1 regenerates it). `zig build test -- <filter>`
+    // runs only the tests matching the filter.
+    const tests = b.addTest(.{
+        .name = "test-unit",
+        .root_module = options.test_core_module,
+        .filters = b.args orelse &.{},
+    });
     const run = b.addRunArtifact(tests);
+    // The registry walks tests/ relative to the repository root.
+    run.setCwd(b.path("."));
+    if (b.args != null) {
+        // Don't cache test results if running a specific test.
+        run.has_side_effects = true;
+    }
     step.dependOn(&run.step);
 }
 
