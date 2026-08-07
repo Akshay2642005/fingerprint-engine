@@ -191,7 +191,7 @@ pub fn build(b: *std.Build) void {
     // Build as a standalone executable with core, model, and serialization
     // as deps via the root module.
     const bench_module = b.createModule(.{
-        .root_source_file = b.path("tools/bench/main.zig"),
+        .root_source_file = b.path("src/bench/main.zig"),
         .target = native_target,
         .optimize = optimize,
         .imports = &.{

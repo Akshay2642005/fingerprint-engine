@@ -130,12 +130,12 @@ jobs:
 
       - name: Build npm package
         run: |
-          cd sdk/browser
+          cd src/clients/browser
           npm run build
 
       - name: Publish to npm
         run: |
-          cd sdk/browser
+          cd src/clients/browser
           npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
