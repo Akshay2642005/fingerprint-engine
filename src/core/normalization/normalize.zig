@@ -1,5 +1,5 @@
 const std = @import("std");
-const fingerprint = @import("../fingerprint/root.zig");
+const fingerprint = @import("model");
 const TypeWarning = @import("types.zig").TypeWarning;
 const BoundWarning = @import("bounds.zig").BoundWarning;
 const validateTypes = @import("types.zig").validateTypes;

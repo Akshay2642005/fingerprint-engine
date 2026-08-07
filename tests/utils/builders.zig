@@ -1,6 +1,6 @@
 const std = @import("std");
-const features = @import("core").features;
-const fingerprint = @import("core").fingerprint;
+const features = @import("model");
+const fingerprint = @import("model");
 
 const FeatureValue = fingerprint.FeatureValue;
 const Feature = fingerprint.Feature;

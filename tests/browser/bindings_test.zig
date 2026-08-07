@@ -1,7 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 
-const features_mod = @import("core").features;
+const features_mod = @import("model");
 
 const expected_exports = [_][]const u8{
     "fingerprint_init",

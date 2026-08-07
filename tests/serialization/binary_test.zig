@@ -1,8 +1,8 @@
 const std = @import("std");
 const testing = std.testing;
-const features = @import("core").features;
-const fingerprint = @import("core").fingerprint;
-const serialization = @import("core").serialization;
+const features = @import("model");
+const fingerprint = @import("model");
+const serialization = @import("serialization");
 
 // ──────────────────────────────────────────────
 // Binary Serialization — Encode header

@@ -1,6 +1,6 @@
 const std = @import("std");
-const features = @import("../features/root.zig");
-const fingerprint = @import("../fingerprint/root.zig");
+const features = @import("model");
+const fingerprint = @import("model");
 const similarity = @import("root.zig");
 
 const Feature = fingerprint.Feature;

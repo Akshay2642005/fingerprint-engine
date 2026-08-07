@@ -1,11 +1,12 @@
 const std = @import("std");
 const core = @import("core");
+const model = @import("model");
 
-const FeatureID = core.features.FeatureID;
-const FeatureType = core.features.FeatureType;
-const FeatureValue = core.fingerprint.FeatureValue;
-const Feature = core.fingerprint.Feature;
-const Fingerprint = core.fingerprint.Fingerprint;
+const FeatureID = model.FeatureID;
+const FeatureType = model.FeatureType;
+const FeatureValue = model.FeatureValue;
+const Feature = model.Feature;
+const Fingerprint = model.Fingerprint;
 
 const MAX_FEATURES = 128;
 const MAX_RAW_DATA = 65536;

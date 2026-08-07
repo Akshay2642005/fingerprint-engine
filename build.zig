@@ -3,21 +3,20 @@ const std = @import("std");
 // Fingerprint Engine Build System
 //
 // Build Targets:
-//   zig build           - Build all installable artifacts (WASM + native)
+//   zig build           - Build all installable artifacts (WASM)
 //   zig build wasm      - Build the browser WebAssembly SDK
-//   zig build native    - Build the native static library
 //   zig build test      - Execute all unit tests and fuzz tests
 //   zig build bench     - Run performance benchmarks
 //
-// Module Architecture:
-//   Core     - Platform-independent fingerprint engine (src/core/)
-//   Browser  - WebAssembly target for browser integration (src/browser/)
-//   Server   - Native static library for backend integrations (src/server/)
+// Module Architecture (dependencies flow downward, no cycles):
+//   Model        - Runtime data model (src/model/)
+//   Core         - Deterministic algorithms, depends on Model (src/core/)
+//   Serialization- Codecs for the model, depends on Model (src/serialization/)
+//   Browser      - WebAssembly target for collection/packaging (src/browser/)
 //
-// The Core module contains all fingerprinting algorithms and business logic.
-// Browser and Server are thin platform-specific layers that import and expose
-// the Core functionality. Tests live in tests/ outside src/ — no embedded
-// tests in production code.
+// The engine is a deterministic computation engine: Model defines the data,
+// Core runs the algorithms, Serialization moves bytes in and out. Transport,
+// adapters, and workers live outside src/ and are added in later commits.
 pub fn build(b: *std.Build) void {
     // These settings are shared across every build artifact unless explicitly
     // overridden.
@@ -31,7 +30,6 @@ pub fn build(b: *std.Build) void {
 
     // Native compilation target.
     // This target is used for:
-    //     • Native library
     //     • Unit tests
     //     • Future benchmarks
     const native_target = b.standardTargetOptions(.{});
@@ -44,18 +42,47 @@ pub fn build(b: *std.Build) void {
         .os_tag = .freestanding,
     });
 
-    // Core Module
-    // The Core module contains the platform-independent fingerprint engine.
-    // Every platform-specific SDK imports this module.
-    const core = b.createModule(.{
-        .root_source_file = b.path("src/core/root.zig"),
+    // Model Module
+    // The runtime data model: feature definitions, registry, and the
+    // fingerprint value types. Depends on nothing.
+    const model = b.createModule(.{
+        .root_source_file = b.path("src/model/root.zig"),
         .target = native_target,
         .optimize = optimize,
     });
 
+    // Core Module
+    // Deterministic algorithms (normalization, hashing, validation,
+    // similarity, entropy, risk). Depends on Model.
+    const core = b.createModule(.{
+        .root_source_file = b.path("src/core/root.zig"),
+        .target = native_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{
+                .name = "model",
+                .module = model,
+            },
+        },
+    });
+
+    // Serialization Module
+    // Binary and JSON codecs for the model. Depends on Model.
+    const serialization = b.createModule(.{
+        .root_source_file = b.path("src/serialization/root.zig"),
+        .target = native_target,
+        .optimize = optimize,
+        .imports = &.{
+            .{
+                .name = "model",
+                .module = model,
+            },
+        },
+    });
+
     // Browser Module
-    // Produces the WebAssembly SDK consumed by browsers.
-    // This module imports the Core engine and exposes WebAssembly exports.
+    // Produces the WebAssembly SDK consumed by browsers for collection,
+    // validation, and packaging. Imports Core and Model.
     const browser = b.createModule(.{
         .root_source_file = b.path("src/browser/wasm/root.zig"),
         .target = wasm_target,
@@ -65,21 +92,9 @@ pub fn build(b: *std.Build) void {
                 .name = "core",
                 .module = core,
             },
-        },
-    });
-
-    // Server Module
-    // Produces the native library used by backend applications.
-    // This module imports the Core engine and exposes native C-compatible
-    // APIs for integration with Go, C, C++, Rust, or other languages.
-    const server = b.createModule(.{
-        .root_source_file = b.path("src/server/native/root.zig"),
-        .target = native_target,
-        .optimize = optimize,
-        .imports = &.{
             .{
-                .name = "core",
-                .module = core,
+                .name = "model",
+                .module = model,
             },
         },
     });
@@ -95,30 +110,20 @@ pub fn build(b: *std.Build) void {
     wasm.entry = .disabled;
     wasm.rdynamic = true;
 
-    // Native Static Library
-    // This library will later be linked by CGO and other native consumers.
-    const native = b.addLibrary(.{
-        .name = "fingerprint",
-        .linkage = .static,
-        .root_module = server,
-    });
-
     // Install Artifacts
-    // Create install steps and register them with both the default "install" step
-    // (runs on `zig build`) and the custom "wasm" / "native" steps.
+    // Create install steps and register them with both the default "install"
+    // step (runs on `zig build`) and the custom "wasm" step.
     //
-    // NOTE: We use addInstallArtifact (returns *Step.InstallArtifact) instead of
-    // installArtifact (returns void) so custom steps can depend on the install
-    // step rather than just the compile step. Without this, `zig build wasm`
-    // compiles the binary but never copies it to zig-out/.
+    // NOTE: We use addInstallArtifact (returns *Step.InstallArtifact) instead
+    // of installArtifact (returns void) so custom steps can depend on the
+    // install step rather than just the compile step. Without this,
+    // `zig build wasm` compiles the binary but never copies it to zig-out/.
     const wasm_install = b.addInstallArtifact(wasm, .{});
-    const native_install = b.addInstallArtifact(native, .{});
     b.getInstallStep().dependOn(&wasm_install.step);
-    b.getInstallStep().dependOn(&native_install.step);
 
     // Unit Tests
     // Tests live in tests/ outside src/ — no embedded tests in production code.
-    // Each module gets its own test binary for fast iteration.
+    // The single test binary imports every test module for fast iteration.
 
     // Test utilities module — provides assertions, generators, and mocks.
     const test_utils = b.createModule(.{
@@ -127,8 +132,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{
-                .name = "core",
-                .module = core,
+                .name = "model",
+                .module = model,
             },
         },
     });
@@ -139,12 +144,16 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{
+                .name = "model",
+                .module = model,
+            },
+            .{
                 .name = "core",
                 .module = core,
             },
             .{
-                .name = "server",
-                .module = server,
+                .name = "serialization",
+                .module = serialization,
             },
             .{
                 .name = "test_utils",
@@ -172,34 +181,31 @@ pub fn build(b: *std.Build) void {
     );
     wasm_step.dependOn(&wasm_install.step);
 
-    const native_step = b.step(
-        "native",
-        "Build the native static library",
-    );
-    native_step.dependOn(&native_install.step);
-
     const test_step = b.step(
         "test",
         "Execute all tests",
     );
     test_step.dependOn(&run_tests_core.step);
 
-    const test_features_step = b.step(
-        "test-features",
-        "Execute features module tests only",
-    );
-    test_features_step.dependOn(&run_tests_core.step);
-
     // Benchmark executable
-    // Build as a standalone executable with core as a dep via root module.
+    // Build as a standalone executable with core, model, and serialization
+    // as deps via the root module.
     const bench_module = b.createModule(.{
-        .root_source_file = b.path("benchmark/main.zig"),
+        .root_source_file = b.path("tools/bench/main.zig"),
         .target = native_target,
         .optimize = optimize,
         .imports = &.{
             .{
                 .name = "core",
                 .module = core,
+            },
+            .{
+                .name = "model",
+                .module = model,
+            },
+            .{
+                .name = "serialization",
+                .module = serialization,
             },
         },
     });

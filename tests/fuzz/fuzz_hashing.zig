@@ -3,11 +3,12 @@
 const std = @import("std");
 const testing = std.testing;
 const core = @import("core");
+const model = @import("model");
 
-const FeatureID = core.features.FeatureID;
-const FeatureValue = core.fingerprint.FeatureValue;
-const Feature = core.fingerprint.Feature;
-const Fingerprint = core.fingerprint.Fingerprint;
+const FeatureID = model.FeatureID;
+const FeatureValue = model.FeatureValue;
+const Feature = model.Feature;
+const Fingerprint = model.Fingerprint;
 
 const ID_COUNT = @typeInfo(FeatureID).@"enum".fields.len;
 

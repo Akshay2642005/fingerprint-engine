@@ -3,16 +3,17 @@
 /// behavior regardless of input.
 const std = @import("std");
 const testing = std.testing;
-const core = @import("core");
+const model = @import("model");
+const serialization = @import("serialization");
 
-const Fingerprint = core.fingerprint.Fingerprint;
+const Fingerprint = model.Fingerprint;
 
 fn fuzzDecodeArbitrary(_: void, input: []const u8) anyerror!void {
     var fbs = std.io.fixedBufferStream(input);
     var r = fbs.reader();
 
     // decode must never crash — only return error or success
-    var result = core.serialization.decode(&r, std.heap.page_allocator) catch return;
+    var result = serialization.decode(&r, std.heap.page_allocator) catch return;
     defer result.deinit();
 
     // If decode succeeded, the result should be valid
@@ -37,7 +38,7 @@ fn fuzzDecodeTruncated(_: void, input: []const u8) anyerror!void {
     var buf: [256]u8 = undefined;
     var efbs = std.io.fixedBufferStream(&buf);
     var w = efbs.writer();
-    core.serialization.encode(&w, valid_fp) catch return;
+    serialization.encode(&w, valid_fp) catch return;
     const encoded = efbs.getWritten();
 
     // Truncate at a point chosen from the fuzz input
@@ -51,7 +52,7 @@ fn fuzzDecodeTruncated(_: void, input: []const u8) anyerror!void {
     var r = tfbs.reader();
 
     // Must not crash
-    var result = core.serialization.decode(&r, std.heap.page_allocator) catch return;
+    var result = serialization.decode(&r, std.heap.page_allocator) catch return;
     defer result.deinit();
 }
 

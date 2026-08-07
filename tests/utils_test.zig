@@ -5,8 +5,8 @@ const builders = test_utils.builders;
 const generators = test_utils.generators;
 const assertions = test_utils.assertions;
 const mocks = test_utils.mocks;
-const features = @import("core").features;
-const fingerprint = @import("core").fingerprint;
+const features = @import("model");
+const fingerprint = @import("model");
 
 test "builders: boolFeature creates correct feature" {
     const f = builders.boolFeature(.CookieEnabled, true);

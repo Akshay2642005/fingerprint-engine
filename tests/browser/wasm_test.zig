@@ -1,16 +1,17 @@
 const std = @import("std");
 const testing = std.testing;
 const core = @import("core");
+const model = @import("model");
 
 test "WASM module initializes" {
     // We test the browser module's internal logic via re-import
     // The actual exports are WASM-only, but we validate the core integration
-    const fp = core.fingerprint.Fingerprint{
+    const fp = model.Fingerprint{
         .metadata = .{ .schema_version = 1, .sdk_version = "0.1.0", .collected_at = 0 },
         .features = &.{
-            core.fingerprint.Feature{
+            model.Feature{
                 .id = .CookieEnabled,
-                .value = core.fingerprint.FeatureValue{ .Boolean = true },
+                .value = model.FeatureValue{ .Boolean = true },
             },
         },
     };
@@ -21,8 +22,8 @@ test "WASM module initializes" {
 }
 
 test "hashFingerprintBuffer produces stable output" {
-    const fv = core.fingerprint.FeatureValue;
-    const features = [_]core.fingerprint.Feature{
+    const fv = model.FeatureValue;
+    const features = [_]model.Feature{
         .{ .id = .CookieEnabled, .value = fv{ .Boolean = true } },
         .{ .id = .UserAgent, .value = fv{ .String = "test" } },
     };
@@ -37,8 +38,8 @@ test "hashFingerprintBuffer produces stable output" {
 }
 
 test "hashFingerprintBuffer works with single feature" {
-    const fv = core.fingerprint.FeatureValue;
-    const features = [_]core.fingerprint.Feature{
+    const fv = model.FeatureValue;
+    const features = [_]model.Feature{
         .{ .id = .CookieEnabled, .value = fv{ .Boolean = true } },
     };
 
