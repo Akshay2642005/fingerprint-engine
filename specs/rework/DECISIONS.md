@@ -136,20 +136,21 @@ Frame, Reader, Writer, Dispatcher.
 
 ## D10 — Browser WASM and native SDK
 
-**Decision:**
+**Decision (revised 2026-08-07 by D14):**
 
-1. **WASM stays for collection/packaging** (research: possible — see
-   DESIGN.md §Browser). New stateless exports replace the stateful
-   `init/add_*/compute` API. **Canonical fingerprint generation is removed
-   from the browser** (`fingerprint_compute` dies). The WASM provides
-   validation, normalization, serialization, integrity, packaging,
-   diagnostics, collection helpers, optional lightweight risk.
-2. **No native SDK.** `src/server/` is removed (native root, C header,
+1. **No WASM in the shipped browser SDK.** The browser SDK is hand-written
+   TypeScript (D14): it collects signals, serializes a `SignalPackage`, and
+   POSTs it to the ingress endpoint. Validation, normalization, and all
+   computation happen **server-side in the workers**. The browser never
+   generates the canonical fingerprint (`fingerprint_compute` dies), and
+   the base64-wasm-inlined UMD template approach (D13-era) is deprecated.
+2. **WASM remains in-repo as an infra artifact only** — benchmark harness
+   and test containers (e.g., wasmtime) that emulate browser signal
+   collection deterministically in CI. It is **not shipped** in the npm
+   package.
+3. **No native SDK.** `src/server/` is removed (native root, C header,
    empty rust dir). No static library, no C ABI. Workers are shipped as
    **Docker containers** running the worker executable.
-3. The WASM artifact is additionally retained for **benchmarking and test
-   containers** (e.g., wasmtime) that emulate browser signal collection
-   deterministically.
 
 ## D11 — (folded into D10)
 
@@ -175,11 +176,13 @@ Final user-facing docs (`Architecture.md`, `Engine.md`, `IO.md`, `Worker.md`,
    `b.reference_trace = 10`; preferred optimize mode ReleaseSafe.
 2. **Everything builds via Zig** — docs, packages, and the browser SDK
    `dist/` are produced by `zig build` only. The Node.js package build
-   (`build.mjs`) is deleted; a Zig generator (`src/build/browser_package.zig`)
-   emits the UMD/ESM bundles and `.d.ts`, deriving the `FeatureID` and
-   `FeatureType` JS tables from `src/model/feature.zig` (single source of
-   truth — kills the duplicated hardcoded tables). Node remains only for
-   `npm publish`.
+   (`build.mjs`) is deleted. The browser SDK is **hand-written TypeScript**
+   (D14); `zig build clients:browser` compiles/assembles it and injects the
+   `FeatureID`/`FeatureType` tables derived from `src/model/feature.zig`
+   (single source of truth — kills the duplicated hardcoded tables). The
+   legacy base64-wasm-inlined generator (`src/build/browser_package.zig`)
+   is superseded by the D14 SDK. Node remains only for `npm publish` and
+   the documented TS compile step.
 3. **Layout** — `sdk/browser/` → `src/clients/browser/` (self-contained npm
    package at `src/clients/browser/`; fixes the `../../..` ROOT depth
    bug in `build.mjs`/`package.json` which only resolves at 3-deep);
@@ -187,9 +190,47 @@ Final user-facing docs (`Architecture.md`, `Engine.md`, `IO.md`, `Worker.md`,
    (subcommands in `src/scripts/`); new `src/build/` for build-time helper
    programs; new `src/docs_website/` nested Zig project wired from root via
    `zig build docs`.
-4. **Steps** — `zig build clients:browser` (wasm + generator → `dist/`),
+4. **Steps** — `zig build clients:browser` (TS SDK → `dist/`),
    `zig build docs` (nested build), `zig build scripts -- <subcommand>`
    (free-form automation).
+
+## D14 — Browser SDK shape
+
+**Decision (2026-08-07 review):** The browser SDK is **hand-written,
+human-readable TypeScript** — the published artifact is real source code,
+not a generated template blob. It:
+
+- **collects** the 102 signals (TS collectors),
+- **serializes** them into the `SignalPackage` v2 body via a hand-written TS
+  serializer (`package.ts`) mirroring `src/serialization/binary.zig`,
+- **POSTs** the bytes to a configurable **ingress endpoint** (the SDK never
+  talks to RabbitMQ directly; the ingress service owns the queue — browser
+  → ingress → RabbitMQ, per REWORK.md).
+
+Validation, normalization, hashing, risk, and similarity are **not** in the
+browser — they run server-side in the workers. The browser's only output is
+a versioned, integrity-carrying `SignalPackage`.
+
+**Parity guarantee:** the TS serializer is tested against the same golden
+fixtures as the Zig codec (cross-language golden vectors), so the two
+implementations cannot drift.
+
+## D15 — Fraud platform boundary (cross-repo)
+
+**Decision (2026-08-07 review):** The **fraud platform is a separate
+repository** (Go) — out of scope for this repo. This repo ends at the
+engine's published events.
+
+- The engine (workers) publishes typed events to the queue:
+  `FingerprintComputed`, `RiskResult`, `SimilarityResult`,
+  `ValidationResult`, `Diagnostics` (contracts in DESIGN §5.3).
+- The Go platform consumes those events and owns everything downstream:
+  **Postgres rule-based fraud detection**, the **admin workspace**, and
+  **AI-agent tooling**. The Zig engine never imports databases, auth,
+  users, organizations, policies, or business logic (REWORK.md absolute
+  rules).
+- This repo defines the **event contracts** (schema-versioned messages);
+  the Go repo implements consumption.
 
 ## Environment constraints (recorded, not decisions)
 

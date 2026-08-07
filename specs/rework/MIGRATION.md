@@ -60,6 +60,7 @@ commits; behavior changes land behind them one layer at a time.
 | `src/docs_website/` (nested build, `zig build docs`) | commit 5 |
 | `tests/build/*` (generator tests) | commit 5 |
 | `src/integration_tests.zig`, `src/testing/shell.zig` (e2e harness) | commit 7 |
+| `src/clients/browser/src/*` (TS SDK: index, collectors, package, transport) | commit 14 |
 | `tests/io/*`, `tests/engine/*`, `tests/adapter/*`, `tests/worker/*` | with their modules |
 
 ## 2. Rewritten files
@@ -69,12 +70,14 @@ commits; behavior changes land behind them one layer at a time.
 | `build.zig` | O(1): top-level step tuple (test, wasm, bench, clients:browser, docs, scripts, scripts:build); helper fns; modules model, core, serialization, browser, browser_package, test_utils, test_core_module, bench_module; nested docs_website build |
 | `build.zig.zon` | version 0.2.0 (major: breaking API), `minimum_zig_version = "0.14.1"` |
 | `.github/workflows/ci.yml` | `ZIG_VERSION: 0.14.1`; jobs: test, wasm-build, worker-build (+ docker build); drop native-build |
-| `src/browser/wasm/root.zig` | stateless exports (fp_version, fp_process, fp_alloc, fp_free); remove init/add_*/compute/scratch |
-| `src/browser/bindings/engine.ts` | package-builder flow (collect → package → bytes); remove compute()/collectAndCompute() |
+| `src/browser/wasm/root.zig` | stateless exports (fp_version, fp_process, fp_alloc, fp_free); infra-only artifact (bench + wasmtime test containers); remove init/add_*/compute/scratch |
+| `src/clients/browser/src/*` | hand-written TS SDK (D14): index.ts, collectors/, package.ts (SignalPackage v2 serializer), transport.ts (POST to ingress) — replaces the UMD template |
+| `src/clients/browser/index.d.ts` | hand-written declarations |
+| `src/clients/browser/scripts/fingerprint-umd-template.js` | **deleted** — superseded by the hand-written TS SDK (D14); no more base64-wasm-inlined bundle |
 | `src/serialization/binary.zig` | v2 body + v1 compat decode; anytype writer/reader; FPKG integrity helper |
 | `src/serialization/json.zig` | match v2 body; anytype |
-| `src/clients/browser/package.json` | zig-only build (`zig build clients:browser`); drop build.mjs + typescript devDep |
-| `src/clients/browser/scripts/fingerprint-umd-template.js` | FeatureID/FeatureType blocks replaced by generator markers |
+| `src/clients/browser/package.json` | zig-only build (`zig build clients:browser`); drop build.mjs + typescript devDep; TS compile step is the documented exception (D13/D14) |
+| `tests/data/fixtures/*` | shared golden vectors consumed by BOTH the Zig codec tests and the TS package.ts tests (cross-language parity, D14) |
 | `.github/workflows/release.yml` | publish job builds via `zig build clients:browser` (no node build) |
 | `docs/architecture.md`, `docs/api.md` | new architecture; drop canonical-in-browser + native SDK |
 | `CLAUDE.md`, `CONVENTIONS.md` (commands tables) | `zig build native` → `zig build worker`; Docker story |
@@ -100,7 +103,8 @@ commits; behavior changes land behind them one layer at a time.
    ESM, `.d.ts` with FeatureID/FeatureType derived from model) replacing
    `build.mjs`; template markers; zig-only `package.json` build;
    `src/docs_website/` nested build (`zig build docs`); `tests/build/*`;
-   release.yml uses `zig build clients:browser`.
+   release.yml uses `zig build clients:browser`. The base64-wasm-inlined
+   UMD approach is superseded by the D14 TS SDK in commit 14.
 6. **test: adopt self-verifying test registry** (DONE)
    `tests/root.zig` self-verifying quine registry discovers and imports every
    test file under `tests/`; `SNAP_UPDATE=1` regenerates the import list.
@@ -133,9 +137,13 @@ commits; behavior changes land behind them one layer at a time.
     worker CI job.
 13. **feat(adapter): AMQP 0-9-1 codec (v1)**
     `adapter/amqp/codec.zig` framing + byte-fixture tests. No broker needed.
-14. **feat(browser): stateless WASM + TS package builder**
-    Rewrite wasm exports and bindings; drop canonical digest; keep collectors;
-    `tests/browser/` updated. WASM used for bench + test containers.
+14. **feat(browser): hand-written TS SDK (D14)**
+    `src/clients/browser/src/` — index.ts, collectors/, package.ts
+    (SignalPackage v2 serializer mirroring `serialization/binary.zig`),
+    transport.ts (POST to ingress). Delete the UMD template + base64
+    inlining; drop wasm from the package (wasm stays in-repo for bench +
+    wasmtime test containers). Cross-language golden tests: TS serializer
+    vs Zig fixtures. `tests/browser/` + TS test suite updated.
 15. **docs: final docs + spec cleanup**
     `docs/{Architecture,Engine,IO,Worker,AMQP,Serialization,Migration,Design}.md`;
     update CLAUDE.md/CONVENTIONS.md; remove stale `specs/tech-architecture/*`
@@ -170,13 +178,17 @@ unit-only (integration is excluded when a filter is given).
 | Async-first io scope creep | v1 ships exactly the primitives in DESIGN §6; Pipeline/Command deferred |
 | AMQP client scope (v2) stalls the rework | v1 = codec only, tested without broker; client is a separate story after the engine lands |
 | Dropping native SDK breaks documented consumers | SemVer major (0.2.0); Migration.md + docs make the Docker story the replacement |
-| WASM regression (canonical digest sneaks back in) | `hash` op not exported by wasm root; `tests/browser/` asserts the export surface |
+| WASM regression (canonical digest sneaks back into the browser) | no wasm shipped in the SDK; `hash` op not exported; SDK has no compute path; `tests/browser/` + TS tests assert the surface |
+| TS package.ts serializer drifts from the Zig codec | shared golden fixtures run against both implementations (cross-language parity tests, D14) |
 
 ## 6. Success criteria
 
 - All commits bisectable and green on Zig 0.14.1.
-- Browser emits only `SignalPackage` (validated, normalized, integrity-hashed);
-  canonical digest produced exclusively by workers.
+- Browser SDK is hand-written TS emitting only a versioned `SignalPackage`
+  (with integrity); canonical digest produced exclusively by workers; no
+  wasm/base64 inside the npm package.
+- Fraud-platform boundary documented: engine publishes typed events; Go
+  repo owns Postgres rules, admin workspace, AI agents (D15).
 - Engine has zero imports of io/adapter/transport std networking.
 - `tests/engine`, `tests/io`, `tests/adapter`, `tests/worker` exist and pass.
 - `src/server/` gone; `deploy/Dockerfile.worker` present; CI builds worker.
