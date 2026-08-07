@@ -11,6 +11,7 @@ const std = @import("std");
 //   model           - runtime data model (src/model/), depends on nothing
 //   core            - deterministic algorithms (src/core/), depends on model
 //   serialization   - codecs (src/serialization/), depends on model
+//   io              - async transport primitives (src/io/), depends on nothing
 //   browser         - WebAssembly target (src/browser/), depends on core+model
 //   browser_package - build-time npm package generator (src/build/), depends on model
 //   test_utils      - test helpers (tests/utils/), depends on model
@@ -78,6 +79,15 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
+    // IO: async transport primitives (message, ring buffer, channel,
+    // completion, executor, frame, reader, writer, dispatcher). Depends on
+    // nothing.
+    const io = b.createModule(.{
+        .root_source_file = b.path("src/io/root.zig"),
+        .target = target,
+        .optimize = mode,
+    });
+
     // Browser: WebAssembly SDK for collection and packaging. Depends on
     // Core and Model.
     //
@@ -126,6 +136,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "model", .module = model },
             .{ .name = "core", .module = core },
             .{ .name = "serialization", .module = serialization },
+            .{ .name = "io", .module = io },
             .{ .name = "test_utils", .module = test_utils },
             .{ .name = "browser_package", .module = browser_package },
         },

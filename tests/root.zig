@@ -17,6 +17,14 @@ comptime {
     _ = @import("fuzz/fuzz_decode.zig");
     _ = @import("fuzz/fuzz_hashing.zig");
     _ = @import("fuzz/fuzz_normalize.zig");
+    _ = @import("io/channel_test.zig");
+    _ = @import("io/completion_test.zig");
+    _ = @import("io/dispatcher_test.zig");
+    _ = @import("io/executor_test.zig");
+    _ = @import("io/frame_test.zig");
+    _ = @import("io/message_test.zig");
+    _ = @import("io/reader_writer_test.zig");
+    _ = @import("io/ring_buffer_test.zig");
     _ = @import("model/api_test.zig");
     _ = @import("model/definitions_test.zig");
     _ = @import("model/feature_binding_test.zig");
