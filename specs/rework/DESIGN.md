@@ -366,7 +366,9 @@ removed.
 
 `deploy/Dockerfile.worker` — multi-stage:
 
-1. Build stage: `zig build worker -Doptimize=ReleaseSafe`.
+1. Build stage: `zig build worker --release=safe` (0.14.1 registers
+   `--release`/`-Drelease` when a preferred mode is set; `-Doptimize` is not
+   accepted).
 2. Runtime stage: copy the static `worker` binary; `ENTRYPOINT ["/worker",
    "--transport=amqp"]` (v2) or loopback for dev.
 
