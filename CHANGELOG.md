@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Async IO primitives in `src/io/` — arena-backed `Message`/`MessagePool`, `RingBuffer`, typed `Channel`, embedded `Completion`, deterministic single-threaded `Executor`, FPKG `Frame` envelope, fixed-buffer `Reader`/`Writer`, and a comptime `Dispatcher` (zero dependencies, D7).
+- Deterministic computation engine in `src/engine/` — versioned `Operation`/`Status`/`CodecID`, immutable `Request`, caller-owned `Response`, and `process()` with a comptime dispatch table plus per-op handlers (`validate`, `normalize`, `serialize`, `deserialize`, `hash`, `entropy`, `similarity`, `risk`, `package`) over the existing core algorithms (D3). The engine imports no io/transport code.
+
 ## [0.2.0] - 2026-08-07
 
 ### Added
