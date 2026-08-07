@@ -1,4 +1,7 @@
 comptime {
+    _ = @import("adapter/loopback_test.zig");
+    _ = @import("adapter/tcp_test.zig");
+    _ = @import("adapter/transport_test.zig");
     _ = @import("browser/bindings_test.zig");
     _ = @import("browser/wasm_test.zig");
     _ = @import("build/browser_package_test.zig");
