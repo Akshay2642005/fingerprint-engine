@@ -42,11 +42,15 @@ src/
 ├── adapter/        # transport interface + loopback; amqp/ (deps: io, engine)
 ├── worker/         # worker main.zig (deps: engine, adapter)
 ├── browser/        # wasm exports (deps: engine), bindings/, collectors/
-├── sdk/            # npm browser package (moved from packages/)
-└── tools/          # benchmark (moved from benchmark/), scripts (moved from scripts/)
+├── clients/browser # npm browser package (self-contained SDK; moved from sdk/browser/)
+├── bench/          # benchmarks (moved from tools/bench/)
+├── build/          # build-time helper programs (browser_package.zig)
+├── scripts.zig     # single automation dispatcher binary; subcommands in scripts/
+├── scripts/        # automation subcommands (added with the first real script)
+└── docs_website/   # nested Zig project producing docs (zig build docs)
 ```
 
-**No `src/native/`.** See D10.
+**No `src/native/`.** See D10. Layout revised per D13.
 
 ## D3 — Engine API shape
 
@@ -159,11 +163,41 @@ Final user-facing docs (`Architecture.md`, `Engine.md`, `IO.md`, `Worker.md`,
 `AMQP.md`, `Serialization.md`, `Migration.md`, `Design.md`) are produced as
 `docs/` files when implementation lands (REWORK.md deliverables).
 
+## D13 — Build & layout convention
+
+**Decision:** Adopt a unified build-system and repository conventions:
+
+1. **O(1) `build.zig`** — top-level steps declared upfront as a tuple
+   (`test`, `wasm`, `bench`, `clients:browser`, `docs`, `scripts`,
+   `scripts:build`); helper functions per concern
+   (`build_test`, `build_wasm`, `build_bench`, `build_browser_client`,
+   `build_scripts`, `build_docs`); `pub fn build(b: *std.Build) !void`;
+   `b.reference_trace = 10`; preferred optimize mode ReleaseSafe.
+2. **Everything builds via Zig** — docs, packages, and the browser SDK
+   `dist/` are produced by `zig build` only. The Node.js package build
+   (`build.mjs`) is deleted; a Zig generator (`src/build/browser_package.zig`)
+   emits the UMD/ESM bundles and `.d.ts`, deriving the `FeatureID` and
+   `FeatureType` JS tables from `src/model/feature.zig` (single source of
+   truth — kills the duplicated hardcoded tables). Node remains only for
+   `npm publish`.
+3. **Layout** — `sdk/browser/` → `src/clients/browser/` (self-contained npm
+   package at `src/clients/browser/`; fixes the `../../..` ROOT depth
+   bug in `build.mjs`/`package.json` which only resolves at 3-deep);
+   `tools/bench/` → `src/bench/`; new `src/scripts.zig` dispatcher
+   (subcommands in `src/scripts/`); new `src/build/` for build-time helper
+   programs; new `src/docs_website/` nested Zig project wired from root via
+   `zig build docs`.
+4. **Steps** — `zig build clients:browser` (wasm + generator → `dist/`),
+   `zig build docs` (nested build), `zig build scripts -- <subcommand>`
+   (free-form automation).
+
 ## Environment constraints (recorded, not decisions)
 
 - Sandbox terminal is broken (`libasound.so.2`) — validation and git must run
   on the user's machine until fixed.
 - `bigpowers` skills are not installed; specs-first + TDD + green gates are
   followed in spirit.
-- A local reference checkout of a hand-rolled systems codebase (excluded via
-  `.git/info/exclude`); IO/build design is derived from the local source.
+- A local reference checkout of a hand-rolled systems codebase (has `src/`,
+  `src/clients/`, `src/docs_website/`, `src/scripts.zig`, `src/build/`),
+  excluded via `.git/info/exclude`; IO/build design is derived from the
+  local source.
