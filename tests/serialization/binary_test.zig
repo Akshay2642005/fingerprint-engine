@@ -1,8 +1,8 @@
 const std = @import("std");
 const testing = std.testing;
-const features = @import("core").features;
-const fingerprint = @import("core").fingerprint;
-const serialization = @import("core").serialization;
+const features = @import("model");
+const fingerprint = @import("model");
+const serialization = @import("serialization");
 
 // ──────────────────────────────────────────────
 // Binary Serialization — Encode header
@@ -20,10 +20,11 @@ test "encode empty fingerprint produces correct magic header" {
     };
 
     var buf: [128]u8 = undefined;
-    var w = std.Io.Writer.fixed(&buf);
+    var fbs = std.io.fixedBufferStream(&buf);
+    var w = fbs.writer();
     try serialization.encode(&w, fp);
 
-    const bytes = buf[0..w.end];
+    const bytes = fbs.getWritten();
     try testing.expectEqual(@as(u8, 'F'), bytes[0]);
     try testing.expectEqual(@as(u8, 'N'), bytes[1]);
     try testing.expectEqual(@as(u8, 'G'), bytes[2]);
@@ -47,7 +48,8 @@ test "encode with schema version 42 writes correct version bytes" {
     };
 
     var buf: [128]u8 = undefined;
-    var w = std.Io.Writer.fixed(&buf);
+    var fbs = std.io.fixedBufferStream(&buf);
+    var w = fbs.writer();
     try serialization.encode(&w, fp);
 
     try testing.expectEqual(@as(u8, 42), buf[4]);
@@ -79,10 +81,11 @@ test "encode fingerprint with Boolean and String features" {
     };
 
     var buf: [256]u8 = undefined;
-    var w = std.Io.Writer.fixed(&buf);
+    var fbs = std.io.fixedBufferStream(&buf);
+    var w = fbs.writer();
     try serialization.encode(&w, fp);
 
-    const bytes = buf[0..w.end];
+    const bytes = fbs.getWritten();
     try testing.expectEqual(@as(u8, 9), bytes[8]);
     try testing.expectEqual(@as(u8, 0), bytes[9]);
     try testing.expectEqual(@as(u8, 0), bytes[10]);
@@ -115,15 +118,17 @@ test "encode produces identical output for same input" {
     };
 
     var buf1: [128]u8 = undefined;
-    var w1 = std.Io.Writer.fixed(&buf1);
+    var fbs1 = std.io.fixedBufferStream(&buf1);
+    var w1 = fbs1.writer();
     try serialization.encode(&w1, fp);
 
     var buf2: [128]u8 = undefined;
-    var w2 = std.Io.Writer.fixed(&buf2);
+    var fbs2 = std.io.fixedBufferStream(&buf2);
+    var w2 = fbs2.writer();
     try serialization.encode(&w2, fp);
 
-    const bytes1 = buf1[0..w1.end];
-    const bytes2 = buf2[0..w2.end];
+    const bytes1 = fbs1.getWritten();
+    const bytes2 = fbs2.getWritten();
     try testing.expectEqual(bytes1.len, bytes2.len);
     try testing.expectEqualSlices(u8, bytes1, bytes2);
 }
@@ -150,10 +155,11 @@ test "encode all 9 FeatureType variants" {
     };
 
     var buf: [1024]u8 = undefined;
-    var w = std.Io.Writer.fixed(&buf);
+    var fbs = std.io.fixedBufferStream(&buf);
+    var w = fbs.writer();
     try serialization.encode(&w, fp);
 
-    const bytes = buf[0..w.end];
+    const bytes = fbs.getWritten();
     try testing.expect(bytes.len > 8);
     try testing.expectEqual(@as(u8, 9), bytes[6]);
 }
@@ -165,10 +171,12 @@ test "encode all 9 FeatureType variants" {
 /// Helper: encode then decode, returns the decoded result. Caller must call deinit().
 fn roundTrip(fp: fingerprint.Fingerprint, allocator: std.mem.Allocator) !serialization.DecodedFingerprint {
     var buf: [1024]u8 = undefined;
-    var w = std.Io.Writer.fixed(&buf);
+    var efbs = std.io.fixedBufferStream(&buf);
+    var w = efbs.writer();
     try serialization.encode(&w, fp);
 
-    var r = std.Io.Reader.fixed(buf[0..w.end]);
+    var dfbs = std.io.fixedBufferStream(efbs.getWritten());
+    var r = dfbs.reader();
     return try serialization.decode(&r, allocator);
 }
 
@@ -329,7 +337,8 @@ test "decode rejects invalid magic bytes" {
     const allocator = testing.allocator;
     const invalid = [_]u8{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-    var r = std.Io.Reader.fixed(&invalid);
+    var fbs = std.io.fixedBufferStream(&invalid);
+    var r = fbs.reader();
     try testing.expectError(error.InvalidMagic, serialization.decode(&r, allocator));
 }
 
@@ -337,11 +346,12 @@ test "decode rejects truncated data" {
     const allocator = testing.allocator;
     const truncated = [_]u8{ 'F', 'N', 'G', 'R' };
 
-    var r = std.Io.Reader.fixed(&truncated);
+    var fbs = std.io.fixedBufferStream(&truncated);
+    var r = fbs.reader();
     if (serialization.decode(&r, allocator)) |_| {
         try testing.expect(false);
     } else |err| {
-        // Reader's takeArray returns EndOfStream when data runs out
+        // decode maps exhausted input to error.Truncated
         try testing.expect(err == error.EndOfStream or err == error.Truncated);
     }
 }

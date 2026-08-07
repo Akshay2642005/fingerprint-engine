@@ -1,18 +1,34 @@
 /// Fuzz testing for hashing — ensures hash functions never crash,
 /// produce deterministic output, and handle edge cases.
-
 const std = @import("std");
 const testing = std.testing;
 const core = @import("core");
+const model = @import("model");
 
-const FeatureID = core.features.FeatureID;
-const FeatureValue = core.fingerprint.FeatureValue;
-const Feature = core.fingerprint.Feature;
-const Fingerprint = core.fingerprint.Fingerprint;
+const FeatureID = model.FeatureID;
+const FeatureValue = model.FeatureValue;
+const Feature = model.Feature;
+const Fingerprint = model.Fingerprint;
 
-fn fuzzHashFeature(_: void, smith: *testing.Smith) anyerror!void {
+const ID_COUNT = @typeInfo(FeatureID).@"enum".fields.len;
+
+fn byteAt(input: []const u8, i: usize) u8 {
+    return if (i < input.len) input[i] else 0;
+}
+
+fn randomFeatureID(input: []const u8, i: usize) FeatureID {
+    return @enumFromInt(@as(u16, @intCast(byteAt(input, i) % ID_COUNT)));
+}
+
+fn randomI64(input: []const u8, i: usize) i64 {
+    var bytes: [8]u8 = .{0} ** 8;
+    for (0..8) |j| bytes[j] = byteAt(input, i + j);
+    return std.mem.readInt(i64, &bytes, .little);
+}
+
+fn fuzzHashFeature(_: void, input: []const u8) anyerror!void {
     var out: [32]u8 = undefined;
-    const value = FeatureValue{ .Boolean = smith.boolWeightedWithHash(1, 1, 0) };
+    const value = FeatureValue{ .Boolean = (byteAt(input, 0) & 1) == 1 };
 
     // Must not crash
     core.hashing.hashFeature(value, &out) catch return;
@@ -27,13 +43,13 @@ test "fuzz: hashFeature with arbitrary values" {
     try testing.fuzz({}, fuzzHashFeature, .{});
 }
 
-fn fuzzHashFingerprint(_: void, smith: *testing.Smith) anyerror!void {
+fn fuzzHashFingerprint(_: void, input: []const u8) anyerror!void {
     var features: [8]Feature = undefined;
-    const count = smith.valueWithHash(u3, 0);
+    const count = @min(byteAt(input, 0) & 7, 8);
     for (0..count) |i| {
         features[i] = .{
-            .id = smith.valueWithHash(FeatureID, @intCast(i)),
-            .value = .{ .Integer = smith.valueWithHash(i64, @intCast(i)) },
+            .id = randomFeatureID(input, 1 + i),
+            .value = .{ .Integer = randomI64(input, 9 + i * 8) },
         };
     }
 
@@ -55,13 +71,13 @@ test "fuzz: hashFingerprint with arbitrary features" {
     try testing.fuzz({}, fuzzHashFingerprint, .{});
 }
 
-fn fuzzHasherIncremental(_: void, smith: *testing.Smith) anyerror!void {
+fn fuzzHasherIncremental(_: void, input: []const u8) anyerror!void {
     var features: [4]Feature = undefined;
-    const count = smith.valueWithHash(u2, 0);
+    const count = byteAt(input, 0) & 3;
     for (0..count) |i| {
         features[i] = .{
-            .id = smith.valueWithHash(FeatureID, @intCast(i)),
-            .value = .{ .Boolean = smith.boolWeightedWithHash(1, 1, @intCast(i)) },
+            .id = randomFeatureID(input, 1 + i),
+            .value = .{ .Boolean = (byteAt(input, 5 + i) & 1) == 1 },
         };
     }
 

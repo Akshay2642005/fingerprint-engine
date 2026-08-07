@@ -2,218 +2,332 @@ const std = @import("std");
 
 // Fingerprint Engine Build System
 //
-// Build Targets:
-//   zig build           - Build all installable artifacts (WASM + native)
-//   zig build wasm      - Build the browser WebAssembly SDK
-//   zig build native    - Build the native static library
-//   zig build test      - Execute all unit tests and fuzz tests
-//   zig build bench     - Run performance benchmarks
+// O(1) build: every top-level step is declared up front in a
+// tuple and implemented by a small helper function. Everything — tests, wasm,
+// benchmarks, the browser npm package, docs, automation scripts — builds
+// through Zig.
 //
-// Module Architecture:
-//   Core     - Platform-independent fingerprint engine (src/core/)
-//   Browser  - WebAssembly target for browser integration (src/browser/)
-//   Server   - Native static library for backend integrations (src/server/)
+// Module graph (dependencies flow downward, no cycles):
+//   model           - runtime data model (src/model/), depends on nothing
+//   core            - deterministic algorithms (src/core/), depends on model
+//   serialization   - codecs (src/serialization/), depends on model
+//   browser         - WebAssembly target (src/browser/), depends on core+model
+//   browser_package - build-time npm package generator (src/build/), depends on model
+//   test_utils      - test helpers (tests/utils/), depends on model
+//   bench_module    - benchmarks (src/bench/), depends on core+model+serialization
 //
-// The Core module contains all fingerprinting algorithms and business logic.
-// Browser and Server are thin platform-specific layers that import and expose
-// the Core functionality. Tests live in tests/ outside src/ — no embedded
-// tests in production code.
-pub fn build(b: *std.Build) void {
-    // These settings are shared across every build artifact unless explicitly
-    // overridden.
-    // Optimization mode selected by the user.
-    // Examples:
-    //     zig build -Doptimize=Debug
-    //     zig build -Doptimize=ReleaseSafe
-    //     zig build -Doptimize=ReleaseFast
-    //     zig build -Doptimize=ReleaseSmall
-    const optimize = b.standardOptimizeOption(.{});
+// Steps:
+//   zig build test                  - run all unit tests (plus integration/e2e)
+//   zig build test-integration      - run integration and e2e tests
+//   zig build test-integration-build - build the integration test binary
+//   zig build wasm                  - build the WebAssembly module
+//   zig build bench                 - run performance benchmarks
+//   zig build clients:browser       - build the browser npm package (dist/)
+//   zig build docs                  - build docs (nested src/docs_website/)
+//   zig build scripts -- <cmd>      - free-form automation scripts
+pub fn build(b: *std.Build) !void {
+    // A compile error stack trace of 10 is arbitrary in size but helps with debugging.
+    b.reference_trace = 10;
 
-    // Native compilation target.
-    // This target is used for:
-    //     • Native library
-    //     • Unit tests
-    //     • Future benchmarks
-    const native_target = b.standardTargetOptions(.{});
+    // Top-level steps you can invoke on the command line.
+    const build_steps = .{
+        .@"test" = b.step("test", "Run all tests"),
+        .test_integration = b.step("test-integration", "Run integration and e2e tests"),
+        .test_integration_build = b.step("test-integration-build", "Build integration tests"),
+        .wasm = b.step("wasm", "Build the browser WebAssembly module"),
+        .bench = b.step("bench", "Run performance benchmarks"),
+        .clients_browser = b.step("clients:browser", "Build the browser SDK npm package"),
+        .docs = b.step("docs", "Build docs"),
+        .scripts = b.step("scripts", "Free form automation scripts"),
+        .scripts_build = b.step("scripts:build", "Build automation scripts"),
+    };
 
-    // Browser WebAssembly compilation target.
-    // The browser SDK is compiled as a standalone WebAssembly module using
-    // the freestanding environment.
+    const mode = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSafe });
+    const target = b.standardTargetOptions(.{});
     const wasm_target = b.resolveTargetQuery(.{
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
     });
 
-    // Core Module
-    // The Core module contains the platform-independent fingerprint engine.
-    // Every platform-specific SDK imports this module.
-    const core = b.createModule(.{
-        .root_source_file = b.path("src/core/root.zig"),
-        .target = native_target,
-        .optimize = optimize,
+    // Model: runtime data model (feature definitions, registry, fingerprint
+    // value types). Depends on nothing.
+    const model = b.createModule(.{
+        .root_source_file = b.path("src/model/root.zig"),
+        .target = target,
+        .optimize = mode,
     });
 
-    // Browser Module
-    // Produces the WebAssembly SDK consumed by browsers.
-    // This module imports the Core engine and exposes WebAssembly exports.
+    // Core: deterministic algorithms (normalization, hashing, validation,
+    // similarity, entropy, risk). Depends on Model.
+    const core = b.createModule(.{
+        .root_source_file = b.path("src/core/root.zig"),
+        .target = target,
+        .optimize = mode,
+        .imports = &.{
+            .{ .name = "model", .module = model },
+        },
+    });
+
+    // Serialization: binary and JSON codecs for the model. Depends on Model.
+    const serialization = b.createModule(.{
+        .root_source_file = b.path("src/serialization/root.zig"),
+        .target = target,
+        .optimize = mode,
+        .imports = &.{
+            .{ .name = "model", .module = model },
+        },
+    });
+
+    // Browser: WebAssembly SDK for collection and packaging. Depends on
+    // Core and Model.
+    //
+    // The optimize mode is pinned to ReleaseSmall: the module is only ever
+    // shipped as an inlined base64 payload inside the npm package, where
+    // binary size dominates (ReleaseSafe wasm is ~8x larger). Tests run the
+    // same logic natively, so debugging doesn't depend on the wasm mode.
     const browser = b.createModule(.{
         .root_source_file = b.path("src/browser/wasm/root.zig"),
         .target = wasm_target,
-        .optimize = optimize,
+        .optimize = .ReleaseSmall,
         .imports = &.{
-            .{
-                .name = "core",
-                .module = core,
-            },
+            .{ .name = "core", .module = core },
+            .{ .name = "model", .module = model },
         },
     });
 
-    // Server Module
-    // Produces the native library used by backend applications.
-    // This module imports the Core engine and exposes native C-compatible
-    // APIs for integration with Go, C, C++, Rust, or other languages.
-    const server = b.createModule(.{
-        .root_source_file = b.path("src/server/native/root.zig"),
-        .target = native_target,
-        .optimize = optimize,
+    // Browser package generator: emits the npm package dist/ from the wasm
+    // binary and the model definitions. Depends on Model.
+    const browser_package = b.createModule(.{
+        .root_source_file = b.path("src/build/browser_package.zig"),
+        .target = target,
+        .optimize = mode,
         .imports = &.{
-            .{
-                .name = "core",
-                .module = core,
-            },
+            .{ .name = "model", .module = model },
         },
     });
 
-    // Browser WebAssembly Artifact
+    // Test utilities: assertions, generators, and mocks.
+    const test_utils = b.createModule(.{
+        .root_source_file = b.path("tests/utils/root.zig"),
+        .target = target,
+        .optimize = mode,
+        .imports = &.{
+            .{ .name = "model", .module = model },
+        },
+    });
+
+    // Single test binary. tests/root.zig auto-discovers
+    // and imports every test file under tests/.
+    const test_core_module = b.createModule(.{
+        .root_source_file = b.path("tests/root.zig"),
+        .target = target,
+        .optimize = mode,
+        .imports = &.{
+            .{ .name = "model", .module = model },
+            .{ .name = "core", .module = core },
+            .{ .name = "serialization", .module = serialization },
+            .{ .name = "test_utils", .module = test_utils },
+            .{ .name = "browser_package", .module = browser_package },
+        },
+    });
+
+    // Benchmark executable with core, model, and serialization as deps.
+    const bench_module = b.createModule(.{
+        .root_source_file = b.path("src/bench/main.zig"),
+        .target = target,
+        .optimize = mode,
+        .imports = &.{
+            .{ .name = "core", .module = core },
+            .{ .name = "model", .module = model },
+            .{ .name = "serialization", .module = serialization },
+        },
+    });
+
+    // zig build test
+    build_test(b, build_steps.@"test", .{ .test_core_module = test_core_module });
+
+    // zig build wasm
+    const wasm = build_wasm(b, .{
+        .wasm_step = build_steps.wasm,
+        .install_step = b.getInstallStep(),
+    }, .{ .browser_module = browser });
+
+    // zig build bench
+    const bench = build_bench(b, build_steps.bench, .{ .bench_module = bench_module });
+
+    // zig build clients:browser
+    build_browser_client(b, build_steps.clients_browser, .{
+        .wasm = wasm,
+        .browser_package_module = browser_package,
+    });
+
+    // zig build scripts, zig build scripts:build
+    const scripts_exe = build_scripts(b, .{
+        .scripts = build_steps.scripts,
+        .scripts_build = build_steps.scripts_build,
+    }, .{ .target = target });
+
+    // zig build test-integration, zig build test-integration-build
+    build_test_integration(b, .{
+        .test_integration = build_steps.test_integration,
+        .test_integration_build = build_steps.test_integration_build,
+    }, .{
+        .target = target,
+        .mode = mode,
+        .bench_exe = bench.getEmittedBin(),
+        .scripts_exe = scripts_exe.getEmittedBin(),
+    });
+    if (b.args == null) {
+        // `zig build test -- <filter>` runs only matching unit tests; the
+        // integration suite is reserved for the unfiltered run.
+        build_steps.@"test".dependOn(build_steps.test_integration);
+    }
+
+    // zig build docs
+    build_docs(b, build_steps.docs);
+}
+
+fn build_test(b: *std.Build, step: *std.Build.Step, options: struct {
+    test_core_module: *std.Build.Module,
+}) void {
+    // Single test binary rooted at tests/root.zig, which
+    // discovers and imports every test file under tests/ and verifies its own
+    // import list (SNAP_UPDATE=1 regenerates it). `zig build test -- <filter>`
+    // runs only the tests matching the filter.
+    const tests = b.addTest(.{
+        .name = "test-unit",
+        .root_module = options.test_core_module,
+        .filters = b.args orelse &.{},
+    });
+    const run = b.addRunArtifact(tests);
+    // The registry walks tests/ relative to the repository root.
+    run.setCwd(b.path("."));
+    if (b.args != null) {
+        // Don't cache test results if running a specific test.
+        run.has_side_effects = true;
+    }
+    step.dependOn(&run.step);
+}
+
+fn build_wasm(b: *std.Build, steps: struct {
+    wasm_step: *std.Build.Step,
+    install_step: *std.Build.Step,
+}, options: struct {
+    browser_module: *std.Build.Module,
+}) *std.Build.Step.Compile {
     // This executable has no entry point because it is loaded as a library
     // by JavaScript rather than executed as a standalone program.
     const wasm = b.addExecutable(.{
         .name = "fingerprint",
-        .root_module = browser,
+        .root_module = options.browser_module,
     });
-
     wasm.entry = .disabled;
     wasm.rdynamic = true;
 
-    // Native Static Library
-    // This library will later be linked by CGO and other native consumers.
-    const native = b.addLibrary(.{
-        .name = "fingerprint",
-        .linkage = .static,
-        .root_module = server,
-    });
-
-    // Install Artifacts
-    // Create install steps and register them with both the default "install" step
-    // (runs on `zig build`) and the custom "wasm" / "native" steps.
-    //
-    // NOTE: We use addInstallArtifact (returns *Step.InstallArtifact) instead of
-    // installArtifact (returns void) so custom steps can depend on the install
-    // step rather than just the compile step. Without this, `zig build wasm`
-    // compiles the binary but never copies it to zig-out/.
+    // addInstallArtifact (returns *Step.InstallArtifact) instead of
+    // installArtifact (returns void) so custom steps can depend on the
+    // install step rather than just the compile step. Without this,
+    // `zig build wasm` compiles the binary but never copies it to zig-out/.
     const wasm_install = b.addInstallArtifact(wasm, .{});
-    const native_install = b.addInstallArtifact(native, .{});
-    b.getInstallStep().dependOn(&wasm_install.step);
-    b.getInstallStep().dependOn(&native_install.step);
+    steps.install_step.dependOn(&wasm_install.step);
+    steps.wasm_step.dependOn(&wasm_install.step);
+    return wasm;
+}
 
-    // Unit Tests
-    // Tests live in tests/ outside src/ — no embedded tests in production code.
-    // Each module gets its own test binary for fast iteration.
-
-    // Test utilities module — provides assertions, generators, and mocks.
-    const test_utils = b.createModule(.{
-        .root_source_file = b.path("tests/utils/root.zig"),
-        .target = native_target,
-        .optimize = optimize,
-        .imports = &.{
-            .{
-                .name = "core",
-                .module = core,
-            },
-        },
-    });
-
-    const test_core_module = b.createModule(.{
-        .root_source_file = b.path("tests/root.zig"),
-        .target = native_target,
-        .optimize = optimize,
-        .imports = &.{
-            .{
-                .name = "core",
-                .module = core,
-            },
-            .{
-                .name = "server",
-                .module = server,
-            },
-            .{
-                .name = "test_utils",
-                .module = test_utils,
-            },
-        },
-    });
-
-    const tests_core = b.addTest(.{
-        .root_module = test_core_module,
-    });
-
-    // Run tests via IPC protocol so the build runner can format results.
-    // Use `zig build test --summary all` for the full build summary with
-    // pass/fail counts, timing, and cache info. Use `zt` (zt.bat) as a
-    // shortcut for `zig build test --summary all`.
-    const run_tests_core = b.addRunArtifact(tests_core);
-
-    // Custom Build Steps
-    // These depend on the install steps (not compile steps) so the artifacts
-    // are actually copied to zig-out/.
-    const wasm_step = b.step(
-        "wasm",
-        "Build the browser WebAssembly SDK",
-    );
-    wasm_step.dependOn(&wasm_install.step);
-
-    const native_step = b.step(
-        "native",
-        "Build the native static library",
-    );
-    native_step.dependOn(&native_install.step);
-
-    const test_step = b.step(
-        "test",
-        "Execute all tests",
-    );
-    test_step.dependOn(&run_tests_core.step);
-
-    const test_features_step = b.step(
-        "test-features",
-        "Execute features module tests only",
-    );
-    test_features_step.dependOn(&run_tests_core.step);
-
-    // Benchmark executable
-    // Build as a standalone executable with core as a dep via root module.
-    const bench_module = b.createModule(.{
-        .root_source_file = b.path("benchmark/main.zig"),
-        .target = native_target,
-        .optimize = optimize,
-        .imports = &.{
-            .{
-                .name = "core",
-                .module = core,
-            },
-        },
-    });
-
-    const bench_exe = b.addExecutable(.{
+fn build_bench(b: *std.Build, step: *std.Build.Step, options: struct {
+    bench_module: *std.Build.Module,
+}) *std.Build.Step.Compile {
+    const bench = b.addExecutable(.{
         .name = "fingerprint-bench",
-        .root_module = bench_module,
+        .root_module = options.bench_module,
     });
+    const run = b.addRunArtifact(bench);
+    step.dependOn(&run.step);
+    return bench;
+}
 
-    const run_bench = b.addRunArtifact(bench_exe);
+fn build_browser_client(b: *std.Build, step: *std.Build.Step, options: struct {
+    wasm: *std.Build.Step.Compile,
+    browser_package_module: *std.Build.Module,
+}) void {
+    const generator = b.addExecutable(.{
+        .name = "browser_package",
+        .root_module = options.browser_package_module,
+    });
+    const run = b.addRunArtifact(generator);
+    // Inputs: wasm binary, UMD template, package metadata, demo page, and the
+    // package directory the generator writes dist/ into.
+    run.addFileArg(options.wasm.getEmittedBin());
+    run.addFileArg(b.path("src/clients/browser/scripts/fingerprint-umd-template.js"));
+    run.addFileArg(b.path("src/clients/browser/package.json"));
+    run.addFileArg(b.path("src/browser/bindings/demo.html"));
+    run.addDirectoryArg(b.path("src/clients/browser"));
+    step.dependOn(&run.step);
+}
 
-    const bench_step = b.step(
-        "bench",
-        "Run performance benchmarks",
+fn build_scripts(b: *std.Build, steps: struct {
+    scripts: *std.Build.Step,
+    scripts_build: *std.Build.Step,
+}, options: struct {
+    target: std.Build.ResolvedTarget,
+}) *std.Build.Step.Compile {
+    const scripts_exe = b.addExecutable(.{
+        .name = "scripts",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/scripts.zig"),
+            .target = options.target,
+            .optimize = .Debug,
+        }),
+    });
+    steps.scripts_build.dependOn(
+        &b.addInstallArtifact(scripts_exe, .{}).step,
     );
-    bench_step.dependOn(&run_bench.step);
+
+    const scripts_run = b.addRunArtifact(scripts_exe);
+    scripts_run.setEnvironmentVariable("ZIG_EXE", b.graph.zig_exe);
+    if (b.args) |args| scripts_run.addArgs(args);
+    steps.scripts.dependOn(&scripts_run.step);
+    return scripts_exe;
+}
+
+fn build_test_integration(b: *std.Build, steps: struct {
+    test_integration: *std.Build.Step,
+    test_integration_build: *std.Build.Step,
+}, options: struct {
+    target: std.Build.ResolvedTarget,
+    mode: std.builtin.OptimizeMode,
+    bench_exe: std.Build.LazyPath,
+    scripts_exe: std.Build.LazyPath,
+}) void {
+    // Integration tests: the test binary contains no engine
+    // code and only interacts with the engine through pre-built executables,
+    // whose paths are injected as build options. addOptionPath tracks the
+    // executables as dependencies, so they are built before the test binary.
+    const integration_tests_options = b.addOptions();
+    integration_tests_options.addOptionPath("bench_exe", options.bench_exe);
+    integration_tests_options.addOptionPath("scripts_exe", options.scripts_exe);
+    const integration_tests = b.addTest(.{
+        .name = "test-integration",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/integration_tests.zig"),
+            .target = options.target,
+            .optimize = options.mode,
+        }),
+        .filters = b.args orelse &.{},
+    });
+    integration_tests.root_module.addOptions("test_options", integration_tests_options);
+    steps.test_integration_build.dependOn(&b.addInstallArtifact(integration_tests, .{}).step);
+
+    const run_integration_tests = b.addRunArtifact(integration_tests);
+    if (b.args != null) {
+        // Don't cache test results if running a specific test.
+        run_integration_tests.has_side_effects = true;
+    }
+    steps.test_integration.dependOn(&run_integration_tests.step);
+}
+
+fn build_docs(b: *std.Build, step: *std.Build.Step) void {
+    const nested_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build" });
+    nested_build.setCwd(b.path("./src/docs_website/"));
+    step.dependOn(&nested_build.step);
 }

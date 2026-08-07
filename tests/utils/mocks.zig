@@ -1,4 +1,4 @@
-const features = @import("core").features;
+const features = @import("model");
 
 /// A mock registry adapter for testing definition queries.
 /// Wraps the real Registry for scenarios that need test-specific helpers.

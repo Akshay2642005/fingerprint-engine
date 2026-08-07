@@ -1,4 +1,4 @@
-const features = @import("core").features;
+const features = @import("model");
 
 /// Returns a sample FeatureDefinition for testing purposes.
 pub fn sampleFeatureDefinition() features.FeatureDefinition {

@@ -1,8 +1,8 @@
 const std = @import("std");
 const testing = std.testing;
-const features = @import("core").features;
-const fingerprint = @import("core").fingerprint;
-const serialization = @import("core").serialization;
+const features = @import("model");
+const fingerprint = @import("model");
+const serialization = @import("serialization");
 
 // ──────────────────────────────────────────────
 // JSON Serialization — Encode
@@ -20,10 +20,11 @@ test "json encode empty fingerprint" {
     };
 
     var buf: [512]u8 = undefined;
-    var w = std.Io.Writer.fixed(&buf);
+    var fbs = std.io.fixedBufferStream(&buf);
+    var w = fbs.writer();
     try serialization.jsonEncode(&w, fp);
 
-    const json = buf[0..w.end];
+    const json = fbs.getWritten();
     try testing.expect(std.mem.containsAtLeast(u8, json, 1, "\"schema_version\""));
     try testing.expect(std.mem.containsAtLeast(u8, json, 1, "\"features\""));
     try testing.expect(std.mem.containsAtLeast(u8, json, 1, "\"sdk_version\""));
@@ -46,10 +47,11 @@ test "json encode with Boolean and Integer features" {
     };
 
     var buf: [512]u8 = undefined;
-    var w = std.Io.Writer.fixed(&buf);
+    var fbs = std.io.fixedBufferStream(&buf);
+    var w = fbs.writer();
     try serialization.jsonEncode(&w, fp);
 
-    const json = buf[0..w.end];
+    const json = fbs.getWritten();
     try testing.expect(std.mem.containsAtLeast(u8, json, 1, "\"Cookie Enabled\": true"));
     try testing.expect(std.mem.containsAtLeast(u8, json, 1, "\"Hardware Concurrency\": 8"));
     try testing.expect(std.mem.containsAtLeast(u8, json, 1, "Mozilla/5.0"));

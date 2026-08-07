@@ -1,6 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
-const features = @import("core").features;
+const features = @import("model");
 
 /// Asserts that a FeatureDefinition matches expected values.
 pub fn expectFeatureDefinition(
