@@ -11,6 +11,7 @@ const std = @import("std");
 //   model           - runtime data model (src/model/), depends on nothing
 //   core            - deterministic algorithms (src/core/), depends on model
 //   serialization   - codecs (src/serialization/), depends on model
+//   engine          - deterministic process dispatch (src/engine/), depends on model+core+serialization
 //   io              - async transport primitives (src/io/), depends on nothing
 //   browser         - WebAssembly target (src/browser/), depends on core+model
 //   browser_package - build-time npm package generator (src/build/), depends on model
@@ -79,6 +80,20 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
+    // Engine: deterministic request/response dispatch (operation, status,
+    // request, response, process, per-op handlers). Depends on Core, Model,
+    // and Serialization; imports no io/adapter/transport code.
+    const engine = b.createModule(.{
+        .root_source_file = b.path("src/engine/root.zig"),
+        .target = target,
+        .optimize = mode,
+        .imports = &.{
+            .{ .name = "model", .module = model },
+            .{ .name = "core", .module = core },
+            .{ .name = "serialization", .module = serialization },
+        },
+    });
+
     // IO: async transport primitives (message, ring buffer, channel,
     // completion, executor, frame, reader, writer, dispatcher). Depends on
     // nothing.
@@ -136,6 +151,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "model", .module = model },
             .{ .name = "core", .module = core },
             .{ .name = "serialization", .module = serialization },
+            .{ .name = "engine", .module = engine },
             .{ .name = "io", .module = io },
             .{ .name = "test_utils", .module = test_utils },
             .{ .name = "browser_package", .module = browser_package },

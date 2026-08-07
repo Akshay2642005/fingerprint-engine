@@ -14,6 +14,12 @@ comptime {
     _ = @import("core/risk_test.zig");
     _ = @import("core/types_test.zig");
     _ = @import("data/fingerprints/fingerprints_test.zig");
+    _ = @import("engine/determinism_test.zig");
+    _ = @import("engine/dispatch_test.zig");
+    _ = @import("engine/integration_test.zig");
+    _ = @import("engine/replay_test.zig");
+    _ = @import("engine/roundtrip_test.zig");
+    _ = @import("engine/unknown_version_test.zig");
     _ = @import("fuzz/fuzz_decode.zig");
     _ = @import("fuzz/fuzz_hashing.zig");
     _ = @import("fuzz/fuzz_normalize.zig");
