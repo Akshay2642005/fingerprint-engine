@@ -1,9 +1,11 @@
 # Fingerprint Engine — CI Pipeline
 #
 # Runs on pushes to master and PRs targeting master.
-# Verifies compilation, unit tests, and WASM build across Linux, macOS,
-# and Windows. Workers ship as Docker containers (deploy/Dockerfile.worker)
-# — there is no native SDK build.
+# Verifies the test suite and the WASM build on a single Linux runner.
+#
+# The engine is deterministic and ships exactly one artifact — the browser
+# WASM module — so one platform is enough to gate merges. Workers ship as
+# Docker containers (deploy/Dockerfile.worker); there is no native SDK build.
 
 name: CI
 
@@ -21,13 +23,8 @@ env:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
+    name: Test
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +53,7 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Build WASM module
-        run: zig build wasm -Doptimize=ReleaseSmall
+        run: zig build wasm --release=small
 
       - name: Verify WASM output exists
         run: |
