@@ -17,12 +17,14 @@ const std = @import("std");
 //   bench_module    - benchmarks (src/bench/), depends on core+model+serialization
 //
 // Steps:
-//   zig build test                - run all unit tests
-//   zig build wasm                - build the WebAssembly module
-//   zig build bench               - run performance benchmarks
-//   zig build clients:browser     - build the browser npm package (dist/)
-//   zig build docs                - build docs (nested src/docs_website/)
-//   zig build scripts -- <cmd>    - free-form automation scripts
+//   zig build test                  - run all unit tests (plus integration/e2e)
+//   zig build test-integration      - run integration and e2e tests
+//   zig build test-integration-build - build the integration test binary
+//   zig build wasm                  - build the WebAssembly module
+//   zig build bench                 - run performance benchmarks
+//   zig build clients:browser       - build the browser npm package (dist/)
+//   zig build docs                  - build docs (nested src/docs_website/)
+//   zig build scripts -- <cmd>      - free-form automation scripts
 pub fn build(b: *std.Build) !void {
     // A compile error stack trace of 10 is arbitrary in size but helps with debugging.
     b.reference_trace = 10;
@@ -30,6 +32,8 @@ pub fn build(b: *std.Build) !void {
     // Top-level steps you can invoke on the command line.
     const build_steps = .{
         .@"test" = b.step("test", "Run all tests"),
+        .test_integration = b.step("test-integration", "Run integration and e2e tests"),
+        .test_integration_build = b.step("test-integration-build", "Build integration tests"),
         .wasm = b.step("wasm", "Build the browser WebAssembly module"),
         .bench = b.step("bench", "Run performance benchmarks"),
         .clients_browser = b.step("clients:browser", "Build the browser SDK npm package"),
@@ -149,7 +153,7 @@ pub fn build(b: *std.Build) !void {
     }, .{ .browser_module = browser });
 
     // zig build bench
-    build_bench(b, build_steps.bench, .{ .bench_module = bench_module });
+    const bench = build_bench(b, build_steps.bench, .{ .bench_module = bench_module });
 
     // zig build clients:browser
     build_browser_client(b, build_steps.clients_browser, .{
@@ -158,10 +162,26 @@ pub fn build(b: *std.Build) !void {
     });
 
     // zig build scripts, zig build scripts:build
-    build_scripts(b, .{
+    const scripts_exe = build_scripts(b, .{
         .scripts = build_steps.scripts,
         .scripts_build = build_steps.scripts_build,
     }, .{ .target = target });
+
+    // zig build test-integration, zig build test-integration-build
+    build_test_integration(b, .{
+        .test_integration = build_steps.test_integration,
+        .test_integration_build = build_steps.test_integration_build,
+    }, .{
+        .target = target,
+        .mode = mode,
+        .bench_exe = bench.getEmittedBin(),
+        .scripts_exe = scripts_exe.getEmittedBin(),
+    });
+    if (b.args == null) {
+        // `zig build test -- <filter>` runs only matching unit tests; the
+        // integration suite is reserved for the unfiltered run.
+        build_steps.@"test".dependOn(build_steps.test_integration);
+    }
 
     // zig build docs
     build_docs(b, build_steps.docs);
@@ -216,13 +236,14 @@ fn build_wasm(b: *std.Build, steps: struct {
 
 fn build_bench(b: *std.Build, step: *std.Build.Step, options: struct {
     bench_module: *std.Build.Module,
-}) void {
+}) *std.Build.Step.Compile {
     const bench = b.addExecutable(.{
         .name = "fingerprint-bench",
         .root_module = options.bench_module,
     });
     const run = b.addRunArtifact(bench);
     step.dependOn(&run.step);
+    return bench;
 }
 
 fn build_browser_client(b: *std.Build, step: *std.Build.Step, options: struct {
@@ -249,7 +270,7 @@ fn build_scripts(b: *std.Build, steps: struct {
     scripts_build: *std.Build.Step,
 }, options: struct {
     target: std.Build.ResolvedTarget,
-}) void {
+}) *std.Build.Step.Compile {
     const scripts_exe = b.addExecutable(.{
         .name = "scripts",
         .root_module = b.createModule(.{
@@ -266,6 +287,43 @@ fn build_scripts(b: *std.Build, steps: struct {
     scripts_run.setEnvironmentVariable("ZIG_EXE", b.graph.zig_exe);
     if (b.args) |args| scripts_run.addArgs(args);
     steps.scripts.dependOn(&scripts_run.step);
+    return scripts_exe;
+}
+
+fn build_test_integration(b: *std.Build, steps: struct {
+    test_integration: *std.Build.Step,
+    test_integration_build: *std.Build.Step,
+}, options: struct {
+    target: std.Build.ResolvedTarget,
+    mode: std.builtin.OptimizeMode,
+    bench_exe: std.Build.LazyPath,
+    scripts_exe: std.Build.LazyPath,
+}) void {
+    // Integration tests: the test binary contains no engine
+    // code and only interacts with the engine through pre-built executables,
+    // whose paths are injected as build options. addOptionPath tracks the
+    // executables as dependencies, so they are built before the test binary.
+    const integration_tests_options = b.addOptions();
+    integration_tests_options.addOptionPath("bench_exe", options.bench_exe);
+    integration_tests_options.addOptionPath("scripts_exe", options.scripts_exe);
+    const integration_tests = b.addTest(.{
+        .name = "test-integration",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/integration_tests.zig"),
+            .target = options.target,
+            .optimize = options.mode,
+        }),
+        .filters = b.args orelse &.{},
+    });
+    integration_tests.root_module.addOptions("test_options", integration_tests_options);
+    steps.test_integration_build.dependOn(&b.addInstallArtifact(integration_tests, .{}).step);
+
+    const run_integration_tests = b.addRunArtifact(integration_tests);
+    if (b.args != null) {
+        // Don't cache test results if running a specific test.
+        run_integration_tests.has_side_effects = true;
+    }
+    steps.test_integration.dependOn(&run_integration_tests.step);
 }
 
 fn build_docs(b: *std.Build, step: *std.Build.Step) void {

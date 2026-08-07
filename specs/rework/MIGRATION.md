@@ -53,12 +53,13 @@ commits; behavior changes land behind them one layer at a time.
 | `src/engine/` (operation, request, response, engine, ops/*) | commit 6 |
 | `src/adapter/` (transport, loopback) | commit 8 |
 | `src/adapter/amqp/codec.zig` | commit 10 |
-| `src/worker/main.zig` | commit 9 |
-| `deploy/Dockerfile.worker` | commit 9 |
-| `src/scripts.zig` (dispatcher) + `src/scripts/` | commit 4 |
-| `src/build/browser_package.zig` (dist generator) | commit 4 |
-| `src/docs_website/` (nested build, `zig build docs`) | commit 4 |
-| `tests/build/*` (generator tests) | commit 4 |
+| `src/worker/main.zig` | commit 12 |
+| `deploy/Dockerfile.worker` | commit 12 |
+| `src/scripts.zig` (dispatcher) + `src/scripts/` | commit 5 |
+| `src/build/browser_package.zig` (dist generator) | commit 5 |
+| `src/docs_website/` (nested build, `zig build docs`) | commit 5 |
+| `tests/build/*` (generator tests) | commit 5 |
+| `src/integration_tests.zig`, `src/testing/shell.zig` (e2e harness) | commit 7 |
 | `tests/io/*`, `tests/engine/*`, `tests/adapter/*`, `tests/worker/*` | with their modules |
 
 ## 2. Rewritten files
@@ -86,11 +87,13 @@ commits; behavior changes land behind them one layer at a time.
 2. **refactor: relocate modules into layered tree** (DONE)
    Pure renames/moves per §1 (model, core, serialization, tests, tools, sdk).
    No logic change. Import paths updated mechanically.
-3. **refactor: relocate browser SDK and bench to src/clients, src/bench**
+3. **docs(specs): adopt build and layout convention (D13)** (DONE)
+   Locks the repository layout and zig-only build pipeline.
+4. **refactor: move browser SDK and bench to src/clients, src/bench** (DONE)
    D13 moves: `sdk/browser/` → `src/clients/browser/` (fixes `../../..`
    ROOT depth bug in build.mjs/package.json), `tools/bench/` → `src/bench/`;
    `release.yml` path update. Pure renames; gates stay green.
-4. **build: build-system unification**
+5. **build: build-system unification** (DONE)
    O(1) build.zig (step tuple + helpers, preferred ReleaseSafe);
    `src/scripts.zig` dispatcher (help-only) + `scripts:build`;
    `src/build/browser_package.zig` Zig generator (wasm base64-inlined UMD,
@@ -98,29 +101,42 @@ commits; behavior changes land behind them one layer at a time.
    `build.mjs`; template markers; zig-only `package.json` build;
    `src/docs_website/` nested build (`zig build docs`); `tests/build/*`;
    release.yml uses `zig build clients:browser`.
-5. **feat(io): async IO primitives**
+6. **test: adopt self-verifying test registry** (DONE)
+   `tests/root.zig` self-verifying quine registry discovers and imports every
+   test file under `tests/`; `SNAP_UPDATE=1` regenerates the import list.
+   `zig build test -- <filter>` runs only matching tests.
+7. **test: integration and e2e smoke tests**
+   `src/integration_tests.zig` (test binary contains no engine code,
+   drives pre-built executables as subprocesses), `src/testing/shell.zig`
+   helper, steps `test-integration` /
+   `test-integration-build` with exe paths injected via build options;
+   scripts/bench e2e smokes. `zig build test` runs the integration suite when
+   no filter is given. The worker pipe e2e lands in commit 12.
+8. **feat(io): async IO primitives**
    message, ring_buffer, channel, completion, executor, reader, writer, frame,
    dispatcher + `tests/io/`.
-6. **feat(engine): Request/Response/Operation/process**
+9. **feat(engine): Request/Response/Operation/process**
    operation, request, response, engine with comptime dispatch, ops/* over the
    existing core algorithms + `tests/engine/` (dispatch, determinism, replay
    goldens, unknown-version).
-7. **feat(serialization): FPKG envelope + v2 body + integrity + codec interface**
-   Envelope framing in `io/frame.zig`; binary v2 + v1 compat; json; codec
-   interface; integrity SHA-256; `tests/serialization/` extended. Old fixtures
-   converted to compat goldens.
-8. **feat(adapter): transport interface + loopback**
-   comptime Transport contract, loopback transport (in-memory + stdin/stdout
-   framing) + `tests/adapter/`.
-9. **feat(worker): executable + Docker**
-   `worker/main.zig` with `--transport=loopback`, e2e pipe tests
-   (`tests/worker/`), `deploy/Dockerfile.worker`, worker CI job.
-10. **feat(adapter): AMQP 0-9-1 codec (v1)**
+10. **feat(serialization): FPKG envelope + v2 body + integrity + codec interface**
+    Envelope framing in `io/frame.zig`; binary v2 + v1 compat; json; codec
+    interface; integrity SHA-256; `tests/serialization/` extended. Old fixtures
+    converted to compat goldens.
+11. **feat(adapter): transport interface + loopback**
+    comptime Transport contract, loopback transport (in-memory + stdin/stdout
+    framing) + `tests/adapter/`.
+12. **feat(worker): executable + Docker**
+    `worker/main.zig` with `--transport=loopback`, e2e pipe test in
+    `src/integration_tests.zig` (spawn worker, feed SignalPackage over stdin,
+    assert canonical fingerprint on stdout), `deploy/Dockerfile.worker`,
+    worker CI job.
+13. **feat(adapter): AMQP 0-9-1 codec (v1)**
     `adapter/amqp/codec.zig` framing + byte-fixture tests. No broker needed.
-11. **feat(browser): stateless WASM + TS package builder**
+14. **feat(browser): stateless WASM + TS package builder**
     Rewrite wasm exports and bindings; drop canonical digest; keep collectors;
     `tests/browser/` updated. WASM used for bench + test containers.
-12. **docs: final docs + spec cleanup**
+15. **docs: final docs + spec cleanup**
     `docs/{Architecture,Engine,IO,Worker,AMQP,Serialization,Migration,Design}.md`;
     update CLAUDE.md/CONVENTIONS.md; remove stale `specs/tech-architecture/*`
     or mark superseded.
@@ -133,17 +149,17 @@ with its own tests.
 ## 4. Gate checklist per commit
 
 - [ ] `zig build test --summary all` green (0.14.1)
-- [ ] `zig build wasm` green (from commit 1; updated surface from commit 11)
-- [ ] `zig build worker` green (from commit 9)
-- [ ] `zig build bench` compiles (from commit 2, relocated to src/bench in commit 3)
-- [ ] `zig build clients:browser` green (from commit 4; npm package dist/ produced by Zig)
-- [ ] `zig build docs` green (from commit 4)
-- [ ] `zig build scripts -- help` green (from commit 4)
+- [ ] `zig build test-integration` green (from commit 7)
+- [ ] `zig build wasm` green (from commit 1; updated surface from commit 14)
+- [ ] `zig build worker` green (from commit 12)
+- [ ] `zig build bench` compiles (from commit 2, relocated to src/bench in commit 4)
+- [ ] `zig build clients:browser` green (from commit 5; npm package dist/ produced by Zig)
+- [ ] `zig build docs` green (from commit 5)
+- [ ] `zig build scripts -- help` green (from commit 5)
 - [ ] No new warnings; files under 300 lines; no dead imports (CONVENTIONS)
 
-Note: the sandbox terminal is broken (libasound.so.2) — gates must be run by
-the user locally until the sandbox is fixed; the migration plan is sequenced so
-each commit is independently verifiable.
+Gates run in the sandbox terminal; `zig build test -- <filter>` must stay
+unit-only (integration is excluded when a filter is given).
 
 ## 5. Risks
 
