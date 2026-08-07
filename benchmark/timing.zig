@@ -1,32 +1,24 @@
-/// Shared I/O and timing utilities for benchmarks.
-/// Wraps Zig 0.16.0's std.Io.Threaded for cross-platform timing.
-
+/// Shared timing utilities for benchmarks.
+/// Uses std.time.Timer for cross-platform nanosecond timing.
 const std = @import("std");
 
 pub const BenchIo = struct {
-    threaded: std.Io.Threaded,
+    timer: std.time.Timer,
 
     pub fn init(allocator: std.mem.Allocator) BenchIo {
-        return .{
-            .threaded = std.Io.Threaded.init(allocator, .{}),
-        };
+        _ = allocator;
+        return .{ .timer = std.time.Timer.start() catch @panic("timer") };
     }
 
     pub fn deinit(self: *BenchIo) void {
-        self.threaded.deinit();
+        _ = self;
     }
 
-    pub fn io(self: *BenchIo) std.Io {
-        return self.threaded.io();
+    pub fn timestamp(self: *BenchIo) u64 {
+        return self.timer.read();
     }
 
-    pub fn timestamp(self: *BenchIo) std.Io.Timestamp {
-        return std.Io.Timestamp.now(self.io(), .awake);
-    }
-
-    pub fn elapsed(self: *BenchIo, from: std.Io.Timestamp) u64 {
-        const now = std.Io.Timestamp.now(self.io(), .awake);
-        const dur = std.Io.Timestamp.durationTo(from, now);
-        return @intCast(dur.nanoseconds);
+    pub fn elapsed(self: *BenchIo, from: u64) u64 {
+        return self.timer.read() - from;
     }
 };

@@ -101,7 +101,7 @@ fn getMaxArrayCount(id: FeatureID) ?usize {
 /// Returns a slice of warnings (empty = conforming).
 /// Caller owns the memory.
 pub fn checkBounds(feat: Feature, allocator: std.mem.Allocator) ![]BoundWarning {
-    var warnings: std.ArrayList(BoundWarning) = .empty;
+    var warnings: std.ArrayListUnmanaged(BoundWarning) = .empty;
     defer warnings.deinit(allocator);
 
     const def = Registry.get(feat.id);
@@ -219,7 +219,7 @@ pub fn checkBounds(feat: Feature, allocator: std.mem.Allocator) ![]BoundWarning 
 /// Checks bounds for every feature in a fingerprint.
 /// Returns a flat list of all bound warnings detected.
 pub fn checkAllBounds(fp: Fingerprint, allocator: std.mem.Allocator) ![]BoundWarning {
-    var all_warnings: std.ArrayList(BoundWarning) = .empty;
+    var all_warnings: std.ArrayListUnmanaged(BoundWarning) = .empty;
     defer all_warnings.deinit(allocator);
 
     for (fp.features) |feat| {

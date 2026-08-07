@@ -20,7 +20,7 @@ pub const NormalizationWarning = union(enum) {
 /// Returns a flat slice of all warnings detected. Empty = clean fingerprint.
 /// Caller owns the returned memory (free with `allocator.free(warnings)`).
 pub fn normalize(fp: Fingerprint, allocator: std.mem.Allocator) ![]NormalizationWarning {
-    var warnings: std.ArrayList(NormalizationWarning) = .empty;
+    var warnings: std.ArrayListUnmanaged(NormalizationWarning) = .empty;
     defer warnings.deinit(allocator);
 
     // Type validation

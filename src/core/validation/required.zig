@@ -17,7 +17,7 @@ pub const RequiredWarning = struct {
 /// Checks that all features with the `required` flag are present in the fingerprint.
 /// Returns a list of missing required features (empty = all required features present).
 pub fn checkRequired(fp: Fingerprint, allocator: std.mem.Allocator) ![]RequiredWarning {
-    var missing: std.ArrayList(RequiredWarning) = .empty;
+    var missing: std.ArrayListUnmanaged(RequiredWarning) = .empty;
     defer missing.deinit(allocator);
 
     // Build a set of present FeatureIDs

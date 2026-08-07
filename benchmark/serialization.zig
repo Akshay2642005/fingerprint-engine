@@ -32,9 +32,9 @@ pub fn benchBinaryEncode(bench_io: *timing.BenchIo) main.BenchmarkResult {
     // Warmup
     var i: u64 = 0;
     while (i < main.warmup_iterations) : (i += 1) {
-        var al: std.ArrayList(u8) = .empty;
-        al.ensureTotalCapacity(std.heap.page_allocator, 1024) catch @panic("oom");
-        var w = std.Io.Writer.fromArrayList(&al);
+        var buf: [1024]u8 = undefined;
+        var fbs = std.io.fixedBufferStream(&buf);
+        var w = fbs.writer();
         core.serialization.encode(&w, sample_fp) catch @panic("encode");
     }
 
@@ -45,9 +45,9 @@ pub fn benchBinaryEncode(bench_io: *timing.BenchIo) main.BenchmarkResult {
     i = 0;
     while (i < iters) : (i += 1) {
         const iter_start = bench_io.timestamp();
-        var al: std.ArrayList(u8) = .empty;
-        al.ensureTotalCapacity(std.heap.page_allocator, 1024) catch @panic("oom");
-        var w = std.Io.Writer.fromArrayList(&al);
+        var buf: [1024]u8 = undefined;
+        var fbs = std.io.fixedBufferStream(&buf);
+        var w = fbs.writer();
         core.serialization.encode(&w, sample_fp) catch @panic("encode");
         const iter_ns = bench_io.elapsed(iter_start);
         total_ns += iter_ns;
@@ -72,9 +72,9 @@ pub fn benchJsonEncode(bench_io: *timing.BenchIo) main.BenchmarkResult {
     // Warmup
     var i: u64 = 0;
     while (i < 20) : (i += 1) {
-        var al: std.ArrayList(u8) = .empty;
-        al.ensureTotalCapacity(std.heap.page_allocator, 4096) catch @panic("oom");
-        var w = std.Io.Writer.fromArrayList(&al);
+        var buf: [4096]u8 = undefined;
+        var fbs = std.io.fixedBufferStream(&buf);
+        var w = fbs.writer();
         core.serialization.jsonEncode(&w, sample_fp) catch @panic("json");
     }
 
@@ -85,9 +85,9 @@ pub fn benchJsonEncode(bench_io: *timing.BenchIo) main.BenchmarkResult {
     i = 0;
     while (i < iters) : (i += 1) {
         const iter_start = bench_io.timestamp();
-        var al: std.ArrayList(u8) = .empty;
-        al.ensureTotalCapacity(std.heap.page_allocator, 4096) catch @panic("oom");
-        var w = std.Io.Writer.fromArrayList(&al);
+        var buf: [4096]u8 = undefined;
+        var fbs = std.io.fixedBufferStream(&buf);
+        var w = fbs.writer();
         core.serialization.jsonEncode(&w, sample_fp) catch @panic("json");
         const iter_ns = bench_io.elapsed(iter_start);
         total_ns += iter_ns;

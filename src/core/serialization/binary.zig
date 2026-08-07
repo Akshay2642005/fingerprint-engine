@@ -44,7 +44,7 @@ fn freeFeatureValue(allocator: std.mem.Allocator, value: FeatureValue) void {
 }
 
 /// Encodes a Fingerprint into binary format using the provided writer.
-pub fn encode(w: *std.Io.Writer, fp: Fingerprint) !void {
+pub fn encode(w: anytype, fp: Fingerprint) !void {
     try w.writeAll(&MAGIC);
     try w.writeInt(u16, fp.metadata.schema_version, .little);
     try w.writeInt(u16, @as(u16, @intCast(fp.features.len)), .little);
@@ -54,20 +54,21 @@ pub fn encode(w: *std.Io.Writer, fp: Fingerprint) !void {
     }
 }
 
-fn encodeFeature(w: *std.Io.Writer, feat: Feature) !void {
+fn encodeFeature(w: anytype, feat: Feature) !void {
     try w.writeInt(u16, @intFromEnum(feat.id), .little);
     try w.writeByte(@intFromEnum(feat.value.valueType()));
 
     var payload_buf: [1024]u8 = undefined;
-    var pw = std.Io.Writer.fixed(&payload_buf);
+    var pfbs = std.io.fixedBufferStream(&payload_buf);
+    var pw = pfbs.writer();
     try writeValuePayload(&pw, feat.value);
-    const payload = payload_buf[0..pw.end];
+    const payload = pfbs.getWritten();
 
     try w.writeInt(u32, @as(u32, @intCast(payload.len)), .little);
     try w.writeAll(payload);
 }
 
-fn writeValuePayload(w: *std.Io.Writer, value: FeatureValue) !void {
+fn writeValuePayload(w: anytype, value: FeatureValue) !void {
     switch (value) {
         .Boolean => |v| try w.writeByte(if (v) 1 else 0),
         .Integer => |v| try w.writeInt(i64, v, .little),
@@ -115,33 +116,27 @@ pub const DecodeError = error{
     OutOfMemory,
 };
 
-/// Helper: wrap takeArray to convert EndOfStream/ReadFailed to Truncated.
-fn readArray(r: *std.Io.Reader, comptime n: usize) DecodeError!*[n]u8 {
-    return r.takeArray(n) catch |err| switch (err) {
-        error.EndOfStream => return error.Truncated,
-        error.ReadFailed => return error.Truncated,
-    };
+/// Helper: read exactly n bytes, mapping any read error to Truncated.
+fn readArray(r: anytype, comptime n: usize) DecodeError![n]u8 {
+    return r.readBytesNoEof(n) catch return error.Truncated;
 }
 
-/// Helper: wrap readSliceAll to convert EndOfStream/ReadFailed to Truncated.
-fn readExact(r: *std.Io.Reader, buf: []u8) DecodeError!void {
-    return r.readSliceAll(buf) catch |err| switch (err) {
-        error.EndOfStream => return error.Truncated,
-        error.ReadFailed => return error.Truncated,
-    };
+/// Helper: read exactly buf.len bytes, mapping any read error to Truncated.
+fn readExact(r: anytype, buf: []u8) DecodeError!void {
+    return r.readNoEof(buf) catch return error.Truncated;
 }
 
 /// Decodes a Fingerprint from binary format.
 /// The caller must call `decoded.deinit()` to free allocated memory.
-pub fn decode(r: *std.Io.Reader, allocator: std.mem.Allocator) DecodeError!DecodedFingerprint {
+pub fn decode(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerprint {
     const magic = try readArray(r, 4);
-    if (!std.mem.eql(u8, magic, &MAGIC)) return error.InvalidMagic;
+    if (!std.mem.eql(u8, &magic, &MAGIC)) return error.InvalidMagic;
 
     const schema_bytes = try readArray(r, 2);
-    const schema_version = std.mem.readInt(u16, schema_bytes, .little);
+    const schema_version = std.mem.readInt(u16, &schema_bytes, .little);
 
     const count_bytes = try readArray(r, 2);
-    const feature_count = std.mem.readInt(u16, count_bytes, .little);
+    const feature_count = std.mem.readInt(u16, &count_bytes, .little);
 
     const features_slice = try allocator.alloc(Feature, feature_count);
     errdefer allocator.free(features_slice);
@@ -168,21 +163,22 @@ pub fn decode(r: *std.Io.Reader, allocator: std.mem.Allocator) DecodeError!Decod
     };
 }
 
-fn decodeFeature(r: *std.Io.Reader, allocator: std.mem.Allocator) DecodeError!Feature {
+fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!Feature {
     const id_bytes = try readArray(r, 2);
-    const id_int = std.mem.readInt(u16, id_bytes, .little);
+    const id_int = std.mem.readInt(u16, &id_bytes, .little);
 
     const type_bytes = try readArray(r, 1);
     const type_tag = type_bytes[0];
 
     const len_bytes = try readArray(r, 4);
-    const payload_len = std.mem.readInt(u32, len_bytes, .little);
+    const payload_len = std.mem.readInt(u32, &len_bytes, .little);
 
     const payload = try allocator.alloc(u8, payload_len);
     defer allocator.free(payload);
     try readExact(r, payload);
 
-    var pr = std.Io.Reader.fixed(payload);
+    var pfbs = std.io.fixedBufferStream(payload);
+    var pr = pfbs.reader();
     const value = try readValuePayload(&pr, allocator, @enumFromInt(type_tag));
 
     return Feature{
@@ -191,7 +187,7 @@ fn decodeFeature(r: *std.Io.Reader, allocator: std.mem.Allocator) DecodeError!Fe
     };
 }
 
-fn readValuePayload(r: *std.Io.Reader, allocator: std.mem.Allocator, tag: FeatureType) DecodeError!FeatureValue {
+fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) DecodeError!FeatureValue {
     switch (tag) {
         .Boolean => {
             const byte = (try readArray(r, 1))[0];
@@ -199,11 +195,11 @@ fn readValuePayload(r: *std.Io.Reader, allocator: std.mem.Allocator, tag: Featur
         },
         .Integer => {
             const bytes = try readArray(r, 8);
-            return FeatureValue{ .Integer = std.mem.readInt(i64, bytes, .little) };
+            return FeatureValue{ .Integer = std.mem.readInt(i64, &bytes, .little) };
         },
         .Float => {
             const bytes = try readArray(r, 8);
-            const bits = std.mem.readInt(u64, bytes, .little);
+            const bits = std.mem.readInt(u64, &bytes, .little);
             return FeatureValue{ .Float = @bitCast(bits) };
         },
         .String => {
@@ -236,7 +232,7 @@ fn readValuePayload(r: *std.Io.Reader, allocator: std.mem.Allocator, tag: Featur
             errdefer allocator.free(items);
             for (0..count) |i| {
                 const bytes = try readArray(r, 8);
-                items[i] = std.mem.readInt(i64, bytes, .little);
+                items[i] = std.mem.readInt(i64, &bytes, .little);
             }
             return FeatureValue{ .IntegerArray = items };
         },
@@ -246,7 +242,7 @@ fn readValuePayload(r: *std.Io.Reader, allocator: std.mem.Allocator, tag: Featur
             errdefer allocator.free(items);
             for (0..count) |i| {
                 const bytes = try readArray(r, 8);
-                items[i] = @bitCast(std.mem.readInt(u64, bytes, .little));
+                items[i] = @bitCast(std.mem.readInt(u64, &bytes, .little));
             }
             return FeatureValue{ .FloatArray = items };
         },
@@ -265,7 +261,7 @@ fn readValuePayload(r: *std.Io.Reader, allocator: std.mem.Allocator, tag: Featur
     }
 }
 
-fn readU32(r: *std.Io.Reader) DecodeError!u32 {
+fn readU32(r: anytype) DecodeError!u32 {
     const bytes = try readArray(r, 4);
-    return std.mem.readInt(u32, bytes, .little);
+    return std.mem.readInt(u32, &bytes, .little);
 }

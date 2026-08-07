@@ -60,7 +60,7 @@ pub fn computeRisk(fp: Fingerprint, allocator: std.mem.Allocator) !RiskAssessmen
     const fp_entropy = entropy.fingerprintEntropy(fp);
 
     // ── Build flags ──
-    var flags: std.ArrayList(RiskFlag) = .empty;
+    var flags: std.ArrayListUnmanaged(RiskFlag) = .empty;
     defer flags.deinit(allocator);
 
     if (missing.len > 0)
@@ -72,14 +72,20 @@ pub fn computeRisk(fp: Fingerprint, allocator: std.mem.Allocator) !RiskAssessmen
             .bound_violation => {
                 var found = false;
                 for (flags.items) |f| {
-                    if (f == .bound_violation) { found = true; break; }
+                    if (f == .bound_violation) {
+                        found = true;
+                        break;
+                    }
                 }
                 if (!found) try flags.append(allocator, .bound_violation);
             },
             .type_mismatch => {
                 var found = false;
                 for (flags.items) |f| {
-                    if (f == .type_mismatch) { found = true; break; }
+                    if (f == .type_mismatch) {
+                        found = true;
+                        break;
+                    }
                 }
                 if (!found) try flags.append(allocator, .type_mismatch);
             },

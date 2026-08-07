@@ -13,7 +13,7 @@ on:
     branches: [master]
 
 env:
-  ZIG_VERSION: 0.16.0
+  ZIG_VERSION: 0.14.1
   # Node 20 deprecation: GitHub runners use Node 24 by default
   # These actions work fine on Node 24 despite the deprecation warnings
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"

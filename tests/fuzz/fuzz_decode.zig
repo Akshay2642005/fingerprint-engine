@@ -1,24 +1,18 @@
 /// Fuzz testing for binary decode — the most critical attack surface.
 /// Tests that decode never crashes, leaks memory, or produces undefined
 /// behavior regardless of input.
-
 const std = @import("std");
 const testing = std.testing;
 const core = @import("core");
 
 const Fingerprint = core.fingerprint.Fingerprint;
-const FeatureValue = core.fingerprint.FeatureValue;
 
-fn fuzzDecodeArbitrary(_: void, smith: *testing.Smith) anyerror!void {
-    // Generate a random byte buffer (0..4096 bytes)
-    var buf: [4096]u8 = undefined;
-    const len = smith.sliceWithHash(&buf, 0);
-
-    // Create a Reader from the random bytes
-    var tr = testing.Reader.init(&buf, &.{.{ .buffer = buf[0..len] }});
+fn fuzzDecodeArbitrary(_: void, input: []const u8) anyerror!void {
+    var fbs = std.io.fixedBufferStream(input);
+    var r = fbs.reader();
 
     // decode must never crash — only return error or success
-    var result = core.serialization.decode(&tr.interface, std.heap.page_allocator) catch return;
+    var result = core.serialization.decode(&r, std.heap.page_allocator) catch return;
     defer result.deinit();
 
     // If decode succeeded, the result should be valid
@@ -29,7 +23,7 @@ test "fuzz: binary decode handles arbitrary bytes" {
     try testing.fuzz({}, fuzzDecodeArbitrary, .{});
 }
 
-fn fuzzDecodeTruncated(_: void, smith: *testing.Smith) anyerror!void {
+fn fuzzDecodeTruncated(_: void, input: []const u8) anyerror!void {
     // Start with valid encoded data, then truncate it
     const valid_fp = Fingerprint{
         .metadata = .{
@@ -40,24 +34,24 @@ fn fuzzDecodeTruncated(_: void, smith: *testing.Smith) anyerror!void {
         .features = &.{},
     };
 
-    var al: std.ArrayList(u8) = .empty;
-    al.ensureTotalCapacity(std.heap.page_allocator, 256) catch return;
-    var w = std.Io.Writer.fromArrayList(&al);
-    core.serialization.encode(&w, valid_fp) catch return;
-    var encoded = w.toArrayList();
-    defer encoded.deinit(std.heap.page_allocator);
-
-    // Truncate at random point
-    const trunc_len = smith.indexWithHash(encoded.items.len + 1, 1);
-    const truncated = encoded.items[0..trunc_len];
-
-    // Create a Reader from the truncated data
     var buf: [256]u8 = undefined;
-    @memcpy(buf[0..truncated.len], truncated);
-    var tr = testing.Reader.init(&buf, &.{.{ .buffer = buf[0..truncated.len] }});
+    var efbs = std.io.fixedBufferStream(&buf);
+    var w = efbs.writer();
+    core.serialization.encode(&w, valid_fp) catch return;
+    const encoded = efbs.getWritten();
+
+    // Truncate at a point chosen from the fuzz input
+    const trunc_len = if (input.len == 0)
+        0
+    else
+        @min(@as(usize, input[0]) % (encoded.len + 1), encoded.len);
+    const truncated = encoded[0..trunc_len];
+
+    var tfbs = std.io.fixedBufferStream(truncated);
+    var r = tfbs.reader();
 
     // Must not crash
-    var result = core.serialization.decode(&tr.interface, std.heap.page_allocator) catch return;
+    var result = core.serialization.decode(&r, std.heap.page_allocator) catch return;
     defer result.deinit();
 }
 

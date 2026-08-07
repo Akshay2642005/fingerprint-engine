@@ -8,7 +8,7 @@ const Fingerprint = fingerprint.Fingerprint;
 const Registry = @import("../features/registry.zig").Registry;
 
 /// Encodes a Fingerprint as JSON using the provided writer.
-pub fn jsonEncode(w: *std.Io.Writer, fp: Fingerprint) !void {
+pub fn jsonEncode(w: anytype, fp: Fingerprint) !void {
     try w.writeAll("{\n");
 
     // Metadata fields
@@ -34,7 +34,7 @@ pub fn jsonEncode(w: *std.Io.Writer, fp: Fingerprint) !void {
     try w.writeAll("}");
 }
 
-fn writeJsonValue(w: *std.Io.Writer, value: FeatureValue) !void {
+fn writeJsonValue(w: anytype, value: FeatureValue) !void {
     switch (value) {
         .Boolean => |v| try w.writeAll(if (v) "true" else "false"),
         .Integer => |v| try w.print("{}", .{v}),
@@ -83,7 +83,7 @@ fn writeJsonValue(w: *std.Io.Writer, value: FeatureValue) !void {
 }
 
 /// Writes a JSON-escaped string (with quotes).
-fn writeJsonString(w: *std.Io.Writer, s: []const u8) !void {
+fn writeJsonString(w: anytype, s: []const u8) !void {
     try w.writeAll("\"");
     for (s) |c| {
         switch (c) {
