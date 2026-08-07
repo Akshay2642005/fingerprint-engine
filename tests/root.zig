@@ -41,6 +41,8 @@ comptime {
     _ = @import("model/registry_test.zig");
     _ = @import("model/value_test.zig");
     _ = @import("serialization/binary_test.zig");
+    _ = @import("serialization/codec_test.zig");
+    _ = @import("serialization/integrity_test.zig");
     _ = @import("serialization/json_test.zig");
     _ = @import("utils_test.zig");
 }

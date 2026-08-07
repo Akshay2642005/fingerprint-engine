@@ -19,8 +19,8 @@ pub fn handle(req: *const Request, res: *Response, scratch: std.mem.Allocator) !
     const w = fbs.writer();
     try format.writeValidationResult(w, required, norm);
 
-    // Re-encode the (normalized) package. The v1 codec is canonical, so the
-    // input bytes round-trip unchanged; v2 adds replay identity in commit 10.
+    // Re-encode the (normalized) package. The codec is version-field-driven,
+    // so a v1 input round-trips as v1 and a v2 input keeps its replay identity.
     const pos_before = fbs.pos;
     try w.writeInt(u32, 0, .little); // placeholder, patched below
     const pkg_start = fbs.pos;

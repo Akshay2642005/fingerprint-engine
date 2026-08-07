@@ -19,6 +19,13 @@ pub fn jsonEncode(w: anytype, fp: Fingerprint) !void {
     try w.writeAll(",\n");
     try w.print("  \"collected_at\": {},\n", .{fp.metadata.collected_at});
 
+    // v2 adds replay identity; v1 keeps its legacy shape.
+    if (fp.metadata.schema_version == @import("codec.zig").schema_version_v2) {
+        try w.writeAll("  \"package_id\": \"");
+        for (fp.metadata.package_id) |byte| try w.print("{x:0>2}", .{byte});
+        try w.writeAll("\",\n");
+    }
+
     // Features object
     try w.writeAll("  \"features\": {\n");
     for (fp.features, 0..) |feat, i| {

@@ -1,13 +1,9 @@
 const Operation = @import("operation.zig").Operation;
 
-/// Codec identifiers shared by the engine and the FPKG envelope. Values are
-/// explicit wire tags; non-exhaustive so unknown tags map to
-/// `invalid_request` rather than a misread payload.
-pub const CodecID = enum(u8) {
-    binary = 1,
-    json = 2,
-    _,
-};
+/// Codec identifiers shared by the engine and the FPKG envelope. Single source
+/// of truth is serialization/codec.zig (wire-stable tags); the engine aliases
+/// it so the request path can never drift from the codec registry.
+pub const CodecID = @import("serialization").CodecID;
 
 /// An immutable engine request. `payload` is borrowed input: the caller
 /// owns it and the engine never mutates or frees it. The engine is

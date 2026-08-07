@@ -355,3 +355,107 @@ test "decode rejects truncated data" {
         try testing.expect(err == error.EndOfStream or err == error.Truncated);
     }
 }
+
+// ──────────────────────────────────────────────
+// Binary Serialization — v2 body (design §5.1)
+// ──────────────────────────────────────────────
+
+const test_package_id = [16]u8{
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+};
+
+test "v2: encode writes sdk metadata, collection time, and package id" {
+    const meta = fingerprint.FingerprintMetadata{
+        .schema_version = 2,
+        .sdk_version = "0.2.0",
+        .collected_at = 1700000000123,
+        .package_id = test_package_id,
+    };
+    const fp = fingerprint.Fingerprint{
+        .metadata = meta,
+        .features = &.{},
+    };
+
+    var buf: [256]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    var w = fbs.writer();
+    try serialization.encode(&w, fp);
+
+    const bytes = fbs.getWritten();
+    // magic (4) | version u16 | sdk_len u16 | sdk (5) | collected i64 |
+    // package_id (16) | feature_count u16
+    try testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, bytes[4..6], .little));
+    try testing.expectEqual(@as(u16, 5), std.mem.readInt(u16, bytes[6..8], .little));
+    try testing.expectEqualStrings("0.2.0", bytes[8..13]);
+    try testing.expectEqual(@as(i64, 1700000000123), std.mem.readInt(i64, bytes[13..21], .little));
+    try testing.expectEqualSlices(u8, &test_package_id, bytes[21..37]);
+    try testing.expectEqual(@as(u16, 0), std.mem.readInt(u16, bytes[37..39], .little));
+    try testing.expectEqual(@as(usize, 39), bytes.len);
+}
+
+test "v2: round-trip preserves metadata and features" {
+    const allocator = testing.allocator;
+    const meta = fingerprint.FingerprintMetadata{
+        .schema_version = 2,
+        .sdk_version = "0.2.0",
+        .collected_at = 1700000000123,
+        .package_id = test_package_id,
+    };
+    const original = fingerprint.Fingerprint{
+        .metadata = meta,
+        .features = &.{
+            fingerprint.Feature{ .id = features.FeatureID.CookieEnabled, .value = fingerprint.FeatureValue{ .Boolean = true } },
+            fingerprint.Feature{ .id = features.FeatureID.UserAgent, .value = fingerprint.FeatureValue{ .String = "Mozilla/5.0" } },
+        },
+    };
+
+    var decoded = try roundTrip(original, allocator);
+    defer decoded.deinit();
+    const fp = decoded.fingerprint;
+
+    try testing.expectEqual(@as(u16, 2), fp.metadata.schema_version);
+    try testing.expectEqualStrings("0.2.0", fp.metadata.sdk_version);
+    try testing.expectEqual(@as(i64, 1700000000123), fp.metadata.collected_at);
+    try testing.expectEqualSlices(u8, &test_package_id, &fp.metadata.package_id);
+    try testing.expectEqual(@as(usize, 2), fp.features.len);
+    try testing.expect(fp.features[0].value.Boolean);
+    try testing.expectEqualStrings("Mozilla/5.0", fp.features[1].value.String);
+}
+
+test "v2: empty sdk version round-trips" {
+    const allocator = testing.allocator;
+    const original = fingerprint.Fingerprint{
+        .metadata = .{
+            .schema_version = 2,
+            .sdk_version = "",
+            .collected_at = 0,
+            .package_id = test_package_id,
+        },
+        .features = &.{},
+    };
+
+    var decoded = try roundTrip(original, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.metadata.sdk_version.len);
+    try testing.expectEqualSlices(u8, &test_package_id, &decoded.fingerprint.metadata.package_id);
+}
+
+test "v2: truncated metadata maps to Truncated" {
+    const allocator = testing.allocator;
+    // v2 header claims 5 sdk bytes but the body is cut off mid-metadata.
+    const partial = [_]u8{ 'F', 'N', 'G', 'R', 2, 0, 5, 0, '0', '.', '2', '.', '0' };
+
+    var fbs = std.io.fixedBufferStream(&partial);
+    var r = fbs.reader();
+    try testing.expectError(error.Truncated, serialization.decode(&r, allocator));
+}
+
+test "decode rejects unsupported schema version" {
+    const allocator = testing.allocator;
+    const unsupported = [_]u8{ 'F', 'N', 'G', 'R', 3, 0, 0, 0 };
+
+    var fbs = std.io.fixedBufferStream(&unsupported);
+    var r = fbs.reader();
+    try testing.expectError(error.UnsupportedVersion, serialization.decode(&r, allocator));
+}

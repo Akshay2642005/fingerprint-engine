@@ -4,8 +4,8 @@ const format = @import("../format.zig");
 const Request = @import("../request.zig").Request;
 const Response = @import("../response.zig").Response;
 
-/// serialize: SignalPackage → bytes in the requested codec. The input is
-/// always the binary v1 package (the only decodable form today); `codec`
+/// serialize: SignalPackage → bytes in the requested codec. The input is a
+/// binary FNGR package (v1 or v2, the decodable forms today); `codec`
 /// selects the output format (binary or json).
 pub fn handle(req: *const Request, res: *Response, scratch: std.mem.Allocator) !void {
     const fp = try format.decodePayload(req.payload, scratch);
