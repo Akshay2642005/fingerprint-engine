@@ -18,8 +18,9 @@ test "FingerprintMetadata can be constructed with default values" {
 }
 
 test "FingerprintMetadata struct size is reasonable" {
-    // u16 (2) + []const u8 (16) + i64 (8) = 26 bytes + alignment padding
-    try testing.expect(@sizeOf(fingerprint.FingerprintMetadata) <= 32);
+    // u16 (2) + []const u8 (8) + i64 (8) + package_id [16]u8 = 34 bytes +
+    // alignment padding (v2 adds replay identity, design §5.1)
+    try testing.expect(@sizeOf(fingerprint.FingerprintMetadata) <= 48);
 }
 
 test "FingerprintMetadata sdk_version stores and retrieves correctly" {

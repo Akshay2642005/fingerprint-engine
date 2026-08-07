@@ -1,5 +1,6 @@
 const std = @import("std");
 const fingerprint = @import("model");
+const codec = @import("codec.zig");
 
 const Feature = fingerprint.Feature;
 const FeatureValue = fingerprint.FeatureValue;
@@ -18,6 +19,11 @@ pub const DecodedFingerprint = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: DecodedFingerprint) void {
+        // v2 allocates sdk_version; v1 uses a static empty string that must
+        // never be freed.
+        if (self.fingerprint.metadata.schema_version == codec.schema_version_v2) {
+            self.allocator.free(self.fingerprint.metadata.sdk_version);
+        }
         for (self.fingerprint.features) |feat| {
             freeFeatureValue(self.allocator, feat.value);
         }
@@ -44,14 +50,32 @@ fn freeFeatureValue(allocator: std.mem.Allocator, value: FeatureValue) void {
 }
 
 /// Encodes a Fingerprint into binary format using the provided writer.
+/// The body layout is selected by `metadata.schema_version`: v1 for the
+/// legacy layout, v2 for the replay-identity layout (design §5.1). Unknown
+/// versions encode the v1 body with their version number preserved — the
+/// version gate lives at the decode/engine boundary, not here.
 pub fn encode(w: anytype, fp: Fingerprint) !void {
     try w.writeAll(&MAGIC);
     try w.writeInt(u16, fp.metadata.schema_version, .little);
-    try w.writeInt(u16, @as(u16, @intCast(fp.features.len)), .little);
+    switch (fp.metadata.schema_version) {
+        codec.schema_version_v2 => try encodeV2Body(w, fp),
+        else => try encodeV1Body(w, fp),
+    }
+}
 
+fn encodeV1Body(w: anytype, fp: Fingerprint) !void {
+    try w.writeInt(u16, @as(u16, @intCast(fp.features.len)), .little);
     for (fp.features) |feat| {
         try encodeFeature(w, feat);
     }
+}
+
+fn encodeV2Body(w: anytype, fp: Fingerprint) !void {
+    try w.writeInt(u16, @as(u16, @intCast(fp.metadata.sdk_version.len)), .little);
+    try w.writeAll(fp.metadata.sdk_version);
+    try w.writeInt(i64, fp.metadata.collected_at, .little);
+    try w.writeAll(&fp.metadata.package_id);
+    try encodeV1Body(w, fp);
 }
 
 fn encodeFeature(w: anytype, feat: Feature) !void {
@@ -112,6 +136,7 @@ fn writeValuePayload(w: anytype, value: FeatureValue) !void {
 
 pub const DecodeError = error{
     InvalidMagic,
+    UnsupportedVersion,
     Truncated,
     OutOfMemory,
 };
@@ -128,12 +153,65 @@ fn readExact(r: anytype, buf: []u8) DecodeError!void {
 
 /// Decodes a Fingerprint from binary format.
 /// The caller must call `decoded.deinit()` to free allocated memory.
+/// v1 (legacy layout) and v2 (replay-identity layout) bodies are supported;
+/// any other schema version is rejected before parsing.
 pub fn decode(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerprint {
     const magic = try readArray(r, 4);
     if (!std.mem.eql(u8, &magic, &MAGIC)) return error.InvalidMagic;
 
     const schema_bytes = try readArray(r, 2);
     const schema_version = std.mem.readInt(u16, &schema_bytes, .little);
+
+    return switch (schema_version) {
+        codec.schema_version_v1 => decodeV1(r, allocator),
+        codec.schema_version_v2 => decodeV2(r, allocator),
+        else => error.UnsupportedVersion,
+    };
+}
+
+/// v1 body: feature_count u16 | features TLV×N. Metadata fields absent on the
+/// wire are fabricated (static empty sdk_version, zero collected_at/package_id).
+fn decodeV1(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerprint {
+    const count_bytes = try readArray(r, 2);
+    const feature_count = std.mem.readInt(u16, &count_bytes, .little);
+
+    const features_slice = try allocator.alloc(Feature, feature_count);
+    errdefer allocator.free(features_slice);
+
+    for (features_slice, 0..) |*feat, i| {
+        feat.* = decodeFeature(r, allocator) catch |err| {
+            for (0..i) |j| freeFeatureValue(allocator, features_slice[j].value);
+            return err;
+        };
+    }
+
+    return DecodedFingerprint{
+        .fingerprint = Fingerprint{
+            .metadata = FingerprintMetadata{
+                .schema_version = codec.schema_version_v1,
+                .sdk_version = "",
+                .collected_at = 0,
+            },
+            .features = features_slice,
+        },
+        .allocator = allocator,
+    };
+}
+
+/// v2 body: sdk_version_len u16 | sdk_version | collected_at i64 |
+/// package_id [16]u8 | feature_count u16 | features TLV×N (design §5.1).
+fn decodeV2(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerprint {
+    const sdk_len_bytes = try readArray(r, 2);
+    const sdk_len = std.mem.readInt(u16, &sdk_len_bytes, .little);
+
+    const sdk_version = try allocator.alloc(u8, sdk_len);
+    errdefer allocator.free(sdk_version);
+    try readExact(r, sdk_version);
+
+    const collected_bytes = try readArray(r, 8);
+    const collected_at = std.mem.readInt(i64, &collected_bytes, .little);
+
+    const package_id = try readArray(r, 16);
 
     const count_bytes = try readArray(r, 2);
     const feature_count = std.mem.readInt(u16, &count_bytes, .little);
@@ -148,15 +226,14 @@ pub fn decode(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFinge
         };
     }
 
-    const meta = FingerprintMetadata{
-        .schema_version = schema_version,
-        .sdk_version = "",
-        .collected_at = 0,
-    };
-
     return DecodedFingerprint{
         .fingerprint = Fingerprint{
-            .metadata = meta,
+            .metadata = FingerprintMetadata{
+                .schema_version = codec.schema_version_v2,
+                .sdk_version = sdk_version,
+                .collected_at = collected_at,
+                .package_id = package_id,
+            },
             .features = features_slice,
         },
         .allocator = allocator,

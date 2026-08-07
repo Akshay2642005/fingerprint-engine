@@ -11,10 +11,14 @@ pub const DecodeError = error{
     OutOfMemory,
 };
 
-/// The v1 FNGR body schema version this engine understands. The v2 body
-/// (replay identity, sdk metadata) lands with the serialization rewrite;
-/// until then, any other version is rejected at the boundary.
-pub const schema_version: u16 = 1;
+/// The FNGR body schema versions this engine understands. v1 is the legacy
+/// layout (schema + feature_count + features); v2 (serialization rewrite)
+/// adds sdk metadata, collection time, and replay identity. Unknown versions
+/// are rejected at the boundary before the codec parses anything.
+pub const schema_versions = [_]u16{
+    serialization.schema_version_v1,
+    serialization.schema_version_v2,
+};
 
 /// Warning-kind tags shared by the validate/normalize/package result layouts.
 pub const kind_type_mismatch: u8 = 1;
@@ -27,15 +31,16 @@ pub fn decode(req: *const Request, scratch: std.mem.Allocator) DecodeError!model
     return decodePayload(req.payload, scratch);
 }
 
-/// Decodes a bare binary-encoded Fingerprint payload (v1 FNGR).
+/// Decodes a bare binary-encoded Fingerprint payload (FNGR v1 or v2).
 /// Rejects unknown body schema versions before handing off to the codec.
 pub fn decodePayload(payload: []const u8, scratch: std.mem.Allocator) DecodeError!model.Fingerprint {
     var fbs = std.io.fixedBufferStream(payload);
     const decoded = serialization.decode(fbs.reader(), scratch) catch |err| switch (err) {
         error.InvalidMagic, error.Truncated => return error.InvalidPayload,
         error.OutOfMemory => return error.OutOfMemory,
+        error.UnsupportedVersion => return error.UnsupportedVersion,
     };
-    if (decoded.fingerprint.metadata.schema_version != schema_version) {
+    if (std.mem.indexOfScalar(u16, &schema_versions, decoded.fingerprint.metadata.schema_version) == null) {
         return error.UnsupportedVersion;
     }
     return decoded.fingerprint;

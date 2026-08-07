@@ -24,9 +24,10 @@ test "unknown version: mutated schema version maps to unsupported_version" {
     const payload = try encodeFp(arena, fp);
 
     // FNGR body: magic (4) | schema_version u16 LE | feature_count u16 | ...
+    // v1 and v2 are supported; mutate to a future version.
     try testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, payload[4..6], .little));
     var tampered = try arena.dupe(u8, payload);
-    tampered[4] = 2;
+    tampered[4] = 3;
     tampered[5] = 0;
 
     var response_buffer: [2048]u8 = undefined;
