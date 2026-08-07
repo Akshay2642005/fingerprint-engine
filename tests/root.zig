@@ -7,4 +7,5 @@ test {
     _ = @import("fixtures/root.zig");
     _ = @import("utils_test.zig");
     _ = @import("fuzz/root.zig");
+    _ = @import("build/root.zig");
 }

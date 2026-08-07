@@ -47,7 +47,7 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
 
       - name: Build WASM module
-        run: zig build wasm -Doptimize=ReleaseSmall
+        run: zig build wasm
 
       - name: Rename WASM artifact
         run: |
@@ -130,8 +130,7 @@ jobs:
 
       - name: Build npm package
         run: |
-          cd src/clients/browser
-          npm run build
+          zig build clients:browser
 
       - name: Publish to npm
         run: |

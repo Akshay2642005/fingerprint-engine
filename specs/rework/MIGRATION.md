@@ -72,7 +72,7 @@ commits; behavior changes land behind them one layer at a time.
 | `src/browser/bindings/engine.ts` | package-builder flow (collect → package → bytes); remove compute()/collectAndCompute() |
 | `src/serialization/binary.zig` | v2 body + v1 compat decode; anytype writer/reader; FPKG integrity helper |
 | `src/serialization/json.zig` | match v2 body; anytype |
-| `src/clients/browser/package.json` | zig-only build (`zig build clients:browser -Doptimize=ReleaseSmall`); drop build.mjs + typescript devDep |
+| `src/clients/browser/package.json` | zig-only build (`zig build clients:browser`); drop build.mjs + typescript devDep |
 | `src/clients/browser/scripts/fingerprint-umd-template.js` | FeatureID/FeatureType blocks replaced by generator markers |
 | `.github/workflows/release.yml` | publish job builds via `zig build clients:browser` (no node build) |
 | `docs/architecture.md`, `docs/api.md` | new architecture; drop canonical-in-browser + native SDK |

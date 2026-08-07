@@ -16,9 +16,7 @@
     "dist/"
   ],
   "scripts": {
-    "build:wasm": "cd ../../.. && zig build wasm",
-    "build:bundle": "node build.mjs",
-    "build": "npm run build:bundle",
+    "build": "cd ../.. && zig build clients:browser",
     "prepublishOnly": "npm run build",
     "test:browser": "npx serve . -p 3000"
   },
@@ -44,8 +42,5 @@
   "author": "Fingerprint Engine Contributors",
   "publishConfig": {
     "access": "public"
-  },
-  "devDependencies": {
-    "typescript": "^5.5.0"
   }
 }
