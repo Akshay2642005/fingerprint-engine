@@ -49,10 +49,10 @@ commits; behavior changes land behind them one layer at a time.
 
 | Path | First appears |
 |------|---------------|
-| `src/io/` (message, ring_buffer, channel, completion, executor, frame, reader, writer, dispatcher) | commit 5 |
-| `src/engine/` (operation, request, response, engine, ops/*) | commit 6 |
-| `src/adapter/` (transport, loopback) | commit 8 |
-| `src/adapter/amqp/codec.zig` | commit 10 |
+| `src/io/` (message, ring_buffer, channel, completion, executor, frame, reader, writer, dispatcher) | commit 8 |
+| `src/engine/` (operation, request, response, engine, ops/*) | commit 9 |
+| `src/adapter/` (transport, loopback, tcp) | commit 11 |
+| `src/adapter/amqp/codec.zig` | commit 13 |
 | `src/worker/main.zig` | commit 12 |
 | `deploy/Dockerfile.worker` | commit 12 |
 | `src/scripts.zig` (dispatcher) + `src/scripts/` | commit 5 |
@@ -71,7 +71,7 @@ commits; behavior changes land behind them one layer at a time.
 | `build.zig.zon` | version 0.2.0 (major: breaking API), `minimum_zig_version = "0.14.1"` |
 | `.github/workflows/ci.yml` | `ZIG_VERSION: 0.14.1`; jobs: test, wasm-build, worker-build (+ docker build); drop native-build |
 | `src/browser/wasm/root.zig` | stateless exports (fp_version, fp_process, fp_alloc, fp_free); infra-only artifact (bench + wasmtime test containers); remove init/add_*/compute/scratch |
-| `src/clients/browser/src/*` | hand-written TS SDK (D14): index.ts, collectors/, package.ts (SignalPackage v2 serializer), transport.ts (POST to ingress) — replaces the UMD template |
+| `src/clients/browser/src/*` | hand-written TS SDK (D14/D17): index.ts, collectors/, package.ts (SignalPackage v2 serializer), transport.ts (POST to ingress + WS), middleware.ts (assertAllowed/onSessionBlocked) — replaces the UMD template |
 | `src/clients/browser/index.d.ts` | hand-written declarations |
 | `src/clients/browser/scripts/fingerprint-umd-template.js` | **deleted** — superseded by the hand-written TS SDK (D14); no more base64-wasm-inlined bundle |
 | `src/serialization/binary.zig` | v2 body + v1 compat decode; anytype writer/reader; FPKG integrity helper |
@@ -79,7 +79,7 @@ commits; behavior changes land behind them one layer at a time.
 | `src/clients/browser/package.json` | zig-only build (`zig build clients:browser`); drop build.mjs + typescript devDep; TS compile step is the documented exception (D13/D14) |
 | `tests/data/fixtures/*` | shared golden vectors consumed by BOTH the Zig codec tests and the TS package.ts tests (cross-language parity, D14) |
 | `.github/workflows/release.yml` | publish job builds via `zig build clients:browser` (no node build) |
-| `docs/architecture.md`, `docs/api.md` | new architecture; drop canonical-in-browser + native SDK |
+| `docs/architecture.md`, `docs/api.md` | new architecture; drop canonical-in-browser + native SDK; document inbound request/response + outbound AMQP events + blocking surface (D16/D17) |
 | `CLAUDE.md`, `CONVENTIONS.md` (commands tables) | `zig build native` → `zig build worker`; Docker story |
 
 ## 3. Commit sequence (each green on 0.14.1)
@@ -127,27 +127,34 @@ commits; behavior changes land behind them one layer at a time.
     Envelope framing in `io/frame.zig`; binary v2 + v1 compat; json; codec
     interface; integrity SHA-256; `tests/serialization/` extended. Old fixtures
     converted to compat goldens.
-11. **feat(adapter): transport interface + loopback**
+11. **feat(adapter): transport interface + loopback + tcp**
     comptime Transport contract, loopback transport (in-memory + stdin/stdout
-    framing) + `tests/adapter/`.
+    framing), FPKG-framed TCP request/response server (ingress→worker path,
+    D16) + `tests/adapter/`.
 12. **feat(worker): executable + Docker**
-    `worker/main.zig` with `--transport=loopback`, e2e pipe test in
-    `src/integration_tests.zig` (spawn worker, feed SignalPackage over stdin,
-    assert canonical fingerprint on stdout), `deploy/Dockerfile.worker`,
-    worker CI job.
+    `worker/main.zig` with `--transport=loopback|tcp` and
+    `--publish=amqp|none` (D16), e2e pipe test in `src/integration_tests.zig`
+    (spawn worker, feed SignalPackage over stdin, assert canonical
+    fingerprint on stdout) + tcp request/response e2e,
+    `deploy/Dockerfile.worker`, worker CI job.
 13. **feat(adapter): AMQP 0-9-1 codec (v1)**
-    `adapter/amqp/codec.zig` framing + byte-fixture tests. No broker needed.
-14. **feat(browser): hand-written TS SDK (D14)**
+    `adapter/amqp/codec.zig` framing + byte-fixture tests, generated from
+    the official AMQP 0-9-1 spec XML (D20 — TigerBeetle CDC reference).
+    No broker needed.
+14. **feat(browser): hand-written TS SDK (D14/D17)**
     `src/clients/browser/src/` — index.ts, collectors/, package.ts
     (SignalPackage v2 serializer mirroring `serialization/binary.zig`),
-    transport.ts (POST to ingress). Delete the UMD template + base64
-    inlining; drop wasm from the package (wasm stays in-repo for bench +
-    wasmtime test containers). Cross-language golden tests: TS serializer
-    vs Zig fixtures. `tests/browser/` + TS test suite updated.
+    transport.ts (POST to ingress + WS to the fraud platform),
+    middleware.ts (`assertAllowed`/`onSessionBlocked`). Delete the UMD
+    template + base64 inlining; drop wasm from the package (wasm stays
+    in-repo for bench + wasmtime test containers). Cross-language golden
+    tests: TS serializer vs Zig fixtures; middleware/WS contract tests
+    against a mock decision server. `tests/browser/` + TS test suite updated.
 15. **docs: final docs + spec cleanup**
     `docs/{Architecture,Engine,IO,Worker,AMQP,Serialization,Migration,Design}.md`;
-    update CLAUDE.md/CONVENTIONS.md; remove stale `specs/tech-architecture/*`
-    or mark superseded.
+    Architecture/Worker docs cover the transport split and blocking surface
+    (D16/D17); update CLAUDE.md/CONVENTIONS.md; remove stale
+    `specs/tech-architecture/*` or mark superseded.
 
 Each commit keeps `zig build test` green; wasm/worker artifacts build from
 commit 1 onward (targets adjusted as modules appear). The rework is never a

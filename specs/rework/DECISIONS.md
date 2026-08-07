@@ -116,13 +116,17 @@ Frame, Reader, Writer, Dispatcher.
 
 ## D8 — AMQP adapter depth
 
-**Decision:** Staged, per recommendation.
+**Decision:** Staged, per recommendation. AMQP is **outbound-only** — it
+carries the worker → fraud-platform event stream and is never used for
+inbound requests (D16).
 
-- **v1:** comptime transport interface + in-memory loopback transport + full
-  message codec. Adapter and worker fully testable without a broker.
-- **v2:** real RabbitMQ 0-9-1 client (connection, channels, exchange/queue
-  declare, publisher confirms, consumer, reconnect, DLQ, backoff, heartbeat)
-  as a separate module, after v1 is green.
+- **v1:** comptime transport interface + in-memory loopback transport +
+  FPKG-framed TCP transport + full message codec. Adapter and worker fully
+  testable without a broker.
+- **v2:** real RabbitMQ 0-9-1 **publisher** (connection, channels,
+  exchange/queue declare, publisher confirms, reconnect, DLQ, backoff,
+  heartbeat) as a separate module, after v1 is green. Implementation follows
+  the TigerBeetle CDC module as reference (D20).
 
 ## D9 — Worker shape
 
@@ -204,8 +208,10 @@ not a generated template blob. It:
 - **serializes** them into the `SignalPackage` v2 body via a hand-written TS
   serializer (`package.ts`) mirroring `src/serialization/binary.zig`,
 - **POSTs** the bytes to a configurable **ingress endpoint** (the SDK never
-  talks to RabbitMQ directly; the ingress service owns the queue — browser
-  → ingress → RabbitMQ, per REWORK.md).
+  talks to RabbitMQ directly). The ingress forwards the package to a worker
+  as a framed request/response and relays the computed reply back (D16) —
+  RabbitMQ is **not** on the inbound path; it carries only the worker →
+  fraud-platform event stream.
 
 Validation, normalization, hashing, risk, and similarity are **not** in the
 browser — they run server-side in the workers. The browser's only output is
@@ -232,13 +238,120 @@ engine's published events.
 - This repo defines the **event contracts** (schema-versioned messages);
   the Go repo implements consumption.
 
+## D16 — Transport split: inbound request/response, outbound AMQP events
+
+**Decision (2026-08-07 review):** Remove RabbitMQ from the browser→worker
+inbound path. Inbound is a **framed request/response** protocol; AMQP
+carries **only** the outbound worker→Go event stream.
+
+Modeled on TigerBeetle, verified in the local reference (`src/cdc/runner.zig`):
+VSR (TigerBeetle's own protocol) serves every inbound client request; AMQP
+appears only in CDC as an **outbound** event publisher to RabbitMQ. There is
+no AMQP inbound anywhere. We take the shape, not the machinery — the engine
+is stateless, so VSR's consensus/replication is not needed; only its
+request/response contract is.
+
+- Browser → ingress: HTTP POST of the `SignalPackage` (unchanged;
+  `transport.ts`).
+- Ingress → worker: FPKG-framed request over a worker connection pool
+  (`io.Frame` + `io.Reader`/`io.Writer`); any worker answers any request
+  (stateless engine — no ordering, no affinity).
+- Worker → ingress: framed response (`FingerprintComputed` + base risk);
+  the ingress relays it to the caller.
+- Worker → Go: AMQP events (`FingerprintComputed`, `RiskResult`,
+  `SimilarityResult`, `ValidationResult`, `Diagnostics`) — the durable,
+  at-least-once path (publisher confirms, DLQ).
+
+**Reliability split:** inbound is at-most-once with idempotent client
+retries (a worker crash drops one request; the browser re-POSTs). Outbound
+is at-least-once — fraud events must not be lost.
+
+**Why:** "here are my signals, give me my identity/risk" is a synchronous
+request/response; a queue adds latency, reordering, and a broker dependency
+to the one path that benefits most from synchronous semantics. AMQP stays
+where it earns its keep: durable fan-out of computed events to the platform.
+
+## D17 — Decision & blocking surface (sync API + WebSocket push)
+
+**Decision (2026-08-07 review):** Blocking is a three-lever surface owned
+by Go and the application; the engine only computes. Go signals, the app
+enforces, the SDK surfaces.
+
+1. **Sync decision API** (Go): `GET /v1/risk/session/:id` →
+   `allow | deny | challenge`. The app gates sensitive actions (login,
+   checkout, withdrawal) on it. Decisions cached (Redis, TTL).
+2. **WebSocket push** (Go → browser SDK): `WS /v1/ws?session_id=...`.
+   When Go flips a session to blocked (rules, similarity, manual review),
+   it pushes `session.blocked` (+ reason, expiry). The SDK raises an event;
+   the app kills the session locally; the SDK blocks UI flows client-side.
+3. **App enforcement** (unchanged responsibility): token revocation,
+   denylist, device-level denial at session creation.
+
+The browser SDK doubles as **middleware** (D14 stays): it collects signals
+AND enforces the last-known decision for UX — `assertAllowed(action)`,
+`onSessionBlocked(cb)` — while the app enforces authoritatively
+server-side. WS is a best-effort fast path; the sync API is the authority.
+
+## D18 — Similarity at scale (candidate selection)
+
+**Decision (2026-08-07 review):** Go owns candidate selection; the engine
+only scores pairs (`similarity(op)` takes `{a, b}` in the payload, D3).
+Ordered strategy:
+
+1. **Exact digest match** — indexed Postgres lookup. Always first; free.
+2. **Coarse-bucket prefilter** — group stored digests by stable feature
+   subsets (platform + UA family + screen class) to bound the candidate set.
+3. **Engine pair scoring** — Go submits `{candidate, stored}` pairs; the
+   worker scores and publishes `SimilarityResult`; thresholds are config.
+4. **LSH / embedding clustering** — later optimization if volume demands;
+   not v1.
+
+The §5.3 contract gains a compare-request flow: Go asks for a similarity
+evaluation (via the decision API or an AMQP request message); the worker
+publishes `SimilarityResult` back.
+
+## D19 — Rules-as-data (Go platform)
+
+**Decision (2026-08-07 review, Go-repo contract guidance):** The Go rule
+engine is **data, not code**:
+
+- Rules are versioned rows: conditions over engine signals (risk score,
+  flags, digest bucket, velocity, similarity) → action
+  (`allow/block/challenge/review`) + priority + TTL.
+- Every evaluation records the rule version + inputs for audit.
+- Dry-run mode: rules evaluate but do not act until promoted.
+- This repo only defines the signal schema the rules consume (D15); the
+  engine never sees rules.
+
+## D20 — AMQP implementation reference (TigerBeetle CDC)
+
+**Decision (2026-08-07 review):** `adapter/amqp/` follows the TigerBeetle
+CDC module (`src/cdc/amqp.zig` + `src/cdc/amqp/`) as the reference:
+
+- **Wire protocol** (`protocol.zig`): frames `type(u8) | channel(u16) |
+  size(u32) | payload | 0xCE`, big-endian; method/header/body/heartbeat
+  frame types; single-frame bodies for v1.
+- **Generated spec** (`spec_parser.py`): method/argument tables generated
+  from the official AMQP 0-9-1 spec XML into `spec.zig` — no hand-written
+  wire tables.
+- **Client shape** (`amqp.zig`): single channel, fixed send/receive
+  buffers, batched publish, publisher confirms (`confirm_select`), queue/
+  exchange declare, get/nack, heartbeats, connect state machine (dial →
+  handshake → auth → connection_open → channel_open → confirm_select).
+  Reconnect/backoff/DLQ stay in the adapter (v2).
+- **Substrate:** the `io/` layer (D7) is the client's engine;
+  `stdx/ring_buffer.zig` is the reference for `io/ring_buffer.zig`
+  (comptime-generic FIFO, array-or-slice backing).
+
 ## Environment constraints (recorded, not decisions)
 
 - Sandbox terminal is broken (`libasound.so.2`) — validation and git must run
   on the user's machine until fixed.
 - `bigpowers` skills are not installed; specs-first + TDD + green gates are
   followed in spirit.
-- A local reference checkout of a hand-rolled systems codebase (has `src/`,
-  `src/clients/`, `src/docs_website/`, `src/scripts.zig`, `src/build/`),
-  excluded via `.git/info/exclude`; IO/build design is derived from the
-  local source.
+- A local reference checkout of TigerBeetle (has `src/io/`, `src/vsr/`,
+  `src/cdc/`, `src/stdx/`, `src/clients/`, `src/docs_website/`,
+  `src/scripts.zig`, `src/build/`), excluded via `.git/info/exclude`;
+  IO/build design and the AMQP adapter (D20) are derived from the local
+  source. TigerBeetle uses VSR for inbound client requests; AMQP appears
+  only in `src/cdc/` as an outbound event stream (D16).
