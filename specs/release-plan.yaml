@@ -1,7 +1,18 @@
 # Release Plan — Fingerprint Engine
-target_version: 0.2.1
+target_version: 0.2.2
 
 releases:
+  v0.2.2:
+    status: released
+    date: "2026-08-08"
+    epics:
+      - rework/distributed-engine
+    summary: |
+      Release pipeline hardening: worker image released to GitHub Container
+      Registry (lowercased image tags), idempotent npm publish (skips
+      already-published versions), version bump to 0.2.2. npm publishing is
+      automated via the OIDC trusted publisher.
+
   v0.2.1:
     status: released
     date: "2026-08-08"

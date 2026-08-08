@@ -9,9 +9,17 @@ workflow_mode: solo-git
 git:
   branch: master
   status: clean
-  latest_tag: v0.2.1
+  latest_tag: v0.2.2
 
 releases:
+  v0.2.2:
+    date: "2026-08-08"
+    status: released
+    artifacts:
+      - GitHub Release (WASM infra artifact)
+      - npm package (@akshay2642005/fingerprint-sdk v0.2.2)
+      - GHCR image (ghcr.io/akshay2642005/fingerprint-engine/fingerprint-worker)
+
   v0.2.1:
     date: "2026-08-08"
     status: released
@@ -89,9 +97,9 @@ modules:
 
 ci_cd:
   ci: green (test, wasm-build, worker-build, docker-worker)
-  release: green (creates GitHub Release with WASM artifact)
-  npm_publish: manual (not automated)
+  release: green (creates GitHub Release with WASM artifact, pushes GHCR image)
+  npm_publish: automated via OIDC trusted publisher (release pipeline)
 
 handoff:
   next_skill: "elaborate-spec"
-  note: "v0.2.1 released. Next: ingress + worker deployment hardening, AMQP consumer e2e, fraud-platform (Go) integration."
+  note: "v0.2.2 released. Next: ingress + worker deployment hardening, AMQP consumer e2e, fraud-platform (Go) integration."
