@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"strict": true,
+		"target": "ES2020",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"lib": ["ES2020", "DOM", "DOM.Iterable"],
+		"declaration": true,
+		"declarationDir": "dist",
+		"outDir": "dist",
+		"rootDir": "src",
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"noImplicitOverride": true,
+		"useUnknownInCatchVariables": true,
+		"skipLibCheck": true
+	},
+	"include": ["src"]
+}

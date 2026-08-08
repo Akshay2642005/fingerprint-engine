@@ -150,11 +150,14 @@ commits; behavior changes land behind them one layer at a time.
     client for `session.blocked`), middleware.ts (`assertAllowed`/
     `onSessionBlocked`). The generator writes `generated/{tables,config}.ts`
     (FeatureID/FeatureType + version + ingress URL) and `tsc` compiles ESM +
-    CJS into `dist/` (documented Node exception, D13). Delete the UMD
+    version + ingress URL) and `tsc` compiles ESM into `dist/` (documented
+    Node exception, D13; single ESM emit, `exports` map with `types`/
+    `default` conditions). Delete the UMD
     template + base64 wasm inlining; drop wasm from the package (wasm stays
     in-repo for bench + wasmtime test containers). Cross-language golden
     tests: TS serializer vs Zig fixtures via the signals manifest (DESIGN
-    §9.4.6); Zig test asserts the dist surface has no wasm/hash. `tests/browser/`
+    §9.4.6); Zig guard run by `clients:browser` asserts the dist surface has
+    no wasm/hash. `tests/browser/`
     + TS test suite updated.
 15. **docs: final docs + spec cleanup**
     `docs/{Architecture,Engine,IO,Worker,AMQP,Serialization,Migration,Design}.md`;

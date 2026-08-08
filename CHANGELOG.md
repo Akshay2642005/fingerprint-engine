@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Browser npm package is now strictly the runtime SDK — `dist/` ships only the UMD/ESM bundles and type declarations, no demo page. The browser demo moved to `examples/demo.html` at the repo root (dev-only, never published).
+- Browser SDK rewritten as a hand-written TypeScript package (`src/clients/browser/src/`): `collect()` gathers plain `Signal[]`, `package.ts` serializes a versioned SignalPackage v2 body (mirroring `serialization/binary.zig` byte-for-byte, cross-checked by a golden parity test), and `transport.ts` POSTs it to the ingress URL (`--ingress-url` build option → `FINGERPRINT_INGRESS_URL` env → built-in default) with `x-fpkg-*` headers plus a SHA-256 integrity header. The browser never computes the canonical fingerprint. The base64-wasm-inlined UMD template and the wasm bindings are deleted; wasm stays in-repo for bench/test containers only. The package is ESM-only (`exports` map with `types`/`default` conditions, NodeNext module resolution so every import carries a `.js` extension).
+- SDK middleware surface for the fraud platform (D17): `configure({ wsUrl })` opens the decision WebSocket, `assertAllowed()` returns the last-known decision, `onSessionBlocked(cb)` registers `session.blocked` callbacks — a client-side UX gate only; the app enforces.
+
+### Added
+
+- `zig build scripts -- generate fixture signal-package-v2` now also writes `signal-package-v2.signals.json` — the exact signals + metadata behind the `.bin` golden, feeding the TS parity test.
+- TS SDK test suite (`tests/clients/browser/`, `node --test`, documented Node exception): golden parity (TS serializer vs Zig fixture bytes), wire-layout checks, middleware/transport unit tests with a mocked `fetch`.
+- `src/build/dist_surface.zig` — dist surface guard run by `zig build clients:browser` after tsc: rejects `.wasm` files, wasm-instantiation markers (base64 blobs, `WebAssembly`, old engine exports) in any JS file, and `hash`/`compute` identifiers in the public `.d.ts` surface; unit-tested in `tests/build/dist_surface_test.zig`. The `dist/` tree is wiped before tsc so stale artifacts can never leak.
+- Browser package TS tests are wired as `npm test --prefix src/clients/browser` (`node --test tests/clients/browser/`).
 
 ## [0.2.0] - 2026-08-07
 

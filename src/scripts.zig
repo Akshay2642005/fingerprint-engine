@@ -396,7 +396,10 @@ fn generate(alloc: std.mem.Allocator, args: []const []const u8) !void {
 }
 
 /// Serializes the canonical v2 signal package, writes it under
-/// tests/fixtures/, and prints its engine hash.
+/// tests/fixtures/, and prints its engine hash. Also writes the JSON
+/// manifest (signal-package-v2.signals.json) describing the exact signals +
+/// metadata, so the TS parity test can rebuild the bytes via the browser
+/// package serializer (DESIGN §9.4.6).
 fn generateSignalPackageV2(alloc: std.mem.Allocator) !void {
     const F = fixtures.signal_package_v2;
     const fp = F.fingerprint();
@@ -409,6 +412,8 @@ fn generateSignalPackageV2(alloc: std.mem.Allocator) !void {
     var file = try std.fs.cwd().createFile(F.path, .{});
     defer file.close();
     try file.writeAll(bytes);
+
+    try writeSignalPackageManifest(alloc, fp);
 
     var result_buf: [128]u8 = undefined;
     var response = engine.Response.init(.hash, &result_buf);
@@ -426,4 +431,113 @@ fn generateSignalPackageV2(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     }
     try stdout.print("digest: {s}\n", .{std.fmt.bytesToHex(response.slice()[0..32], .lower)});
+}
+
+/// Writes the JSON manifest for the v2 fixture. Values are JSON scalars;
+/// byte payloads are lowercase hex strings (the TS test hex-decodes them
+/// when the declared type is Bytes/BytesArray). Type names match the
+/// generated FeatureType table exactly.
+fn writeSignalPackageManifest(alloc: std.mem.Allocator, fp: model.Fingerprint) !void {
+    var out = std.ArrayList(u8).init(alloc);
+    defer out.deinit();
+    const w = out.writer();
+
+    try w.writeAll("{\n");
+    try w.print("  \"schema_version\": {d},\n", .{fp.metadata.schema_version});
+    try w.writeAll("  \"sdk_version\": ");
+    try writeJsonString(w, fp.metadata.sdk_version);
+    try w.writeAll(",\n");
+    try w.print("  \"collected_at\": {d},\n", .{fp.metadata.collected_at});
+    try w.print(
+        "  \"package_id\": \"{s}\",\n",
+        .{std.fmt.fmtSliceHexLower(&fp.metadata.package_id)},
+    );
+    try w.writeAll("  \"signals\": [\n");
+    for (fp.features, 0..) |feat, i| {
+        try w.writeAll("    { ");
+        try w.print("\"id\": {d}, ", .{@intFromEnum(feat.id)});
+        try w.writeAll("\"type\": ");
+        try writeJsonString(w, @tagName(feat.value));
+        try w.writeAll(", \"value\": ");
+        try writeManifestValue(w, feat.value);
+        try w.writeAll(" }");
+        if (i + 1 < fp.features.len) try w.writeAll(",");
+        try w.writeAll("\n");
+    }
+    try w.writeAll("  ]\n}\n");
+
+    const manifest_path = "tests/fixtures/fingerprints/signal-package-v2.signals.json";
+    try std.fs.cwd().writeFile(.{ .sub_path = manifest_path, .data = out.items });
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("wrote {s}\n", .{manifest_path});
+}
+
+/// Encodes a value as a JSON literal (no surrounding quotes added).
+fn writeManifestValue(w: anytype, value: model.FeatureValue) !void {
+    switch (value) {
+        .Boolean => |v| try w.writeAll(if (v) "true" else "false"),
+        .Integer => |v| try w.print("{d}", .{v}),
+        .Float => |v| try w.print("{d}", .{v}),
+        .String => |v| try writeJsonString(w, v),
+        .Bytes => |v| try w.print("\"{s}\",", .{std.fmt.fmtSliceHexLower(v)}),
+        .StringArray => |items| {
+            try w.writeAll("[");
+            for (items, 0..) |item, i| {
+                if (i > 0) try w.writeAll(", ");
+                try writeJsonString(w, item);
+            }
+            try w.writeAll("]");
+        },
+        .IntegerArray => |items| {
+            try w.writeAll("[");
+            for (items, 0..) |item, i| {
+                if (i > 0) try w.writeAll(", ");
+                try w.print("{d}", .{item});
+            }
+            try w.writeAll("]");
+        },
+        .FloatArray => |items| {
+            try w.writeAll("[");
+            for (items, 0..) |item, i| {
+                if (i > 0) try w.writeAll(", ");
+                try w.print("{d}", .{item});
+            }
+            try w.writeAll("]");
+        },
+        .BytesArray => |items| {
+            try w.writeAll("[");
+            for (items, 0..) |item, i| {
+                if (i > 0) try w.writeAll(", ");
+                try w.print("\"{s}\",", .{std.fmt.fmtSliceHexLower(item)});
+            }
+            try w.writeAll("]");
+        },
+    }
+}
+
+/// Writes a JSON string literal (quotes included) with the minimal escaping
+/// required by JSON: quote, backslash, and control characters.
+fn writeJsonString(w: anytype, s: []const u8) !void {
+    try w.writeByte('"');
+    for (s) |c| {
+        switch (c) {
+            '"', '\\' => {
+                try w.writeByte('\\');
+                try w.writeByte(c);
+            },
+            0x08 => try w.writeAll("\\b"),
+            0x0C => try w.writeAll("\\f"),
+            '\n' => try w.writeAll("\\n"),
+            '\r' => try w.writeAll("\\r"),
+            '\t' => try w.writeAll("\\t"),
+            else => |cc| {
+                if (cc < 0x20) {
+                    try w.print("\\u{x:0>4}", .{cc});
+                } else {
+                    try w.writeByte(cc);
+                }
+            },
+        }
+    }
+    try w.writeByte('"');
 }
