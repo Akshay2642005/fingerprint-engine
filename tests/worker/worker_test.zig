@@ -51,6 +51,41 @@ test "worker: parse rejects unknown subcommands and options" {
     try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--publish=carrier-pigeon" }));
 }
 
+test "worker: parse amqp options default to the local broker" {
+    const command = try worker.parse(&.{ "worker", "start", "--publish=amqp" });
+    switch (command) {
+        .start => |options| {
+            try testing.expectEqual(worker.PublishKind.amqp, options.publish);
+            try testing.expectEqualStrings("127.0.0.1:5672", options.amqp_address);
+            try testing.expectEqualStrings("guest", options.amqp_user);
+            try testing.expectEqualStrings("guest", options.amqp_password);
+            try testing.expectEqualStrings("/", options.amqp_vhost);
+        },
+        else => unreachable,
+    }
+}
+
+test "worker: parse amqp options override broker settings" {
+    const command = try worker.parse(&.{
+        "worker",
+        "start",
+        "--publish=amqp",
+        "--amqp-address=10.0.0.5:5673",
+        "--amqp-user=alice",
+        "--amqp-password=s3cret",
+        "--amqp-vhost=production",
+    });
+    switch (command) {
+        .start => |options| {
+            try testing.expectEqualStrings("10.0.0.5:5673", options.amqp_address);
+            try testing.expectEqualStrings("alice", options.amqp_user);
+            try testing.expectEqualStrings("s3cret", options.amqp_password);
+            try testing.expectEqualStrings("production", options.amqp_vhost);
+        },
+        else => unreachable,
+    }
+}
+
 test "worker: operationFor maps inbound message types" {
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package).?);
     try testing.expectEqual(engine.Operation.validate, worker.operationFor(.validation_result).?);

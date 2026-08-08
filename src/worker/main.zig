@@ -40,6 +40,11 @@ pub const StartOptions = struct {
     /// host:port for --transport=tcp; port 0 binds an ephemeral port.
     listen: ?[]const u8 = null,
     publish: PublishKind = .none,
+    /// Broker host:port for --publish=amqp.
+    amqp_address: []const u8 = "127.0.0.1:5672",
+    amqp_user: []const u8 = "guest",
+    amqp_password: []const u8 = "guest",
+    amqp_vhost: []const u8 = "/",
 };
 
 pub const Command = union(enum) {
@@ -55,6 +60,8 @@ pub const usage =
     \\
     \\  worker start --transport=loopback|tcp [--listen=host:port]
     \\               [--publish=amqp|none]
+    \\               [--amqp-address=host:port] [--amqp-user=user]
+    \\               [--amqp-password=pass] [--amqp-vhost=vhost]
     \\
     \\  worker version
     \\  worker help
@@ -65,7 +72,17 @@ pub const usage =
     \\                --listen)
     \\  --listen      host:port to bind for --transport=tcp; port 0 picks an
     \\                ephemeral port, announced on stderr
-    \\  --publish     outbound event sink: none (v1) or amqp (not built yet)
+    \\  --publish     outbound event sink: none or amqp. With amqp, every
+    \\                reply frame is published to the broker's `fingerprint`
+    \\                exchange (direct, durable) under routing key
+    \\                result.<message-type>, with publisher confirms. Publish
+    \\                failures are logged and the frame dropped; the broker's
+    \\                persistence and the supervisor's restart policy cover
+    \\                the rest in v1.
+    \\  --amqp-address  broker host:port (default 127.0.0.1:5672)
+    \\  --amqp-user     broker user name (default guest)
+    \\  --amqp-password  broker password (default guest)
+    \\  --amqp-vhost     broker virtual host (default /)
     \\
 ;
 
@@ -100,6 +117,14 @@ pub fn parse(args: []const []const u8) CliError!Command {
                 std.debug.print("worker: invalid publish '{s}' (expected amqp|none)\n", .{value});
                 return error.InvalidOption;
             };
+        } else if (std.mem.startsWith(u8, arg, "--amqp-address=")) {
+            options.amqp_address = arg["--amqp-address=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--amqp-user=")) {
+            options.amqp_user = arg["--amqp-user=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--amqp-password=")) {
+            options.amqp_password = arg["--amqp-password=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--amqp-vhost=")) {
+            options.amqp_vhost = arg["--amqp-vhost=".len..];
         } else {
             std.debug.print("worker: unknown option '{s}'\n\n{s}", .{ arg, usage });
             return error.UnknownOption;
@@ -249,8 +274,16 @@ fn peerGone(err: anyerror) bool {
 
 /// Serves frames until the transport reports end-of-stream, then returns.
 /// Inbound frames are processed one at a time; scratch is an arena that
-/// resets after every frame (no state carries across requests).
-fn serve(comptime Transport: type, t: *Transport, alloc: std.mem.Allocator) !void {
+/// resets after every frame (no state carries across requests). When a
+/// publisher is configured, every reply frame is also published to the
+/// broker; publish failures are logged and the frame dropped (v1 policy,
+/// documented in the CLI usage).
+fn serve(
+    comptime Transport: type,
+    t: *Transport,
+    alloc: std.mem.Allocator,
+    publisher: ?*adapter.amqp_publisher.Publisher,
+) !void {
     comptime adapter.transport.check(Transport);
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
@@ -273,25 +306,55 @@ fn serve(comptime Transport: type, t: *Transport, alloc: std.mem.Allocator) !voi
         };
 
         try t.writeFrame(reply);
-        try t.publish(reply); // v1: no-op on every transport
+        try t.publish(reply); // transport-level outbound hook (no-op in v1)
+        if (publisher) |p| {
+            p.publish_reply(reply) catch |err| {
+                std.debug.print("worker: publish dropped: {s}\n", .{@errorName(err)});
+            };
+        }
         t.ack(frame);
         _ = arena.reset(.retain_capacity);
     }
 }
 
 fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
-    switch (options.publish) {
-        .none => {},
-        .amqp => {
-            std.debug.print("worker: --publish=amqp is not built yet; use --publish=none\n", .{});
+    var publisher: ?adapter.amqp_publisher.Publisher = null;
+    if (options.publish == .amqp) {
+        const host, const port = splitHostPort(options.amqp_address) catch {
+            std.debug.print("worker: invalid --amqp-address '{s}' (expected host:port)\n", .{options.amqp_address});
             std.process.exit(1);
-        },
+        };
+        const address = std.net.Address.parseIp(host, port) catch {
+            std.debug.print("worker: invalid --amqp-address '{s}' (expected host:port)\n", .{options.amqp_address});
+            std.process.exit(1);
+        };
+        const p = adapter.amqp_publisher.Publisher.init(alloc, .{
+            .address = address,
+            .user_name = options.amqp_user,
+            .password = options.amqp_password,
+            .virtual_host = options.amqp_vhost,
+            // The worker caps every reply at header + status + max_result.
+            .message_size_max = @intCast(io.frame.header_size + 1 + max_result),
+        }) catch |err| {
+            std.debug.print("worker: amqp publisher failed: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        publisher = p;
+        std.debug.print(
+            "worker: amqp publisher ready at {s}:{d} (exchange '{s}')\n",
+            .{ host, port, adapter.amqp_publisher.exchange_name },
+        );
     }
+    defer if (publisher) |*p| p.deinit(alloc);
+    // serve() takes the publisher by pointer so one broker connection is
+    // shared across every inbound client in the accept loop.
+    const publisher_ptr: ?*adapter.amqp_publisher.Publisher = if (publisher) |*p| p else null;
+
     switch (options.transport) {
         .loopback => {
             var t = adapter.Loopback.init(alloc, .stdio);
             defer t.deinit();
-            try serve(adapter.Loopback, &t, alloc);
+            try serve(adapter.Loopback, &t, alloc, publisher_ptr);
         },
         .tcp => {
             const listen = options.listen orelse unreachable; // parse enforces
@@ -306,7 +369,7 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             std.debug.print("worker: listening on {s}:{d}\n", .{ host, t.port() });
             while (true) {
                 try t.accept();
-                serve(adapter.Tcp, &t, alloc) catch |err| {
+                serve(adapter.Tcp, &t, alloc, publisher_ptr) catch |err| {
                     if (peerGone(err)) continue; // client done; serve the next
                     return err;
                 };
