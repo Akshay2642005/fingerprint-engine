@@ -115,9 +115,6 @@ jobs:
         with:
           version: ${{ env.ZIG_VERSION }}
 
-      - name: Build worker executable
-        run: zig build worker --release=safe
-
       - name: Build worker Docker image
         run: zig build docker:worker
 
@@ -128,4 +125,4 @@ jobs:
 
       - name: Smoke test image entrypoint
         run: |
-          docker run --rm --entrypoint /worker fingerprint-worker:0.2.0 version
+          docker run --rm --entrypoint /usr/local/bin/worker fingerprint-worker:0.2.0 version
