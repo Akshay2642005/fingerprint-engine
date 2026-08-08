@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 // Fingerprint Engine Build System
 //
@@ -14,6 +15,7 @@ const std = @import("std");
 //   engine          - deterministic process dispatch (src/engine/), depends on model+core+serialization
 //   io              - async transport primitives (src/io/), depends on nothing
 //   adapter         - transport implementations (src/adapter/), depends on io
+//   worker          - deterministic worker executable (src/worker/), depends on engine+adapter
 //   browser         - WebAssembly target (src/browser/), depends on core+model
 //   browser_package - build-time npm package generator (src/build/), depends on model
 //   test_utils      - test helpers (tests/utils/), depends on model
@@ -24,10 +26,31 @@ const std = @import("std");
 //   zig build test-integration      - run integration and e2e tests
 //   zig build test-integration-build - build the integration test binary
 //   zig build wasm                  - build the WebAssembly module
+//   zig build worker                - build the worker executable
 //   zig build bench                 - run performance benchmarks
 //   zig build clients:browser       - build the browser npm package (dist/)
 //   zig build docs                  - build docs (nested src/docs_website/)
 //   zig build scripts -- <cmd>      - free-form automation scripts
+
+const zig_version = std.SemanticVersion{
+    .major = 0,
+    .minor = 14,
+    .patch = 1,
+};
+
+comptime {
+    const zig_version_equal =
+        zig_version.major == builtin.zig_version.major and
+        zig_version.minor == builtin.zig_version.minor and
+        zig_version.patch == builtin.zig_version.patch;
+    if (!zig_version_equal) {
+        @compileError(std.fmt.comptimePrint(
+            "unsupported zig version: expected {}, found {}",
+            .{ zig_version, builtin.zig_version },
+        ));
+    }
+}
+
 pub fn build(b: *std.Build) !void {
     // A compile error stack trace of 10 is arbitrary in size but helps with debugging.
     b.reference_trace = 10;
@@ -38,6 +61,7 @@ pub fn build(b: *std.Build) !void {
         .test_integration = b.step("test-integration", "Run integration and e2e tests"),
         .test_integration_build = b.step("test-integration-build", "Build integration tests"),
         .wasm = b.step("wasm", "Build the browser WebAssembly module"),
+        .worker = b.step("worker", "Build the fingerprint worker executable"),
         .bench = b.step("bench", "Run performance benchmarks"),
         .clients_browser = b.step("clients:browser", "Build the browser SDK npm package"),
         .docs = b.step("docs", "Build docs"),
@@ -116,6 +140,19 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
+    // Worker: the deterministic worker executable (D9, D16). Depends on
+    // Engine and Adapter; contains no business logic.
+    const worker = b.createModule(.{
+        .root_source_file = b.path("src/worker/main.zig"),
+        .target = target,
+        .optimize = mode,
+        .imports = &.{
+            .{ .name = "engine", .module = engine },
+            .{ .name = "adapter", .module = adapter },
+            .{ .name = "io", .module = io },
+        },
+    });
+
     // Browser: WebAssembly SDK for collection and packaging. Depends on
     // Core and Model.
     //
@@ -167,6 +204,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "engine", .module = engine },
             .{ .name = "io", .module = io },
             .{ .name = "adapter", .module = adapter },
+            .{ .name = "worker", .module = worker },
             .{ .name = "test_utils", .module = test_utils },
             .{ .name = "browser_package", .module = browser_package },
         },
@@ -193,6 +231,12 @@ pub fn build(b: *std.Build) !void {
         .install_step = b.getInstallStep(),
     }, .{ .browser_module = browser });
 
+    // zig build worker
+    const worker_exe = build_worker(b, .{
+        .worker_step = build_steps.worker,
+        .install_step = b.getInstallStep(),
+    }, .{ .worker_module = worker });
+
     // zig build bench
     const bench = build_bench(b, build_steps.bench, .{ .bench_module = bench_module });
 
@@ -206,7 +250,12 @@ pub fn build(b: *std.Build) !void {
     const scripts_exe = build_scripts(b, .{
         .scripts = build_steps.scripts,
         .scripts_build = build_steps.scripts_build,
-    }, .{ .target = target });
+    }, .{
+        .target = target,
+        .model = model,
+        .serialization = serialization,
+        .engine = engine,
+    });
 
     // zig build test-integration, zig build test-integration-build
     build_test_integration(b, .{
@@ -217,6 +266,7 @@ pub fn build(b: *std.Build) !void {
         .mode = mode,
         .bench_exe = bench.getEmittedBin(),
         .scripts_exe = scripts_exe.getEmittedBin(),
+        .worker_exe = worker_exe.getEmittedBin(),
     });
     if (b.args == null) {
         // `zig build test -- <filter>` runs only matching unit tests; the
@@ -275,6 +325,22 @@ fn build_wasm(b: *std.Build, steps: struct {
     return wasm;
 }
 
+fn build_worker(b: *std.Build, steps: struct {
+    worker_step: *std.Build.Step,
+    install_step: *std.Build.Step,
+}, options: struct {
+    worker_module: *std.Build.Module,
+}) *std.Build.Step.Compile {
+    const worker = b.addExecutable(.{
+        .name = "worker",
+        .root_module = options.worker_module,
+    });
+    const worker_install = b.addInstallArtifact(worker, .{});
+    steps.install_step.dependOn(&worker_install.step);
+    steps.worker_step.dependOn(&worker_install.step);
+    return worker;
+}
+
 fn build_bench(b: *std.Build, step: *std.Build.Step, options: struct {
     bench_module: *std.Build.Module,
 }) *std.Build.Step.Compile {
@@ -311,6 +377,9 @@ fn build_scripts(b: *std.Build, steps: struct {
     scripts_build: *std.Build.Step,
 }, options: struct {
     target: std.Build.ResolvedTarget,
+    model: *std.Build.Module,
+    serialization: *std.Build.Module,
+    engine: *std.Build.Module,
 }) *std.Build.Step.Compile {
     const scripts_exe = b.addExecutable(.{
         .name = "scripts",
@@ -318,6 +387,11 @@ fn build_scripts(b: *std.Build, steps: struct {
             .root_source_file = b.path("src/scripts.zig"),
             .target = options.target,
             .optimize = .Debug,
+            .imports = &.{
+                .{ .name = "model", .module = options.model },
+                .{ .name = "serialization", .module = options.serialization },
+                .{ .name = "engine", .module = options.engine },
+            },
         }),
     });
     steps.scripts_build.dependOn(
@@ -326,6 +400,8 @@ fn build_scripts(b: *std.Build, steps: struct {
 
     const scripts_run = b.addRunArtifact(scripts_exe);
     scripts_run.setEnvironmentVariable("ZIG_EXE", b.graph.zig_exe);
+    // Fixture paths in scripts are repository-root-relative.
+    scripts_run.setCwd(b.path("."));
     if (b.args) |args| scripts_run.addArgs(args);
     steps.scripts.dependOn(&scripts_run.step);
     return scripts_exe;
@@ -339,6 +415,7 @@ fn build_test_integration(b: *std.Build, steps: struct {
     mode: std.builtin.OptimizeMode,
     bench_exe: std.Build.LazyPath,
     scripts_exe: std.Build.LazyPath,
+    worker_exe: std.Build.LazyPath,
 }) void {
     // Integration tests: the test binary contains no engine
     // code and only interacts with the engine through pre-built executables,
@@ -347,6 +424,7 @@ fn build_test_integration(b: *std.Build, steps: struct {
     const integration_tests_options = b.addOptions();
     integration_tests_options.addOptionPath("bench_exe", options.bench_exe);
     integration_tests_options.addOptionPath("scripts_exe", options.scripts_exe);
+    integration_tests_options.addOptionPath("worker_exe", options.worker_exe);
     const integration_tests = b.addTest(.{
         .name = "test-integration",
         .root_module = b.createModule(.{
@@ -360,6 +438,9 @@ fn build_test_integration(b: *std.Build, steps: struct {
     steps.test_integration_build.dependOn(&b.addInstallArtifact(integration_tests, .{}).step);
 
     const run_integration_tests = b.addRunArtifact(integration_tests);
+    // Fixture files (tests/fixtures/) are read relative to the repository
+    // root, matching the unit test runner's cwd.
+    run_integration_tests.setCwd(b.path("."));
     if (b.args != null) {
         // Don't cache test results if running a specific test.
         run_integration_tests.has_side_effects = true;

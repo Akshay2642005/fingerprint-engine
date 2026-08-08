@@ -1,0 +1,21 @@
+# Fingerprint worker runtime image (D10: workers ship as containers).
+#
+# The worker binary is statically linked, so the runtime stage is scratch.
+#
+# Build: docker build -f deploy/Dockerfile.worker -t fingerprint-worker .
+# Run:   docker run --rm -p 8080:8080 fingerprint-worker
+#
+# Inbound is the FPKG-framed TCP request/response path (D16); AMQP
+# outbound events land with the amqp adapter (--publish=amqp).
+
+# --- Build stage ---
+FROM ziglang/zig:0.14.1 AS build
+WORKDIR /src
+COPY . .
+RUN zig build worker --release=safe
+
+# --- Runtime stage ---
+FROM scratch
+COPY --from=build /src/zig-out/bin/worker /worker
+EXPOSE 8080
+ENTRYPOINT ["/worker", "start", "--transport=tcp", "--listen=0.0.0.0:8080", "--publish=none"]

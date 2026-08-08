@@ -3,9 +3,10 @@
 # Runs on pushes to master and PRs targeting master.
 # Verifies the test suite and the WASM build on a single Linux runner.
 #
-# The engine is deterministic and ships exactly one artifact — the browser
-# WASM module — so one platform is enough to gate merges. Workers ship as
-# Docker containers (deploy/Dockerfile.worker); there is no native SDK build.
+# The engine is deterministic and ships two artifacts — the browser WASM
+# module and the worker executable (deployed as a Docker container via
+# deploy/Dockerfile.worker) — so one platform is enough to gate merges.
+# There is no native SDK build.
 
 name: CI
 
@@ -69,4 +70,35 @@ jobs:
         with:
           name: fingerprint-wasm
           path: zig-out/bin/fingerprint.wasm
+          retention-days: 30
+
+  worker-build:
+    name: Worker Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build worker executable
+        run: zig build worker --release=safe
+
+      - name: Verify worker output exists
+        run: |
+          if [ -f zig-out/bin/worker ]; then
+            echo "✅ worker binary found: $(ls -lh zig-out/bin/worker | awk '{print $5}')"
+          else
+            echo "❌ worker binary not found"
+            exit 1
+          fi
+
+      - name: Upload worker artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fingerprint-worker
+          path: zig-out/bin/worker
           retention-days: 30
