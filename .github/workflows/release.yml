@@ -94,7 +94,7 @@ jobs:
 
           ### Artifacts
           - \`fingerprint-*.wasm\` — WebAssembly module for bench/test containers
-          - \`ghcr.io/${GITHUB_REPOSITORY}/fingerprint-worker:${TAG}\` — worker container image
+          - \`ghcr.io/${GITHUB_REPOSITORY,,}/fingerprint-worker:${TAG}\` — worker container image
           EOF
 
       - name: Create GitHub Release
@@ -123,6 +123,9 @@ jobs:
         id: meta
         run: |
           echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          # Docker repository names must be lowercase; github.repository
+          # preserves case (e.g. Owner/repo), so lowercase it.
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/fingerprint-worker" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -138,8 +141,8 @@ jobs:
           file: deploy/Dockerfile.worker
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/fingerprint-worker:${{ steps.meta.outputs.version }}
-            ghcr.io/${{ github.repository }}/fingerprint-worker:latest
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image }}:latest
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
@@ -174,6 +177,14 @@ jobs:
         # OIDC trusted publisher: no NODE_AUTH_TOKEN. npm exchanges the
         # GitHub OIDC token (id-token: write) for a publish token, which
         # requires the trusted publisher to be configured on the npm package.
+        # Idempotent: if this exact version already exists on the registry
+        # (e.g. re-running a release after a failed job), skip, don't fail.
         run: |
+          PACKAGE="@akshay2642005/fingerprint-sdk"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if npm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
+            echo "npm: $PACKAGE@$VERSION already published — skipping"
+            exit 0
+          fi
           cd src/clients/browser
           npm publish --access public
