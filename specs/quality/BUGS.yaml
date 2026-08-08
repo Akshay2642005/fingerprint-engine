@@ -1,0 +1,93 @@
+# Bug registry — Fingerprint Engine
+#
+# Confirmed defects found during the 2026-08-08 repository audit
+# (specs/quality/audits/2026-08-08.md). Each entry records the symptom, root cause,
+# affected files, and the planned fix. Status: open | in_progress | fixed.
+#
+# Severity: critical | high | medium | low
+
+bugs:
+  - id: BUG-001
+    title: "Browser SDK swaps schema_version and feature_count when parsing the worker reply"
+    severity: high
+    status: open
+    found: "2026-08-08"
+    areas: [browser-sdk, wire-protocol]
+    files:
+      - src/clients/browser/src/transport.ts
+      - tests/clients/browser/transport.test.mjs
+      - src/engine/ops/hash.zig
+    symptom: |
+      The TypeScript SDK's `parseWorkerReply()` reports `schemaVersion`
+      and `featureCount` swapped: it reads schema at bytes 33..35 and
+      feature count at 35..37, while the worker writes
+      `[32]digest | u16 feature_count | u16 schema_version`
+      (engine/ops/hash.zig). A `features=3, schema=2` reply is displayed
+      as `schemaVersion=3, featureCount=2`.
+    root_cause: |
+      The unit test encodes the same swapped layout it asserts
+      (tests/clients/browser/transport.test.mjs sets schema at 33 and
+      count at 35), so the bug is self-consistent and green. The two
+      sides never cross-checked against the real worker reply.
+    fix: |
+      Swap the reads in `parseWorkerReply()` (schema at 35..37, count at
+      33..35) and fix the test to encode the real wire layout. Add an
+      assertion that pins the layout against the digest constant in
+      src/integration_tests.zig (digest db29fc13... + features=3 +
+      schema=2) so the SDK layout can never drift from the worker again.
+    tests:
+      - Update tests/clients/browser/transport.test.mjs
+      - Consider a parity test that runs `zig build scripts -- worker request`
+        and feeds the captured reply bytes through `parseWorkerReply`.
+
+  - id: BUG-002
+    title: "Version drift — worker, AMQP client, and wasm advertise stale versions"
+    severity: medium
+    status: open
+    found: "2026-08-08"
+    areas: [versioning, worker, amqp, wasm]
+    files:
+      - src/worker/main.zig          # pub const version = "0.2.0"
+      - src/adapter/amqp/types.zig   # product_version = "0.2.0"
+      - src/wasm.zig                 # sdk_version = "0.1.0"
+      - src/scripts.zig              # default_tag = "fingerprint-worker:0.2.2"
+      - build.zig                    # package_version (single source today)
+      - build.zig.zon                # .version = "0.2.2"
+    symptom: |
+      `worker version` prints 0.2.0, the AMQP connection properties
+      advertise product_version 0.2.0, and the wasm infra artifact carries
+      sdk_version 0.1.0, while the release is 0.2.2 (build.zig.zon). The
+      wire/protocol surface reports a version that no release matches.
+    root_cause: |
+      No single source of truth. The version is copy-pasted across six
+      files; the code comments even note "kept here until the CLI lands a
+      shared version source of truth". Every version bump silently
+      desynchronizes the rest.
+    fix: |
+      Make `package_version` in build.zig the one source and inject it via
+      `b.addOptions()` (`@import("build_options")`) into the worker,
+      adapter, wasm, and scripts modules. Delete the hardcoded constants.
+      scripts.zig's `default_tag` should derive from the injected version.
+    tests:
+      - Unit test: worker `version` output equals the injected version.
+      - AMQP test: connection properties carry the injected version.
+
+  - id: BUG-003
+    title: "Stale test counts in specs/planning/SESSION.yaml"
+    severity: low
+    status: open
+    found: "2026-08-08"
+    areas: [docs, specs]
+    files:
+      - specs/planning/SESSION.yaml
+    symptom: |
+      state.yaml reports total_tests 382 / unit 376 / integration 6; the
+      actual suite is 383 / 376 / 7 (the tcp protocol-violation e2e test
+      was added for v0.2.2).
+    root_cause: |
+      Manual counts in the spec were not refreshed when the new e2e test
+      landed.
+    fix: |
+      Refresh counts (383/376/7) on the next docs pass; consider making
+      the CI summary the reference and keeping specs counts best-effort.
+    tests: n/a

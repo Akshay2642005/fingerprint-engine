@@ -34,3 +34,10 @@ principles:
   - Compile-time first — validate at compile time, not runtime
   - Zero runtime allocation in core algorithms
   - CI must pass on every commit
+
+out_of_scope:
+  - "The Go fraud platform (Postgres rule engine, similarity candidate selection, admin workspace, AI agents) — separate repository consuming our AMQP events (D15/D18/D19)"
+  - "Native SDK and C ABI (D10) — workers ship as Docker containers"
+  - "PyPI and crates.io packages (dropped with the native SDK)"
+  - "RabbitMQ on the inbound path (D16) — inbound is FPKG request/response; AMQP is outbound-only"
+  - "In-browser canonical fingerprint computation (D14) — the browser collects and packages only"

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `zig build scripts -- amqp get [--address=host:port] [--count=N]
+  [--timeout-ms=N]` — live broker inspector: binds a throwaway queue to all
+  nine result routing keys (comptime loop over `io.frame.MessageType`),
+  polls `basic.get`, decodes each FPKG frame (message type, integrity
+  verdict, status, digest, features, schema), and nacks after reading.
+  Verified end-to-end against RabbitMQ 4.3.4 (publisher confirms `basic_ack`
+  delivery tags observed).
+- Specs populated for the current status and backlog: index (`specs/README.md`),
+  ADRs (`specs/decisions/` ADR-001…010), product vision/glossary/snapshot,
+  architecture plans, verification checklists, epic archive, refreshed
+  `plan.md` and status files. See `specs/README.md`.
+
 ## [0.2.2] - 2026-08-08
 
 ### Added

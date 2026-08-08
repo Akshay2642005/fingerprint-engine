@@ -5,11 +5,11 @@ discover_phase:
 
 design_phase:
   status: completed
-  notes: "Architecture decisions recorded in ADRs and tech-stack.md; rework design in specs/rework/DESIGN.md"
+  notes: "Architecture decisions recorded in ADRs and tech-stack.md; rework design in specs/decisions/rework/DESIGN.md"
 
 plan_phase:
   status: completed
-  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed. Distributed rework (specs/rework/) executed to v0.2.2."
+  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed. Distributed rework (specs/decisions/rework/) executed to v0.2.2."
 
 build_phase:
   status: completed
@@ -21,9 +21,9 @@ build_phase:
     - Transports and adapter layer (loopback, tcp, AMQP 0-9-1 + result publisher)
     - Worker executable and Docker image
     - Hand-written TypeScript SDK (collect → package → POST; decision middleware)
-    - Testing (382 tests, 3 fuzz targets, 12 benchmarks)
+    - Testing (383 tests, 3 fuzz targets, 12 benchmarks)
     - CI/CD (test, wasm-build, worker-build, docker-worker)
-  total_tests: 382
+  total_tests: 383
 
 verify_phase:
   status: completed
@@ -58,4 +58,10 @@ release_phase:
 next_phase:
   status: planning
   recommended_skill: elaborate-spec
-  note: "v0.2.2 released. Follow-ups: ingress + worker deployment hardening, AMQP consumer e2e, fraud-platform (Go) integration."
+  note: |
+    v0.2.2 released. Backlog from the 2026-08-08 audit (specs/quality/audits/2026-08-08.md):
+    S1 fix BUG-001 (SDK reply field swap) + TCP idle timeouts + graceful
+    shutdown; S2 version single-source-of-truth (BUG-002/003); S3 application
+    logging (specs/architecture/logging.md); S4 HTTP ingress MVP
+    (specs/architecture/ingress.md) + ingress Dockerfile + GHCR release; S5 AMQP
+    consumer + DLQ; S6 full-stack compose + release surface.

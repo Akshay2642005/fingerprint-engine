@@ -357,7 +357,13 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
                 try t.accept();
                 serve(adapter.Tcp, &t, alloc, publisher_ptr) catch |err| {
                     if (peerGone(err)) continue; // client done; serve the next
-                    return err;
+                    // Protocol errors (InvalidMagic, Truncated,
+                    // IntegrityViolation, ...) are per-connection: after a
+                    // malformed frame the stream is desynchronized, so close
+                    // the client and keep serving. A single bad client must
+                    // never take down the worker (or its container).
+                    t.closeClient();
+                    continue;
                 };
             }
         },

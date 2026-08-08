@@ -5,7 +5,15 @@
 [![npm](https://img.shields.io/npm/v/@akshay2642005/fingerprint-sdk)](https://www.npmjs.com/package/@akshay2642005/fingerprint-sdk)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+> [!CAUTION]
+> **This repository is under heavy development.**
+>
+> The project is actively evolving and may undergo frequent changes to its APIs,
+> features, configuration, and architecture. Breaking changes are expected.
+>
+> **Production use is not recommended at this stage.**
 A deterministic, zero-dependency distributed fingerprint engine written in
+
 [Zig](https://ziglang.org) 0.14.1.
 
 The engine is a **reusable deterministic computation engine**, not a service:
