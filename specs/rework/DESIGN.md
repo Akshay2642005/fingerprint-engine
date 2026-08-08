@@ -456,6 +456,106 @@ shipped in the npm package**. It serves two infra purposes:
 No global feature buffer, no init/reset/scratch: input is allocated via
 `fp_alloc`, processed via `fp_process`, output read from the result region.
 
+### 9.4 SDK implementation contract (commit 14)
+
+#### 9.4.1 Build pipeline (`zig build clients:browser`)
+
+1. **Generator** (`src/build/browser_package.zig`, rewritten): reads
+   `model.FeatureID`/`model.FeatureType` (single source of truth), the
+   package version from `package.json`, and the ingress URL — resolved in
+   this order: `--ingress-url=<url>` build option → `FINGERPRINT_INGRESS_URL`
+   env var → built-in default — and writes two generated modules into
+   `src/clients/browser/generated/` (gitignored):
+   - `tables.ts` — `FeatureID` / `FeatureType` const tables + literal-union
+     types derived from the Zig enums (kills the hand-synced duplicates),
+   - `config.ts` — `SDK_VERSION` and `DEFAULT_INGRESS_URL` constants.
+2. **Compile** (documented Node exception, D13): `tsc` runs twice — ESM
+   (`dist/esm/`) and CJS (`dist/cjs/`) — plus declaration emit. Node is
+   required only for this step, `npm publish`, and the TS test suite; the
+   core gates (`zig build test`, `zig build wasm`) never need Node.
+3. **Assemble** `dist/` via the package `exports` map
+   (`import`/`require`/`types` conditions). The base64-wasm-inlined UMD
+   template (`scripts/fingerprint-umd-template.js`) and its substitution
+   logic are **deleted**; no wasm, no stateful engine buffer, no `hash`
+   export anywhere in the package.
+
+#### 9.4.2 Generated module contract
+
+```ts
+// generated/tables.ts
+// FeatureID: { UserAgent: 0, ... } as const;  type FeatureID = typeof FeatureID[keyof typeof FeatureID]
+// FeatureType: { Boolean: 0, ... } as const;  type FeatureType = typeof FeatureType[keyof typeof FeatureType]
+// generated/config.ts
+// export const SDK_VERSION = "0.2.0";
+// export const DEFAULT_INGRESS_URL = "https://...";
+```
+
+#### 9.4.3 Module breakdown (`src/clients/browser/src/`)
+
+| File | Responsibility |
+|------|----------------|
+| `index.ts` | Public API: `configure()`, `collect()`, `getFeatureIDs()`, `assertAllowed()`, `onSessionBlocked()`; re-exports `FeatureID`, `FeatureType`, types. `collect()` = gather → encode → POST → return `{ package_id, bytes, hex, sent, reply? }`; never computes a digest. |
+| `types.ts` | `Signal`, `SignalPackageOptions`, `CollectOptions`, `SendResult`, `BlockDecision`, `SessionInfo` — hand-written declarations. |
+| `collectors/` | Signal gatherers rewritten to **emit plain `Signal[]`** (`{ id, type, value }`) — no engine buffer, no `engine.add*` calls. Leaf collectors (canvas/webgl/audio/fonts/battery/media/speech/input/permissions) keep their capture logic; the orchestration that used to feed WASM now accumulates `Signal[]`. |
+| `package.ts` | SignalPackage v2 binary serializer mirroring `serialization/binary.zig` byte-for-byte (wire contract §9.4.4); `newPackageId()` via `crypto.getRandomValues`. |
+| `transport.ts` | `sendPackage()`: `fetch` POST to the configured ingress URL (headers §9.4.5); WS client (`connectDecisionSocket`) for `session.blocked` push with reconnection backoff (v1: bounded retries). |
+| `middleware.ts` | Last-known decision cache; `assertAllowed(action)` checks it; `onSessionBlocked(cb)` registers WS-driven callbacks (returns unsubscribe). Purely client-side UX gate — the app enforces server-side (D17). |
+
+#### 9.4.4 `package.ts` wire contract (must match `binary.zig` exactly)
+
+```
+MAGIC "FNGR" (4 bytes) | schema_version u16 = 2 | sdk_version_len u16 |
+sdk_version bytes | collected_at i64 | package_id [16]u8 | feature_count u16 |
+features TLV ×N:
+  id u16 | type u8 | payload_len u32 | payload
+
+payload by type (all little-endian):
+  Boolean:     u8 0/1
+  Integer:     i64
+  Float:       u64 bitcast f64
+  String:      u32 len | bytes
+  Bytes:       u32 len | bytes
+  StringArray: u32 count | { u32 len | bytes } ×count
+  IntegerArray: u32 count | i64 ×count
+  FloatArray:  u32 count | u64 bitcast ×count
+  BytesArray:  u32 count | { u32 len | bytes } ×count
+```
+
+`package_id` is 16 random bytes (v4 UUID shape is optional; correlation
+happens in the Go platform). The serializer is a pure function over
+`Signal[]` + options — no clock, no globals, fully replayable.
+
+#### 9.4.5 Ingress leg (browser → ingress, D16)
+
+The SDK POSTs the **raw SignalPackage v2 body bytes** (the `encode` output
+above) with metadata in headers so the ingress can build the FPKG frame
+and correlate the reply:
+
+```
+POST {ingress_url}/v1/fingerprints
+Content-Type: application/octet-stream
+x-fpkg-schema-version: 2
+x-fpkg-sdk-version: <package version>
+x-fpkg-package-id: <hex of package_id>
+x-fpkg-integrity: sha256-<hex>   # SHA-256(body) via WebCrypto; omitted if subtle unavailable
+```
+
+Ingress responsibilities (out of scope for this repo): verify integrity,
+wrap the body in an FPKG `signal_package` request, relay the reply frame
+back as the HTTP response. No RabbitMQ on this path.
+
+#### 9.4.6 Parity & surface tests
+
+- `zig build scripts -- generate fixture signal-package-v2` also writes a
+  JSON manifest (`signal-package-v2.signals.json`) describing the exact
+  signals + metadata used to produce `signal-package-v2.bin`. The TS test
+  (Node, documented exception) rebuilds the bytes from the manifest via
+  `package.ts` and asserts equality with the `.bin` — cross-language
+  golden parity, no TS decoder needed.
+- A Zig test asserts the generated `dist/` surface: no wasm module, no
+  `hash`/`compute` exports, no base64 blob — the canonical path stays
+  server-side.
+
 ## 10. Docker
 
 `deploy/Dockerfile.worker` — multi-stage:
