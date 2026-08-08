@@ -16,6 +16,8 @@ const model = @import("model");
 const serialization = @import("serialization");
 const engine = @import("engine");
 const io = @import("io");
+const adapter = @import("adapter");
+const stdx = @import("stdx");
 
 const usage =
     \\Usage:
@@ -41,6 +43,12 @@ const usage =
     \\    (default 127.0.0.1:8080 — point it at the container's published
     \\    port) and print the reply: status, digest (cross-checked against
     \\    an in-process engine call), feature count, schema version.
+    \\
+    \\  zig build scripts -- amqp [--address=host:port]
+    \\    Live AMQP smoke test against a broker (default 127.0.0.1:5672):
+    \\    declare the fingerprint exchange, bind a throwaway queue to it,
+    \\    publish a reply frame through the worker publisher, and verify it
+    \\    round-trips back out of the broker. Requires a reachable RabbitMQ.
     \\
 ;
 
@@ -103,6 +111,11 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, subcommand, "worker")) {
         try workerCommand(alloc, args);
+        return;
+    }
+
+    if (std.mem.eql(u8, subcommand, "amqp")) {
+        try amqpCommand(alloc, args);
         return;
     }
 
@@ -273,6 +286,99 @@ fn readReplyFrame(reader: anytype, buf: []u8) ![]const u8 {
     try reader.readNoEof(buf[io.frame.header_size..total]);
     if (!header.integrityValid(buf[io.frame.header_size..total])) return error.IntegrityMismatch;
     return buf[0..total];
+}
+
+/// amqp [--address=host:port] — live broker smoke test. Declares the
+/// fingerprint exchange (idempotent), binds a throwaway queue to it, pushes
+/// a reply frame through the worker publisher, and verifies it round-trips
+/// back out of the broker. Prints PASS and exits 0 on success.
+fn amqpCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
+    var address: []const u8 = "127.0.0.1:5672";
+    if (args.len > 2) {
+        for (args[2..]) |arg| {
+            if (std.mem.startsWith(u8, arg, "--address=")) {
+                address = arg["--address=".len..];
+            } else {
+                std.debug.print("amqp: unknown option '{s}'\n\n{s}", .{ arg, usage });
+                std.process.exit(1);
+            }
+        }
+    }
+    const colon = std.mem.lastIndexOfScalar(u8, address, ':') orelse {
+        std.debug.print("amqp: invalid --address '{s}' (expected host:port)\n", .{address});
+        std.process.exit(1);
+    };
+    const host = address[0..colon];
+    const port = std.fmt.parseInt(u16, address[colon + 1 ..], 10) catch {
+        std.debug.print("amqp: invalid port in --address '{s}'\n", .{address});
+        std.process.exit(1);
+    };
+    const parsed = std.net.Address.parseIp(host, port) catch {
+        std.debug.print("amqp: invalid --address '{s}' (expected host:port)\n", .{address});
+        std.process.exit(1);
+    };
+
+    const stdout = std.io.getStdOut().writer();
+
+    // The worker publisher: connects, enables confirms, declares the exchange.
+    var publisher = adapter.amqp_publisher.Publisher.init(alloc, .{
+        .address = parsed,
+        .user_name = "guest",
+        .password = "guest",
+        .virtual_host = "/",
+        .message_size_max = io.frame.header_size + (1 << 16),
+    }) catch |err| {
+        std.debug.print("amqp: connect failed: {s} (is RabbitMQ running at {s}?)\n", .{ @errorName(err), address });
+        std.process.exit(1);
+    };
+    defer publisher.deinit(alloc);
+    try stdout.print("connected to {s}; exchange '{s}' declared\n", .{ address, adapter.amqp_publisher.exchange_name });
+
+    // Throwaway queue bound to every result routing key.
+    const queue_name = try std.fmt.allocPrint(alloc, "fpkg-test-{x}", .{stdx.unique_u128()});
+    defer alloc.free(queue_name);
+    try publisher.client.queue_declare(.{
+        .queue = queue_name,
+        .passive = false,
+        .durable = false,
+        .exclusive = true,
+        .auto_delete = true,
+        .arguments = .{},
+    });
+    try publisher.client.queue_bind(.{
+        .queue = queue_name,
+        .exchange = adapter.amqp_publisher.exchange_name,
+        // Direct exchange: bind the exact key of the message we publish below.
+        .routing_key = adapter.amqp_publisher.routingKey(.fingerprint_result),
+        .no_wait = false,
+    });
+    try stdout.print("queue '{s}' bound to {s}\n", .{ queue_name, adapter.amqp_publisher.routingKey(.fingerprint_result) });
+
+    // Publish a reply frame exactly as the worker would (fingerprint_result).
+    const payload = &[_]u8{ 0, 0xdb, 0x29, 0xfc, 0x13 }; // status ok + digest head
+    var frame_buf: [io.frame.header_size + 16]u8 = undefined;
+    const frame = try adapter.buildFrame(.fingerprint_result, .binary, payload, &frame_buf);
+    try publisher.publish_reply(frame);
+    try stdout.print("published {d} bytes under result.fingerprint-result\n", .{frame.len});
+
+    // Read it back and compare byte-for-byte.
+    const message = try publisher.client.get_message(.{ .queue = queue_name, .no_ack = false });
+    const message_info = message orelse {
+        std.debug.print("amqp: FAIL — queue empty after publish\n", .{});
+        std.process.exit(1);
+    };
+    const body = try publisher.client.get_message_body();
+    defer publisher.client.nack(.{
+        .delivery_tag = message_info.delivery_tag,
+        .requeue = false,
+        .multiple = false,
+    }) catch {};
+
+    if (!std.mem.eql(u8, body, frame)) {
+        std.debug.print("amqp: FAIL — body mismatch ({d} != {d} bytes)\n", .{ body.len, frame.len });
+        std.process.exit(1);
+    }
+    try stdout.print("amqp: PASS — {d} bytes round-tripped identically\n", .{body.len});
 }
 
 fn generate(alloc: std.mem.Allocator, args: []const []const u8) !void {

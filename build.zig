@@ -139,15 +139,24 @@ pub fn build(b: *std.Build) !void {
         .optimize = mode,
     });
 
-    // Adapter: transport implementations (loopback, tcp, framing helpers).
-    // Depends on IO only — never on engine or serialization, so the engine
-    // stays transport-agnostic.
+    // Stdx: leaf utilities shared across subsystems (copy helpers, bitsets,
+    // test PRNG, casing). Depends on nothing.
+    const stdx = b.createModule(.{
+        .root_source_file = b.path("src/stdx.zig"),
+        .target = target,
+        .optimize = mode,
+    });
+
+    // Adapter: transport implementations (loopback, tcp, amqp, framing
+    // helpers). Depends on IO and Stdx only — never on engine or
+    // serialization, so the engine stays transport-agnostic.
     const adapter = b.createModule(.{
         .root_source_file = b.path("src/adapter/root.zig"),
         .target = target,
         .optimize = mode,
         .imports = &.{
             .{ .name = "io", .module = io },
+            .{ .name = "stdx", .module = stdx },
         },
     });
 
@@ -214,6 +223,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "serialization", .module = serialization },
             .{ .name = "engine", .module = engine },
             .{ .name = "io", .module = io },
+            .{ .name = "stdx", .module = stdx },
             .{ .name = "adapter", .module = adapter },
             .{ .name = "worker", .module = worker },
             .{ .name = "test_utils", .module = test_utils },
@@ -267,6 +277,8 @@ pub fn build(b: *std.Build) !void {
         .serialization = serialization,
         .engine = engine,
         .io = io,
+        .adapter = adapter,
+        .stdx = stdx,
     });
 
     // zig build docker:worker
@@ -413,6 +425,8 @@ fn build_scripts(b: *std.Build, steps: struct {
     serialization: *std.Build.Module,
     engine: *std.Build.Module,
     io: *std.Build.Module,
+    adapter: *std.Build.Module,
+    stdx: *std.Build.Module,
 }) *std.Build.Step.Compile {
     const scripts_exe = b.addExecutable(.{
         .name = "scripts",
@@ -425,6 +439,8 @@ fn build_scripts(b: *std.Build, steps: struct {
                 .{ .name = "serialization", .module = options.serialization },
                 .{ .name = "engine", .module = options.engine },
                 .{ .name = "io", .module = options.io },
+                .{ .name = "adapter", .module = options.adapter },
+                .{ .name = "stdx", .module = options.stdx },
             },
         }),
     });
