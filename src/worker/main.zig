@@ -86,7 +86,8 @@ pub const usage =
     \\
 ;
 
-/// Parses argv (including argv[0]) into a Command. Diagnostics go to stderr.
+/// Parses argv (including argv[0]) into a Command.
+/// Pure: errors are returned to the caller, which owns the diagnostics.
 pub fn parse(args: []const []const u8) CliError!Command {
     const subcommand = if (args.len > 1) args[1] else "help";
     if (std.mem.eql(u8, subcommand, "help") or
@@ -96,27 +97,18 @@ pub fn parse(args: []const []const u8) CliError!Command {
         return .help;
     }
     if (std.mem.eql(u8, subcommand, "version")) return .version;
-    if (!std.mem.eql(u8, subcommand, "start")) {
-        std.debug.print("worker: unknown subcommand '{s}'\n\n{s}", .{ subcommand, usage });
-        return error.UnknownSubcommand;
-    }
+    if (!std.mem.eql(u8, subcommand, "start")) return error.UnknownSubcommand;
 
     var options = StartOptions{};
     for (args[2..]) |arg| {
         if (std.mem.startsWith(u8, arg, "--transport=")) {
             const value = arg["--transport=".len..];
-            options.transport = parseTransport(value) orelse {
-                std.debug.print("worker: invalid transport '{s}' (expected loopback|tcp)\n", .{value});
-                return error.InvalidOption;
-            };
+            options.transport = parseTransport(value) orelse return error.InvalidOption;
         } else if (std.mem.startsWith(u8, arg, "--listen=")) {
             options.listen = arg["--listen=".len..];
         } else if (std.mem.startsWith(u8, arg, "--publish=")) {
             const value = arg["--publish=".len..];
-            options.publish = parsePublish(value) orelse {
-                std.debug.print("worker: invalid publish '{s}' (expected amqp|none)\n", .{value});
-                return error.InvalidOption;
-            };
+            options.publish = parsePublish(value) orelse return error.InvalidOption;
         } else if (std.mem.startsWith(u8, arg, "--amqp-address=")) {
             options.amqp_address = arg["--amqp-address=".len..];
         } else if (std.mem.startsWith(u8, arg, "--amqp-user=")) {
@@ -125,15 +117,9 @@ pub fn parse(args: []const []const u8) CliError!Command {
             options.amqp_password = arg["--amqp-password=".len..];
         } else if (std.mem.startsWith(u8, arg, "--amqp-vhost=")) {
             options.amqp_vhost = arg["--amqp-vhost=".len..];
-        } else {
-            std.debug.print("worker: unknown option '{s}'\n\n{s}", .{ arg, usage });
-            return error.UnknownOption;
-        }
+        } else return error.UnknownOption;
     }
-    if (options.transport == .tcp and options.listen == null) {
-        std.debug.print("worker: --transport=tcp requires --listen=host:port\n\n{s}", .{usage});
-        return error.MissingListen;
-    }
+    if (options.transport == .tcp and options.listen == null) return error.MissingListen;
     return .{ .start = options };
 }
 
@@ -393,7 +379,16 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
-    const command = parse(args) catch std.process.exit(1);
+    const command = parse(args) catch |err| {
+        const message: []const u8 = switch (err) {
+            error.UnknownSubcommand => "unknown subcommand",
+            error.UnknownOption => "unknown option",
+            error.InvalidOption => "invalid option",
+            error.MissingListen => "--transport=tcp requires --listen=host:port",
+        };
+        std.io.getStdErr().writer().print("worker: {s}\n\n{s}", .{ message, usage }) catch {};
+        std.process.exit(1);
+    };
     switch (command) {
         .help => try std.io.getStdOut().writer().writeAll(usage),
         .version => try std.io.getStdOut().writer().print("worker version {s}\n", .{version}),
