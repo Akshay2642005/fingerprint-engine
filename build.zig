@@ -27,6 +27,7 @@ const builtin = @import("builtin");
 //   zig build test-integration-build - build the integration test binary
 //   zig build wasm                  - build the WebAssembly module
 //   zig build worker                - build the worker executable
+//   zig build docker:worker         - build the worker Docker image
 //   zig build bench                 - run performance benchmarks
 //   zig build clients:browser       - build the browser npm package (dist/)
 //   zig build docs                  - build docs (nested src/docs_website/)
@@ -36,6 +37,15 @@ const zig_version = std.SemanticVersion{
     .major = 0,
     .minor = 14,
     .patch = 1,
+};
+
+/// Matches build.zig.zon; kept here until a shared version source of truth
+/// lands — image tags and release artifacts track it so local builds and
+/// releases never drift.
+const package_version = std.SemanticVersion{
+    .major = 0,
+    .minor = 2,
+    .patch = 0,
 };
 
 comptime {
@@ -67,6 +77,7 @@ pub fn build(b: *std.Build) !void {
         .docs = b.step("docs", "Build docs"),
         .scripts = b.step("scripts", "Free form automation scripts"),
         .scripts_build = b.step("scripts:build", "Build automation scripts"),
+        .docker_worker = b.step("docker:worker", "Build the worker Docker image (requires docker)"),
     };
 
     const mode = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSafe });
@@ -257,6 +268,9 @@ pub fn build(b: *std.Build) !void {
         .engine = engine,
     });
 
+    // zig build docker:worker
+    build_docker_worker(b, build_steps.docker_worker);
+
     // zig build test-integration, zig build test-integration-build
     build_test_integration(b, .{
         .test_integration = build_steps.test_integration,
@@ -339,6 +353,23 @@ fn build_worker(b: *std.Build, steps: struct {
     steps.install_step.dependOn(&worker_install.step);
     steps.worker_step.dependOn(&worker_install.step);
     return worker;
+}
+
+/// `zig build docker:worker` — builds the worker container image with the
+/// system docker (deploy/Dockerfile.worker). The image tag tracks
+/// build.zig.zon. Requires a docker daemon; the step only fails when run.
+fn build_docker_worker(b: *std.Build, step: *std.Build.Step) void {
+    const tag = std.fmt.comptimePrint(
+        "fingerprint-worker:{d}.{d}.{d}",
+        .{ package_version.major, package_version.minor, package_version.patch },
+    );
+    const docker = b.addSystemCommand(&.{ "docker", "build" });
+    docker.addArg("-f");
+    docker.addArg("deploy/Dockerfile.worker");
+    docker.addArg("-t");
+    docker.addArg(tag);
+    docker.addArg(".");
+    step.dependOn(&docker.step);
 }
 
 fn build_bench(b: *std.Build, step: *std.Build.Step, options: struct {

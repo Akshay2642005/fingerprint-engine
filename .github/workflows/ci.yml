@@ -102,3 +102,30 @@ jobs:
           name: fingerprint-worker
           path: zig-out/bin/worker
           retention-days: 30
+
+  docker-worker:
+    name: Docker Image Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build worker executable
+        run: zig build worker --release=safe
+
+      - name: Build worker Docker image
+        run: zig build docker:worker
+
+      - name: Verify image exists
+        run: |
+          docker image inspect fingerprint-worker:0.2.0 > /dev/null
+          echo "✅ image fingerprint-worker:0.2.0 built"
+
+      - name: Smoke test image entrypoint
+        run: |
+          docker run --rm --entrypoint /worker fingerprint-worker:0.2.0 version

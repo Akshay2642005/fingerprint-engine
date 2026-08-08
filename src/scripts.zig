@@ -28,6 +28,13 @@ const usage =
     \\    engine's hash of it — the digest the worker e2e tests pin as a
     \\    compile-time constant. Run from the repository root.
     \\
+    \\  zig build scripts -- docker build-worker [--tag=name]
+    \\    Build the worker container image (deploy/Dockerfile.worker);
+    \\    defaults to the fingerprint-worker:0.2.0 tag.
+    \\
+    \\  zig build scripts -- docker run [--tag=name]
+    \\    Run the worker image in the foreground, publishing port 8080.
+    \\
 ;
 
 /// Fixture packages are defined here, in the same model code the engine
@@ -82,8 +89,57 @@ pub fn main() !void {
         return;
     }
 
+    if (std.mem.eql(u8, subcommand, "docker")) {
+        try dockerCommand(alloc, args);
+        return;
+    }
+
     std.debug.print("unknown subcommand '{s}'\n\n{s}", .{ subcommand, usage });
     std.process.exit(1);
+}
+
+/// Default image tag, matching `zig build docker:worker`.
+const default_tag = "fingerprint-worker:0.2.0";
+
+/// docker build-worker [--tag=name] / docker run [--tag=name]. Child stdio
+/// is inherited so docker's own progress and interactive output flow through.
+fn dockerCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
+    const sub = if (args.len > 2) args[2] else "";
+    var tag: []const u8 = default_tag;
+    if (args.len > 3) {
+        for (args[3..]) |arg| {
+            if (std.mem.startsWith(u8, arg, "--tag=")) {
+                tag = arg["--tag=".len..];
+            } else {
+                std.debug.print("docker: unknown option '{s}'\n\n{s}", .{ arg, usage });
+                std.process.exit(1);
+            }
+        }
+    }
+
+    if (std.mem.eql(u8, sub, "build-worker")) {
+        try runChild(alloc, &.{ "docker", "build", "-f", "deploy/Dockerfile.worker", "-t", tag, "." });
+        try std.io.getStdOut().writer().print("built {s}\n", .{tag});
+    } else if (std.mem.eql(u8, sub, "run")) {
+        try runChild(alloc, &.{ "docker", "run", "--rm", "-p", "8080:8080", tag });
+    } else {
+        std.debug.print("docker: expected build-worker or run\n\n{s}", .{usage});
+        std.process.exit(1);
+    }
+}
+
+/// Spawns `argv` with inherited stdio and exits with its status.
+fn runChild(alloc: std.mem.Allocator, argv: []const []const u8) !void {
+    var child = std.process.Child.init(argv, alloc);
+    child.spawn() catch {
+        std.debug.print("docker: failed to launch docker (is it installed and running?)\n", .{});
+        std.process.exit(1);
+    };
+    const term = try child.wait();
+    switch (term) {
+        .Exited => |code| if (code != 0) std.process.exit(code),
+        else => std.process.exit(1),
+    }
 }
 
 fn generate(alloc: std.mem.Allocator, args: []const []const u8) !void {
