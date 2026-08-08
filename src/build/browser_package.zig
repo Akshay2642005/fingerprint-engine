@@ -1,7 +1,7 @@
 //! Build-time generator for the browser SDK npm package.
 //!
-//! Produces dist/fingerprint.umd.js, dist/fingerprint.esm.js,
-//! dist/index.d.ts, and dist/demo.html inside the browser client package
+//! Produces dist/fingerprint.umd.js, dist/fingerprint.esm.js, and
+//! dist/index.d.ts inside the browser client package
 //! (src/clients/browser/) from:
 //!   - the compiled WASM binary (base64-inlined into the UMD bundle),
 //!   - scripts/fingerprint-umd-template.js (UMD factory body),
@@ -13,11 +13,15 @@
 //! produced entirely by `zig build clients:browser`. The run step has no
 //! captured outputs, so the build runner treats it as side-effecting and
 //! executes it on every invocation (it rewrites dist/ in the source tree).
+//!
+//! The npm payload is strictly the runtime SDK — no demo pages, no examples.
+//! The browser demo lives outside the package at examples/demo.html and is
+//! served from the repo checkout for development only.
 const std = @import("std");
 const model = @import("model");
 
 const usage =
-    \\usage: browser_package <wasm> <template> <package.json> <demo.html> <out-dir>
+    \\usage: browser_package <wasm> <template> <package.json> <out-dir>
     \\
 ;
 
@@ -33,7 +37,7 @@ pub fn main() !void {
 
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
-    if (args.len != 6) {
+    if (args.len != 5) {
         std.debug.print("{s}", .{usage});
         std.process.exit(1);
     }
@@ -41,8 +45,7 @@ pub fn main() !void {
     const wasm_path = args[1];
     const template_path = args[2];
     const package_json_path = args[3];
-    const demo_path = args[4];
-    const out_dir = args[5];
+    const out_dir = args[4];
 
     // 1. Base64-encode the WASM binary (inlined into the UMD bundle).
     const wasm_bytes = try std.fs.cwd().readFileAlloc(alloc, wasm_path, 4 << 20);
@@ -81,12 +84,9 @@ pub fn main() !void {
     try writeFile(alloc, dist_path, "fingerprint.umd.js", umd);
     try writeFile(alloc, dist_path, "fingerprint.esm.js", esm);
     try writeFile(alloc, dist_path, "index.d.ts", dts);
-    const demo = try std.fs.cwd().readFileAlloc(alloc, demo_path, 1 << 20);
-    defer alloc.free(demo);
-    try writeFile(alloc, dist_path, "demo.html", demo);
 
     std.debug.print(
-        "browser package: dist/fingerprint.umd.js ({d} KB), fingerprint.esm.js ({d} KB), index.d.ts ({d} KB), demo.html\n",
+        "browser package: dist/fingerprint.umd.js ({d} KB), fingerprint.esm.js ({d} KB), index.d.ts ({d} KB)\n",
         .{
             umd.len / 1024,
             esm.len / 1024,

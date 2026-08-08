@@ -16,7 +16,7 @@ const builtin = @import("builtin");
 //   io              - async transport primitives (src/io/), depends on nothing
 //   adapter         - transport implementations (src/adapter/), depends on io
 //   worker          - deterministic worker executable (src/worker/), depends on engine+adapter
-//   wasm            - WebAssembly infra artifact (src/wasm/), depends on core+model
+//   wasm            - WebAssembly infra artifact (src/wasm.zig), depends on core+model
 //   browser_package - build-time npm package generator (src/build/), depends on model
 //   test_utils      - test helpers (tests/utils/), depends on model
 //   bench_module    - benchmarks (src/bench/), depends on core+model+serialization
@@ -403,12 +403,12 @@ fn build_browser_client(b: *std.Build, step: *std.Build.Step, options: struct {
         .root_module = options.browser_package_module,
     });
     const run = b.addRunArtifact(generator);
-    // Inputs: wasm binary, UMD template, package metadata, demo page, and the
-    // package directory the generator writes dist/ into.
+    // Inputs: wasm binary, UMD template, and the package metadata; the
+    // generator writes dist/ into the package directory. The demo page lives
+    // outside the package (examples/) and is never shipped.
     run.addFileArg(options.wasm.getEmittedBin());
     run.addFileArg(b.path("src/clients/browser/scripts/fingerprint-umd-template.js"));
     run.addFileArg(b.path("src/clients/browser/package.json"));
-    run.addFileArg(b.path("src/clients/browser/demo/demo.html"));
     run.addDirectoryArg(b.path("src/clients/browser"));
     step.dependOn(&run.step);
 }
