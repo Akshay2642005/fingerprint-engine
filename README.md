@@ -1,6 +1,5 @@
 # Fingerprint Engine
-
-[![CI](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml)
+[![CI](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/ci.yml)
 [![Release](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/release.yml/badge.svg)](https://github.com/Akshay2642005/fingerprint-engine/actions/workflows/release.yml)
 ![Zig](https://img.shields.io/badge/Zig-0.14.1-%23F7A41D?logo=zig&logoColor=white)
 [![npm](https://img.shields.io/npm/v/@akshay2642005/fingerprint-sdk)](https://www.npmjs.com/package/@akshay2642005/fingerprint-sdk)
