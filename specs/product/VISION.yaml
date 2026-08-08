@@ -1,0 +1,34 @@
+# Vision — Fingerprint Engine
+
+name: Fingerprint Engine
+description: "A deterministic, distributed browser fingerprint computation engine written in Zig."
+version: 0.2.2
+updated: "2026-08-08"
+
+targets:
+  - browser: "TypeScript signal-collection SDK — collects signals, packages a versioned SignalPackage, POSTs to the ingress. Never computes the canonical fingerprint."
+  - workers: "Stateless Zig worker executable in Docker containers — engine.process() computes the canonical fingerprint, risk, entropy, similarity server-side."
+  - ingress: "Planned HTTP gateway (M5) — integrity-verified FPKG translation to a pooled worker fleet; the only HTTP-speaking component."
+  - wasm: "Infra-only artifact for benchmarking and wasmtime test containers (not shipped)."
+
+non_targets:
+  - "No native SDK, no C ABI — workers ship as containers."
+  - "No RabbitMQ/HTTP/databases in the engine core."
+  - "No in-browser canonical fingerprinting."
+  - "The Go fraud platform (rules, matching, admin workspace, AI agents) is a separate repository."
+
+principles:
+  - Deterministic — same input, same output, any platform; enforced by golden replay tests.
+  - Transport-free core — the engine never knows about queues, HTTP, or databases.
+  - Everything depends inward — adapters depend on the engine, never the reverse.
+  - Compile-time first — validate at compile time, not runtime.
+  - Zero runtime allocation in core algorithms.
+  - Browser collects, engine computes, platform decides.
+  - Every commit compiles and passes tests on Zig 0.14.1.
+
+long_term_goals:
+  - Production-grade distributed ingestion (ingress fleet → worker fleet).
+  - Durable, at-least-once event stream to the fraud platform (AMQP + DLQ).
+  - Cross-language serialization parity (Zig ↔ TypeScript today; protobuf/flatbuffers/cap'n proto behind the CodecID interface).
+  - Full-stack local compose and one-command release pipeline.
+  - A healthy public API with stable versioning on the wire.

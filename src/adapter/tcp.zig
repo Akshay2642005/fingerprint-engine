@@ -35,6 +35,16 @@ pub const Tcp = struct {
         self.client = connection.stream;
     }
 
+    /// Closes the current client connection, if any. Used to drop a client
+    /// after a protocol error so it observes the disconnect instead of
+    /// hanging; the accept loop then waits for the next connection.
+    pub fn closeClient(self: *Tcp) void {
+        if (self.client) |client| {
+            client.close();
+            self.client = null;
+        }
+    }
+
     /// One inbound FPKG frame from the accepted client; memory is owned by
     /// the caller.
     pub fn readFrame(self: *Tcp, allocator: std.mem.Allocator) ![]const u8 {

@@ -50,6 +50,14 @@ const usage =
     \\    publish a reply frame through the worker publisher, and verify it
     \\    round-trips back out of the broker. Requires a reachable RabbitMQ.
     \\
+    \\  zig build scripts -- amqp get [--address=host:port] [--count=N]
+    \\    [--timeout-ms=N]
+    \\    Subscribe to live traffic: bind a throwaway queue to every result
+    \\    routing key, then poll the broker and decode each message as an
+    \\    FPKG frame (message type, integrity, status, digest). Messages are
+    \\    consumed as they are read; exits after --count messages or
+    \\    --timeout-ms of polling.
+    \\
 ;
 
 /// Fixture packages are defined here, in the same model code the engine
@@ -293,6 +301,9 @@ fn readReplyFrame(reader: anytype, buf: []u8) ![]const u8 {
 /// a reply frame through the worker publisher, and verifies it round-trips
 /// back out of the broker. Prints PASS and exits 0 on success.
 fn amqpCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
+    if (args.len > 2 and std.mem.eql(u8, args[2], "get")) {
+        return amqpGetCommand(alloc, args[2..]);
+    }
     var address: []const u8 = "127.0.0.1:5672";
     if (args.len > 2) {
         for (args[2..]) |arg| {
@@ -379,6 +390,187 @@ fn amqpCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
         std.process.exit(1);
     }
     try stdout.print("amqp: PASS — {d} bytes round-tripped identically\n", .{body.len});
+}
+
+const amqp_get_usage =
+    \\Usage:
+    \\
+    \\  zig build scripts -- amqp get [--address=host:port] [--count=N]
+    \\    [--timeout-ms=N]
+    \\
+    \\Subscribe to live traffic on the fingerprint exchange. A throwaway
+    \\queue is bound to every result routing key, then basic.get polls the
+    \\broker; each message is decoded as an FPKG frame and printed (message
+    \\type, integrity, status, digest). Messages are consumed as they are
+    \\read. Exits after --count messages or --timeout-ms of polling.
+    \\
+    \\Options:
+    \\  --address=host:port  broker address (default 127.0.0.1:5672)
+    \\  --count=N            stop after N messages (default: until timeout)
+    \\  --timeout-ms=N       stop after N ms of polling (default 10000;
+    \\                       0 = poll forever until interrupted)
+    \\
+;
+
+/// amqp get — live message inspector (see amqp_get_usage).
+fn amqpGetCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
+    var address: []const u8 = "127.0.0.1:5672";
+    var count: usize = 0;
+    var timeout_ms: u64 = 10_000;
+
+    for (args[1..]) |arg| {
+        if (std.mem.startsWith(u8, arg, "--address=")) {
+            address = arg["--address=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--count=")) {
+            count = std.fmt.parseInt(usize, arg["--count=".len..], 10) catch {
+                std.debug.print("amqp get: invalid --count '{s}'\n", .{arg});
+                std.process.exit(1);
+            };
+        } else if (std.mem.startsWith(u8, arg, "--timeout-ms=")) {
+            timeout_ms = std.fmt.parseInt(u64, arg["--timeout-ms=".len..], 10) catch {
+                std.debug.print("amqp get: invalid --timeout-ms '{s}'\n", .{arg});
+                std.process.exit(1);
+            };
+        } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+            try std.io.getStdOut().writer().writeAll(amqp_get_usage);
+            return;
+        } else {
+            std.debug.print("amqp get: unknown option '{s}'\n\n{s}", .{ arg, amqp_get_usage });
+            std.process.exit(1);
+        }
+    }
+
+    const colon = std.mem.lastIndexOfScalar(u8, address, ':') orelse {
+        std.debug.print("amqp get: invalid --address '{s}' (expected host:port)\n", .{address});
+        std.process.exit(1);
+    };
+    const host = address[0..colon];
+    const port = std.fmt.parseInt(u16, address[colon + 1 ..], 10) catch {
+        std.debug.print("amqp get: invalid port in --address '{s}'\n", .{address});
+        std.process.exit(1);
+    };
+    const parsed = std.net.Address.parseIp(host, port) catch {
+        std.debug.print("amqp get: invalid --address '{s}' (expected host:port)\n", .{address});
+        std.process.exit(1);
+    };
+
+    const stdout = std.io.getStdOut().writer();
+
+    // Reuse the worker publisher for the connection: it enables confirms and
+    // declares the exchange, exactly as the worker's own connection does.
+    var publisher = adapter.amqp_publisher.Publisher.init(alloc, .{
+        .address = parsed,
+        .user_name = "guest",
+        .password = "guest",
+        .virtual_host = "/",
+        .message_size_max = io.frame.header_size + (1 << 16),
+    }) catch |err| {
+        std.debug.print("amqp get: connect failed: {s} (is RabbitMQ running at {s}?)\n", .{ @errorName(err), address });
+        std.process.exit(1);
+    };
+    defer publisher.deinit(alloc);
+
+    // Throwaway exclusive queue bound to every result routing key, so this
+    // inspector sees every message type the worker can publish.
+    const queue_name = try std.fmt.allocPrint(alloc, "fpkg-inspect-{x}", .{stdx.unique_u128()});
+    defer alloc.free(queue_name);
+    try publisher.client.queue_declare(.{
+        .queue = queue_name,
+        .passive = false,
+        .durable = false,
+        .exclusive = true,
+        .auto_delete = true,
+        .arguments = .{},
+    });
+    inline for (std.meta.fields(io.frame.MessageType)) |field| {
+        const message_type: io.frame.MessageType = @enumFromInt(field.value);
+        try publisher.client.queue_bind(.{
+            .queue = queue_name,
+            .exchange = adapter.amqp_publisher.exchange_name,
+            .routing_key = adapter.amqp_publisher.routingKey(message_type),
+            .no_wait = false,
+        });
+    }
+    try stdout.print("amqp get: listening on exchange '{s}' (queue '{s}', {d} routing keys)\n", .{
+        adapter.amqp_publisher.exchange_name,
+        queue_name,
+        std.meta.fields(io.frame.MessageType).len,
+    });
+
+    const deadline: u64 = if (timeout_ms == 0)
+        std.math.maxInt(u64)
+    else
+        @as(u64, @intCast(std.time.milliTimestamp())) + timeout_ms;
+
+    var seen: usize = 0;
+    while (true) {
+        if (timeout_ms != 0 and @as(u64, @intCast(std.time.milliTimestamp())) >= deadline) break;
+
+        const message = publisher.client.get_message(.{ .queue = queue_name, .no_ack = false }) catch |err| {
+            std.debug.print("amqp get: get_message failed: {s}\n", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        const message_info = message orelse {
+            // Queue empty — poll instead of hammering the broker.
+            std.time.sleep(250 * std.time.ns_per_ms);
+            continue;
+        };
+        defer publisher.client.nack(.{
+            .delivery_tag = message_info.delivery_tag,
+            .requeue = false,
+            .multiple = false,
+        }) catch {};
+
+        try stdout.print("message: tag={d} queue_depth={d}\n", .{
+            message_info.delivery_tag,
+            message_info.message_count,
+        });
+        if (!message_info.has_body) {
+            try stdout.print("  (no body)\n", .{});
+            continue;
+        }
+        const body = try publisher.client.get_message_body();
+        try printFpkgMessage(stdout, body);
+        seen += 1;
+        if (count != 0 and seen >= count) break;
+    }
+}
+
+/// Decodes an FPKG frame (as published by the worker) and prints a readable
+/// summary: message type, codec, payload size, integrity verdict, and — for
+/// fingerprint results — status, digest, feature count, schema version.
+fn printFpkgMessage(w: anytype, body: []const u8) !void {
+    if (body.len < io.frame.header_size) {
+        try w.print("  body: {d} bytes (too short for an FPKG header)\n", .{body.len});
+        return;
+    }
+    var header_buf: [io.frame.header_size]u8 = undefined;
+    @memcpy(&header_buf, body[0..io.frame.header_size]);
+    var header_reader = io.Reader.init(&header_buf);
+    const header = io.frame.FrameHeader.decode(&header_reader) catch |err| {
+        try w.print("  frame: decode failed: {s}\n", .{@errorName(err)});
+        return;
+    };
+    const payload = body[io.frame.header_size..];
+    try w.print("  frame: type={s} codec={s} payload={d} bytes integrity={s}\n", .{
+        @tagName(header.message_type),
+        @tagName(header.codec),
+        payload.len,
+        if (io.frame.FrameHeader.integrityValid(header, payload)) "OK" else "MISMATCH",
+    });
+    if (payload.len < 1) return;
+    const status = std.meta.intToEnum(engine.Status, payload[0]) catch {
+        try w.print("  status: invalid byte {d}\n", .{payload[0]});
+        return;
+    };
+    try w.print("  status: {s}\n", .{@tagName(status)});
+    if (header.message_type == .fingerprint_result and payload.len >= 37) {
+        try w.print("  digest:  {s}\n", .{std.fmt.bytesToHex(payload[1..33], .lower)});
+        try w.print("  features: {d}  schema: {d}\n", .{
+            std.mem.readInt(u16, payload[33..35], .little),
+            std.mem.readInt(u16, payload[35..37], .little),
+        });
+    }
 }
 
 fn generate(alloc: std.mem.Allocator, args: []const []const u8) !void {

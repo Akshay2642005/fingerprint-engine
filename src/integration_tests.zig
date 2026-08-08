@@ -178,3 +178,61 @@ test "worker: serves fpkf requests over tcp" {
     var reply_buf: [header_size + 1 << 16]u8 = undefined;
     try expectHashReply(try readFrame(stream.reader(), &reply_buf));
 }
+
+test "worker: survives a protocol-violating tcp client" {
+    const alloc = std.testing.allocator;
+
+    var child = std.process.Child.init(
+        &.{ worker_exe, "start", "--transport=tcp", "--listen=127.0.0.1:0" },
+        alloc,
+    );
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    try child.spawn();
+    defer {
+        _ = child.kill() catch {};
+        _ = child.wait() catch {};
+    }
+
+    // The worker announces its bound port on stderr (--listen=...:0).
+    const stderr_reader = child.stderr.?.reader();
+    const port = blk: {
+        var announce_buf: [256]u8 = undefined;
+        while (true) {
+            const line = (try stderr_reader.readUntilDelimiterOrEof(&announce_buf, '\n')) orelse
+                return error.WorkerNeverListened;
+            if (std.mem.indexOf(u8, line, "worker: listening on ")) |idx| {
+                const rest = line[idx + "worker: listening on ".len ..];
+                const colon = std.mem.lastIndexOfScalar(u8, rest, ':') orelse
+                    return error.MalformedAnnouncement;
+                break :blk try std.fmt.parseInt(u16, rest[colon + 1 ..], 10);
+            }
+        }
+    };
+
+    // 1. A client that speaks garbage (e.g. an HTTP probe) is dropped
+    //    without killing the worker. Send more bytes than one FPKG header so
+    //    the header read completes and the magic check fails. Read until EOF
+    //    or an error — either means the server closed the connection.
+    var bad = try std.net.tcpConnectToHost(alloc, "127.0.0.1", port);
+    defer bad.close();
+    const garbage = [_]u8{'G'} ** 256;
+    try bad.writeAll(&garbage);
+    var sink: [64]u8 = undefined;
+    _ = bad.read(&sink) catch {};
+
+    // 2. A well-behaved client is still served on a fresh connection.
+    const fixture = try std.fs.cwd().readFileAlloc(alloc, "tests/fixtures/fingerprints/signal-package-v2.bin", 1 << 16);
+    defer alloc.free(fixture);
+
+    var frame_buf: [header_size + 1 << 16]u8 = undefined;
+    const frame = try buildFrame(signal_package_type, fixture, &frame_buf);
+
+    var stream = try std.net.tcpConnectToHost(alloc, "127.0.0.1", port);
+    defer stream.close();
+    try stream.writeAll(frame);
+
+    var reply_buf: [header_size + 1 << 16]u8 = undefined;
+    try expectHashReply(try readFrame(stream.reader(), &reply_buf));
+}

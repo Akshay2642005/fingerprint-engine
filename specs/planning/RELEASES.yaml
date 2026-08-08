@@ -69,7 +69,7 @@ v0.2.0_planned:
   note: |
     The original v0.2.0 plan (npm automation, PyPI, crates.io, WASM size, docs
     site, server matching engine) was superseded by the distributed rework
-    (specs/rework/). Final decisions:
+    (specs/decisions/rework/). Final decisions:
     - npm automation → manual `npm publish` (OIDC trusted publisher not used)
     - PyPI / crates.io → dropped; no native SDK
     - WASM size → wasm is an infra artifact only (bench/test containers)

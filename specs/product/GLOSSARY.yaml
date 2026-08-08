@@ -1,0 +1,64 @@
+# Glossary — Fingerprint Engine (post-rework)
+
+#Terms as used in specs, docs, and code. Updated for the distributed
+#architecture (v0.2.2+).
+
+terms:
+  fingerprint:
+    definition: "A deterministic digest (SHA-256) computed by the engine's `hash` operation over a canonical serialized SignalPackage. The browser never computes it — only workers do."
+  signal:
+    definition: "A single observed browser property (feature id + value), e.g. UserAgent, Canvas, WebGL renderer. 102 signals across 21 categories."
+  signal_package:
+    definition: "The versioned message carrying the collected signals + metadata (package_id, sdk_version, collected_at) from the SDK to the engine. Body schema version 2."
+  package_id:
+    definition: "16-byte replay identity assigned by the SDK when packaging a signal collection; allows idempotent retries and dedupe."
+  fpkp_frame:
+    definition: "The FPKG envelope: 48-byte header ('FPKG' magic, envelope version 1, message type, codec, payload length, integrity digest) + payload. The wire unit between SDK↔ingress↔worker and on the AMQP events."
+  message_type:
+    definition: "FPKG enum (u8): signal_package=1, validation_result=2, normalization_result=3, fingerprint_result=4, risk_result=5, similarity_result=6, diagnostics=7, fingerprint_computed=8, entropy_result=9."
+  codec:
+    definition: "Serialization codec selector (CodecID): binary (default) and json; interface in src/serialization/codec.zig. Future: protobuf, flatbuffers, cap'n proto."
+  integrity:
+    definition: "SHA-256 digest of the canonical serialized payload carried in the frame header. Tamper-evidence + corruption detection, not authenticity (no keys in the engine)."
+  engine:
+    definition: "The deterministic computation core: Engine.process(request, response, arena) dispatching over Operation (validate, normalize, serialize, deserialize, hash, entropy, similarity, risk, package). Zero io/transport imports."
+  operation:
+    definition: "Versioned enum(u8) naming an engine computation (see engine). Each op is an independent handler in src/engine/ops/."
+  status:
+    definition: "Engine result status enum: ok, invalid_request, invalid_payload, unsupported_version, invalid_input, buffer_overflow, out_of_memory, internal_error."
+  worker:
+    definition: "Stateless Zig executable (src/worker/) that receives FPKG frames (loopback pipes or tcp), runs engine.process(), and optionally publishes results to AMQP. Shipped as a Docker container."
+  ingress:
+    definition: "Planned HTTP component (src/ingress/, M5) that terminates the SDK's POST, verifies integrity, wraps the body in an FPKG frame, forwards to a pooled worker, and relays the reply back to HTTP. Contains no engine code."
+  adapter:
+    definition: "Transport implementations behind a comptime contract: loopback, tcp, and the AMQP 0-9-1 client/publisher. Adapters depend on io only."
+  amqp:
+    definition: "Outbound-only event transport (worker → fraud platform). Durable 'fingerprint' direct exchange; routing keys result.<message-type> (kebab-case); publisher confirms; persistent delivery."
+  fraud_platform:
+    definition: "Separate Go repository consuming the engine's AMQP events. Owns Postgres rule-based fraud detection, the admin workspace, and AI-agent tooling. Out of scope in this repo (D15)."
+  session_blocked:
+    definition: "Decision pushed by the fraud platform over WebSocket (session.blocked) or queried via the sync decision API; the SDK surfaces it as middleware (assertAllowed/onSessionBlocked) for UX gating only — the app enforces authoritatively."
+  normalization:
+    definition: "Engine operation: type + bounds validation of feature values, producing actionable warnings."
+  validation:
+    definition: "Engine operation: required-feature presence checks (bitset)."
+  entropy:
+    definition: "Engine operation: Shannon entropy per feature + weighted fingerprint entropy."
+  similarity:
+    definition: "Engine operation: weighted per-feature comparison of two fingerprints (payload carries {a, b}), 0.0–1.0."
+  risk:
+    definition: "Engine operation: quantifies missing features, bound violations, coverage, and entropy deficit into a risk score + flags."
+  determinism:
+    definition: "Same input bytes → same output bytes on any platform. Enforced by golden-fixture replay tests at engine, worker, and HTTP levels; the engine never reads the clock or uses randomness."
+  replay:
+    definition: "Re-running the same SignalPackage produces the same digest — the property that makes retries, dedupe, and distributed scaling safe."
+  golden_fixture:
+    definition: "Pinned byte vectors cross-checking Zig and TS implementations (signal-package-v2.bin + digest constant db29fc13…e6c75; features=3, schema=2). Never regenerated once pinned."
+  sdk:
+    definition: "The npm package @akshay2642005/fingerprint-sdk — hand-written TypeScript collecting 102 signals, packaging SignalPackage v2, POSTing to the ingress, and surfacing fraud-platform decisions."
+  wasm:
+    definition: "Infra-only artifact (src/wasm.zig) for the benchmark harness and wasmtime test containers; not shipped in the npm package."
+  fuzz:
+    definition: "Randomized test harnesses over decode/normalize/hashing paths (3 targets)."
+  bench:
+    definition: "Deterministic benchmark harness (12 benchmarks) run via zig build bench."
