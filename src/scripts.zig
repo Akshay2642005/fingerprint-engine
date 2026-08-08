@@ -33,7 +33,7 @@ const usage =
     \\
     \\  zig build scripts -- docker build-worker [--tag=name]
     \\    Build the worker container image (deploy/Dockerfile.worker);
-    \\    defaults to the fingerprint-worker:0.2.0 tag.
+    \\    defaults to the fingerprint-worker:0.2.1 tag.
     \\
     \\  zig build scripts -- docker run [--tag=name]
     \\    Run the worker image in the foreground, publishing port 8080.
@@ -124,7 +124,7 @@ pub fn main() !void {
 }
 
 /// Default image tag, matching `zig build docker:worker`.
-const default_tag = "fingerprint-worker:0.2.0";
+const default_tag = "fingerprint-worker:0.2.1";
 
 /// docker build-worker [--tag=name] / docker run [--tag=name]. Child stdio
 /// is inherited so docker's own progress and interactive output flow through.

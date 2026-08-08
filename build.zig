@@ -45,7 +45,7 @@ const zig_version = std.SemanticVersion{
 const package_version = std.SemanticVersion{
     .major = 0,
     .minor = 2,
-    .patch = 0,
+    .patch = 1,
 };
 
 comptime {
