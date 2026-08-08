@@ -266,6 +266,7 @@ pub fn build(b: *std.Build) !void {
         .model = model,
         .serialization = serialization,
         .engine = engine,
+        .io = io,
     });
 
     // zig build docker:worker
@@ -411,6 +412,7 @@ fn build_scripts(b: *std.Build, steps: struct {
     model: *std.Build.Module,
     serialization: *std.Build.Module,
     engine: *std.Build.Module,
+    io: *std.Build.Module,
 }) *std.Build.Step.Compile {
     const scripts_exe = b.addExecutable(.{
         .name = "scripts",
@@ -422,6 +424,7 @@ fn build_scripts(b: *std.Build, steps: struct {
                 .{ .name = "model", .module = options.model },
                 .{ .name = "serialization", .module = options.serialization },
                 .{ .name = "engine", .module = options.engine },
+                .{ .name = "io", .module = options.io },
             },
         }),
     });

@@ -15,6 +15,7 @@ const std = @import("std");
 const model = @import("model");
 const serialization = @import("serialization");
 const engine = @import("engine");
+const io = @import("io");
 
 const usage =
     \\Usage:
@@ -34,6 +35,12 @@ const usage =
     \\
     \\  zig build scripts -- docker run [--tag=name]
     \\    Run the worker image in the foreground, publishing port 8080.
+    \\
+    \\  zig build scripts -- worker request [--listen=host:port]
+    \\    Send the canonical signal package fixture to a running worker
+    \\    (default 127.0.0.1:8080 — point it at the container's published
+    \\    port) and print the reply: status, digest (cross-checked against
+    \\    an in-process engine call), feature count, schema version.
     \\
 ;
 
@@ -94,6 +101,11 @@ pub fn main() !void {
         return;
     }
 
+    if (std.mem.eql(u8, subcommand, "worker")) {
+        try workerCommand(alloc, args);
+        return;
+    }
+
     std.debug.print("unknown subcommand '{s}'\n\n{s}", .{ subcommand, usage });
     std.process.exit(1);
 }
@@ -140,6 +152,127 @@ fn runChild(alloc: std.mem.Allocator, argv: []const []const u8) !void {
         .Exited => |code| if (code != 0) std.process.exit(code),
         else => std.process.exit(1),
     }
+}
+
+/// worker request [--listen=host:port] — one FPKG round-trip against a
+/// running worker. The request wraps the canonical signal package fixture;
+/// the reply's digest is cross-checked against an in-process engine call so
+/// a mismatch means the worker binary drifted, not that framing changed.
+fn workerCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
+    const sub = if (args.len > 2) args[2] else "";
+    if (!std.mem.eql(u8, sub, "request")) {
+        std.debug.print("worker: expected 'request'\n\n{s}", .{usage});
+        std.process.exit(1);
+    }
+    var listen: []const u8 = "127.0.0.1:8080";
+    if (args.len > 3) {
+        for (args[3..]) |arg| {
+            if (std.mem.startsWith(u8, arg, "--listen=")) {
+                listen = arg["--listen=".len..];
+            } else {
+                std.debug.print("worker: unknown option '{s}'\n\n{s}", .{ arg, usage });
+                std.process.exit(1);
+            }
+        }
+    }
+    const colon = std.mem.lastIndexOfScalar(u8, listen, ':') orelse {
+        std.debug.print("worker: invalid --listen '{s}' (expected host:port)\n", .{listen});
+        std.process.exit(1);
+    };
+    const host = listen[0..colon];
+    const port = std.fmt.parseInt(u16, listen[colon + 1 ..], 10) catch {
+        std.debug.print("worker: invalid port in --listen '{s}'\n", .{listen});
+        std.process.exit(1);
+    };
+
+    const F = fixtures.signal_package_v2;
+    const payload = try std.fs.cwd().readFileAlloc(alloc, F.path, 1 << 16);
+    defer alloc.free(payload);
+
+    var frame_buf: [io.frame.header_size + 1 << 16]u8 = undefined;
+    const frame = try buildRequestFrame(payload, &frame_buf);
+
+    var stream = std.net.tcpConnectToHost(alloc, host, port) catch {
+        std.debug.print("worker: could not connect to {s} (is the worker running?)\n", .{listen});
+        std.process.exit(1);
+    };
+    defer stream.close();
+    try stream.writeAll(frame);
+
+    var reply_buf: [io.frame.header_size + 1 << 16]u8 = undefined;
+    const reply = try readReplyFrame(stream.reader(), &reply_buf);
+
+    const stdout = std.io.getStdOut().writer();
+    var header_buf: [io.frame.header_size]u8 = undefined;
+    @memcpy(&header_buf, reply[0..io.frame.header_size]);
+    var header_reader = io.Reader.init(&header_buf);
+    const header = try io.frame.FrameHeader.decode(&header_reader);
+    const reply_payload = reply[io.frame.header_size..];
+    if (reply_payload.len < 1) return error.Truncated;
+
+    const status = std.meta.intToEnum(engine.Status, reply_payload[0]) catch {
+        try stdout.print("reply: message_type={s} status=invalid byte {d}\n", .{ @tagName(header.message_type), reply_payload[0] });
+        std.process.exit(1);
+    };
+    try stdout.print("message_type: {s}\n", .{@tagName(header.message_type)});
+    try stdout.print("status:       {s}\n", .{@tagName(status)});
+    if (status != .ok or reply_payload.len < 33) return;
+
+    // Independent reference: the same engine call the worker performs.
+    var result_buf: [128]u8 = undefined;
+    var response = engine.Response.init(.hash, &result_buf);
+    var request = engine.Request{ .operation = .hash, .codec = .binary, .payload = payload };
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    try engine.process(&request, &response, arena.allocator());
+    const expected = if (response.status == .ok) response.slice()[0..32] else null;
+
+    const got = reply_payload[1..33];
+    if (expected) |want| {
+        if (std.mem.eql(u8, want, got)) {
+            try stdout.print("digest:       {s} (matches local engine)\n", .{std.fmt.bytesToHex(got, .lower)});
+        } else {
+            try stdout.print("digest MISMATCH: worker={s} local={s}\n", .{
+                std.fmt.bytesToHex(got, .lower),
+                std.fmt.bytesToHex(want, .lower),
+            });
+            std.process.exit(1);
+        }
+    } else {
+        try stdout.print("digest:       {s} (local reference unavailable)\n", .{std.fmt.bytesToHex(got, .lower)});
+    }
+    if (reply_payload.len >= 37) {
+        try stdout.print("features:     {d}\n", .{std.mem.readInt(u16, reply_payload[33..35], .little)});
+        try stdout.print("schema:       {d}\n", .{std.mem.readInt(u16, reply_payload[35..37], .little)});
+    }
+}
+
+/// Wraps `payload` in an FPKG request frame (signal_package, binary codec).
+fn buildRequestFrame(payload: []const u8, buf: []u8) ![]const u8 {
+    const header = io.frame.FrameHeader{
+        .message_type = .signal_package,
+        .codec = .binary,
+        .payload_len = @intCast(payload.len),
+        .integrity = io.frame.FrameHeader.integrityOf(payload),
+    };
+    var w = io.Writer.init(buf);
+    try header.encode(&w);
+    @memcpy(buf[io.frame.header_size .. io.frame.header_size + payload.len], payload);
+    return buf[0 .. io.frame.header_size + payload.len];
+}
+
+/// Reads one FPKG frame from the stream and validates header + integrity.
+fn readReplyFrame(reader: anytype, buf: []u8) ![]const u8 {
+    var header_buf: [io.frame.header_size]u8 = undefined;
+    try reader.readNoEof(&header_buf);
+    var header_reader = io.Reader.init(&header_buf);
+    const header = try io.frame.FrameHeader.decode(&header_reader);
+    const total = io.frame.header_size + header.payload_len;
+    if (total > buf.len) return error.FrameTooLarge;
+    @memcpy(buf[0..io.frame.header_size], &header_buf);
+    try reader.readNoEof(buf[io.frame.header_size..total]);
+    if (!header.integrityValid(buf[io.frame.header_size..total])) return error.IntegrityMismatch;
+    return buf[0..total];
 }
 
 fn generate(alloc: std.mem.Allocator, args: []const []const u8) !void {
