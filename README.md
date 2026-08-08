@@ -12,9 +12,8 @@
 > features, configuration, and architecture. Breaking changes are expected.
 >
 > **Production use is not recommended at this stage.**
-A deterministic, zero-dependency distributed fingerprint engine written in
 
-[Zig](https://ziglang.org) 0.14.1.
+A deterministic, zero-dependency distributed fingerprint engine written in [Zig](https://ziglang.org) 0.14.1.
 
 The engine is a **reusable deterministic computation engine**, not a service:
 canonical fingerprints are computed server-side by stateless Zig workers that
