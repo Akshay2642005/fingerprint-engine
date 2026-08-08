@@ -1,19 +1,64 @@
-# Worker runtime image.
+# syntax=docker/dockerfile:1
+FROM alpine:3.22 AS builder
+
+ARG ZIG_VERSION=0.14.1
+
+RUN apk add --no-cache \
+    curl \
+    xz \
+    ca-certificates
+
+WORKDIR /app
+
+# Install official Zig 0.14.1 Linux x86_64 release.
+RUN curl -fsSL \
+        "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
+        -o /tmp/zig.tar.xz \
+    && tar -xf /tmp/zig.tar.xz -C /opt \
+    && ln -s "/opt/zig-x86_64-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig \
+    && rm /tmp/zig.tar.xz
+
+RUN zig version
+
+# Copy dependency manifests first.
+COPY build.zig build.zig.zon ./
+
+# Copy source.
+COPY . .
+
+# Build the worker for Linux.
 #
-# The worker binary is built by the zig build system on the host
-# (`zig build worker --release=safe`) and docker only packages it — nothing
-# is compiled inside the image. `alpine` + `tini` give the container a sane
-# PID 1 (docker stop sends SIGTERM to tini, which forwards it to the worker
-# and reaps it, so shutdown never hangs).
-#
-# Build:   zig build docker:worker
-#   (or)   zig build worker --release=safe && docker build -f deploy/Dockerfile.worker -t fingerprint-worker:0.2.0 .
-# Run:     docker run --rm -p 8080:8080 fingerprint-worker:0.2.0
-#
-# Note: build the image on Linux (CI or WSL2) — the binary copied in must be
-# the Linux static build, not the local Windows .exe.
-FROM alpine:latest
-RUN apk add --no-cache tini
-COPY zig-out/bin/worker /worker
+# x86_64-linux-musl gives us a binary suitable for Alpine.
+RUN zig build worker \
+    -Dtarget=x86_64-linux-musl \
+    --release=safe
+
+
+FROM alpine:3.22 AS runtime
+
+RUN apk add --no-cache tini \
+    && addgroup -S worker \
+    && adduser -S \
+        -G worker \
+        -h /nonexistent \
+        -s /sbin/nologin \
+        worker
+
+COPY --from=builder \
+    --chown=worker:worker \
+    /app/zig-out/bin/worker \
+    /usr/local/bin/worker
+
+RUN chmod 0555 /usr/local/bin/worker
+
+USER worker
+
 EXPOSE 8080
-ENTRYPOINT ["tini", "--", "/worker", "start", "--transport=tcp", "--listen=0.0.0.0:8080", "--publish=none"]
+
+ENTRYPOINT ["/sbin/tini", "--"]
+
+CMD ["/usr/local/bin/worker", \
+     "start", \
+     "--transport=tcp", \
+     "--listen=0.0.0.0:8080", \
+     "--publish=none"]
