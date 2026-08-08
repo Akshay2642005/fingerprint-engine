@@ -16,7 +16,7 @@ const builtin = @import("builtin");
 //   io              - async transport primitives (src/io/), depends on nothing
 //   adapter         - transport implementations (src/adapter/), depends on io
 //   worker          - deterministic worker executable (src/worker/), depends on engine+adapter
-//   browser         - WebAssembly target (src/browser/), depends on core+model
+//   wasm            - WebAssembly infra artifact (src/wasm/), depends on core+model
 //   browser_package - build-time npm package generator (src/build/), depends on model
 //   test_utils      - test helpers (tests/utils/), depends on model
 //   bench_module    - benchmarks (src/bench/), depends on core+model+serialization
@@ -173,15 +173,12 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    // Browser: WebAssembly SDK for collection and packaging. Depends on
-    // Core and Model.
-    //
-    // The optimize mode is pinned to ReleaseSmall: the module is only ever
-    // shipped as an inlined base64 payload inside the npm package, where
-    // binary size dominates (ReleaseSafe wasm is ~8x larger). Tests run the
-    // same logic natively, so debugging doesn't depend on the wasm mode.
-    const browser = b.createModule(.{
-        .root_source_file = b.path("src/browser/wasm/root.zig"),
+    // Wasm: WebAssembly module compiled for the browser (ReleaseSmall so the
+    // inlined base64 payload inside the npm package stays small; ReleaseSafe
+    // wasm is ~8x larger). Tests run the same logic natively, so debugging
+    // doesn't depend on the wasm mode. Depends on Core and Model.
+    const wasm = b.createModule(.{
+        .root_source_file = b.path("src/wasm.zig"),
         .target = wasm_target,
         .optimize = .ReleaseSmall,
         .imports = &.{
@@ -247,10 +244,10 @@ pub fn build(b: *std.Build) !void {
     build_test(b, build_steps.@"test", .{ .test_core_module = test_core_module });
 
     // zig build wasm
-    const wasm = build_wasm(b, .{
+    const wasm_exe = build_wasm(b, .{
         .wasm_step = build_steps.wasm,
         .install_step = b.getInstallStep(),
-    }, .{ .browser_module = browser });
+    }, .{ .wasm_module = wasm });
 
     // zig build worker
     const worker_exe = build_worker(b, .{
@@ -263,7 +260,7 @@ pub fn build(b: *std.Build) !void {
 
     // zig build clients:browser
     build_browser_client(b, build_steps.clients_browser, .{
-        .wasm = wasm,
+        .wasm = wasm_exe,
         .browser_package_module = browser_package,
     });
 
@@ -331,13 +328,13 @@ fn build_wasm(b: *std.Build, steps: struct {
     wasm_step: *std.Build.Step,
     install_step: *std.Build.Step,
 }, options: struct {
-    browser_module: *std.Build.Module,
+    wasm_module: *std.Build.Module,
 }) *std.Build.Step.Compile {
     // This executable has no entry point because it is loaded as a library
     // by JavaScript rather than executed as a standalone program.
     const wasm = b.addExecutable(.{
         .name = "fingerprint",
-        .root_module = options.browser_module,
+        .root_module = options.wasm_module,
     });
     wasm.entry = .disabled;
     wasm.rdynamic = true;
@@ -411,7 +408,7 @@ fn build_browser_client(b: *std.Build, step: *std.Build.Step, options: struct {
     run.addFileArg(options.wasm.getEmittedBin());
     run.addFileArg(b.path("src/clients/browser/scripts/fingerprint-umd-template.js"));
     run.addFileArg(b.path("src/clients/browser/package.json"));
-    run.addFileArg(b.path("src/browser/bindings/demo.html"));
+    run.addFileArg(b.path("src/clients/browser/demo/demo.html"));
     run.addDirectoryArg(b.path("src/clients/browser"));
     step.dependOn(&run.step);
 }
