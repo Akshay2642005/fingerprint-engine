@@ -1,30 +1,36 @@
-# Project Scope — Fingerprint Engine (Post-11-Phase Refresh)
+# Project Scope — Fingerprint Engine (Post-Rework)
 
 name: Fingerprint Engine
-version: 0.2.0
-engine_phases: 1-11 (complete)
-current_milestone: "Integration & Quality"
+version: 0.2.1
+engine_phases: 1-11 (complete) + rework/distributed-engine (complete)
+current_milestone: "Distributed engine — v0.2.1"
 
 targets:
-  - browser: "WebAssembly SDK for in-browser signal collection"
-  - server: "Native static/dynamic library for backend fingerprint processing"
+  - browser: "TypeScript signal-collection SDK — collects signals, packages them (SignalPackage v2), POSTs to the ingress. Never computes the canonical fingerprint."
+  - workers: "Stateless Zig worker executable in Docker containers — engine.process() computes the canonical fingerprint, risk, entropy, similarity"
+  - wasm: "Infra-only artifact for benchmarking and wasmtime test containers (not shipped in the npm package)"
 
 milestones:
   - name: "M1 — Fill the gaps"
     description: "Implement all empty scaffolded directories and missing infrastructure"
-    priority: immediate
+    priority: done
   - name: "M2 — Integration SDKs"
-    description: "Package and distribute for real consumers (npm, PyPI, Cargo)"
-    priority: short-term
+    description: "Package and distribute for real consumers (npm only; PyPI/Cargo dropped with the native SDK)"
+    priority: done
   - name: "M3 — Production readiness"
     description: "Hardening, benchmarks, security, cross-platform verification"
-    priority: medium-term
-  - name: "M4 — Signal collection & matching"
-    description: "Actual browser signal gatherers and server-side matching engine"
-    priority: long-term
+    priority: done
+  - name: "M4 — Distributed rework"
+    description: "Deterministic engine, async IO, transports + AMQP adapter, worker + Docker, TS SDK"
+    priority: done
+  - name: "M5 — Platform integration"
+    description: "Ingress + worker deployment, AMQP consumer e2e, fraud-platform (Go) integration — out of repo where applicable"
+    priority: next
 
 principles:
-  - Non-breaking evolution — 0.1.x API must not break
-  - Fill before expand — complete the empty scaffolds before new features
+  - Deterministic — same input, same output, any platform
+  - Transport-free core — engine never knows about queues, HTTP, or databases
+  - Everything depends inward — adapters depend on the engine, never the reverse
+  - Compile-time first — validate at compile time, not runtime
+  - Zero runtime allocation in core algorithms
   - CI must pass on every commit
-  - Public API gets documented before merged

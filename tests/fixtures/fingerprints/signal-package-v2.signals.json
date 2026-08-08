@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "sdk_version": "0.2.0",
+  "collected_at": 1700000000123,
+  "package_id": "0102030405060708090a0b0c0d0e0f10",
+  "signals": [
+    { "id": 0, "type": "String", "value": "Mozilla/5.0" },
+    { "id": 9, "type": "Boolean", "value": true },
+    { "id": 11, "type": "Integer", "value": 8 }
+  ]
+}

@@ -1,7 +1,34 @@
 # Release Plan — Fingerprint Engine
-target_version: 0.2.0
+target_version: 0.2.1
 
 releases:
+  v0.2.1:
+    status: released
+    date: "2026-08-08"
+    epics:
+      - rework/distributed-engine
+    summary: |
+      Distributed rework delivery: deterministic engine (Operation/Request/
+      Response, comptime dispatch), async IO primitives (Message, RingBuffer,
+      Channel, Executor, FPKG Frame, Reader/Writer, Dispatcher), loopback/tcp
+      transports + AMQP 0-9-1 adapter with result publisher, worker executable
+      with Docker image, SignalPackage v2 serialization, hand-written TypeScript
+      SDK (collect → package → POST; middleware for fraud-platform decisions),
+      npm package readme, SDK-driven example page, docs site refresh. 382 tests
+      passing. npm publishing stays manual.
+
+  v0.2.0:
+    status: released
+    date: "2026-08-07"
+    epics:
+      - rework/distributed-engine
+    summary: |
+      Breaking rework milestone: Zig downgrade to 0.14.1, O(1) `zig build`
+      system, layered repo structure (src/{core,model,serialization,engine,io,
+      adapter,worker,clients}), self-verifying test registry, integration/e2e
+      harness, docs snapshot step, browser demo moved out of the npm package,
+      native SDK and C ABI removed (workers ship as Docker containers).
+
   v0.1.1:
     status: released
     date: "2026-07-11"
@@ -27,34 +54,14 @@ releases:
       server C ABI, TypeScript bindings, CI/CD pipelines, npm package.
 
 v0.2.0_planned:
-  status: planning
-  epics:
-    - id: e05-npm-automation
-      title: Automated npm publishing
-      wsjf: 5
-      summary: "Add npm publish step to Release workflow"
-
-    - id: e06-pypi-package
-      title: PyPI package
-      wsjf: 3
-      summary: "Rebuild Python SDK with platform wheels"
-
-    - id: e07-crates-package
-      title: crates.io package
-      wsjf: 3
-      summary: "Publish fingerprint-sys from Rust SDK"
-
-    - id: e08-wasm-optimization
-      title: WASM size optimization
-      wsjf: 4
-      summary: "Reduce WASM binary size with ReleaseSmall + strip"
-
-    - id: e09-docs-site
-      title: Documentation site
-      wsjf: 2
-      summary: "GitHub Pages docs site with API reference"
-
-    - id: e10-matching-engine
-      title: Server matching engine
-      wsjf: 2
-      summary: "Implement matching stubs in src/server/matching/"
+  status: superseded
+  note: |
+    The original v0.2.0 plan (npm automation, PyPI, crates.io, WASM size, docs
+    site, server matching engine) was superseded by the distributed rework
+    (specs/rework/). Final decisions:
+    - npm automation → manual `npm publish` (OIDC trusted publisher not used)
+    - PyPI / crates.io → dropped; no native SDK
+    - WASM size → wasm is an infra artifact only (bench/test containers)
+    - docs site → delivered via `zig build docs` + GitHub Pages
+    - server matching engine → out of repo; the Go fraud platform (separate
+      repository) consumes worker events and runs business rules

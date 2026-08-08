@@ -1,37 +1,37 @@
 /**
- * Browser signal collectors for fingerprint gathering.
- * Each collector extracts specific browser signals that contribute
- * to the overall fingerprint.
+ * Browser signal collectors for fingerprint gathering (D14).
+ * Each collector extracts specific browser signals that contribute to the
+ * SignalPackage shipped to the ingress.
  */
 
-export { collectCanvasFingerprint, getCanvasCapabilities } from "./canvas";
-export type { CanvasOptions } from "./canvas";
+export { collectSignals } from "./collector.js";
+export type { CollectOptions } from "../types.js";
 
-export { collectWebGLInfo, collectWebGL2Info } from "./webgl";
-export type { WebGLInfo } from "./webgl";
+export { collectCanvasFingerprint, getCanvasCapabilities } from "./canvas.js";
+export type { CanvasOptions } from "./canvas.js";
 
-export { collectAudioFingerprint, collectAudioFingerprintSync } from "./audio";
-export type { AudioFingerprintOptions } from "./audio";
+export { collectWebGLInfo, collectWebGL2Info } from "./webgl.js";
+export type { WebGLInfo } from "./webgl.js";
 
-export { collectFonts, getFontFingerprint } from "./fonts";
+export { collectAudioFingerprint, collectAudioFingerprintSync } from "./audio.js";
+export type { AudioFingerprintOptions } from "./audio.js";
 
-export { collectBattery } from "./battery";
-export type { BatteryInfo } from "./battery";
+export { collectFonts, getFontFingerprint } from "./fonts.js";
 
-export { collectMediaInfo } from "./media";
-export type { MediaInfo } from "./media";
+export { collectBattery } from "./battery.js";
+export type { BatteryInfo } from "./battery.js";
 
-export { collectSpeechVoices, getSpeechFingerprint } from "./speech";
+export { collectMediaInfo } from "./media.js";
+export type { MediaInfo } from "./media.js";
+
+export { collectSpeechVoices, getSpeechFingerprint } from "./speech.js";
 
 export {
 	detectKeyboardLayout,
 	collectPointerInfo,
 	collectGamepadInfo,
 	hasSharedWorker,
-} from "./input";
+} from "./input.js";
 
-export { collectPermissions } from "./permissions";
-export type { PermissionStates } from "./permissions";
-
-export { collectFingerprint } from "./collector";
-export type { CollectorOptions, CollectedSignals } from "./collector";
+export { collectPermissions } from "./permissions.js";
+export type { PermissionStates } from "./permissions.js";

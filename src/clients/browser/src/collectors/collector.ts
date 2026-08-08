@@ -1,67 +1,36 @@
 /**
- * High-level browser signal collector.
- * Gathers all available browser signals and feeds them to the WASM engine.
- * This is the main entry point for collecting browser fingerprints.
+ * High-level signal orchestration (D14).
+ *
+ * Gathers all available browser signals and returns them as a plain
+ * `Signal[]` — no WASM engine, no stateful buffer. The array feeds
+ * package.ts, which serializes the SignalPackage v2 body for the ingress.
+ * The canonical fingerprint is computed server-side by the workers.
  */
 
-import type { FingerprintEngine } from "../bindings/engine";
-import { FeatureID, type ComputeResult } from "../bindings/types";
-import { collectCanvasFingerprint } from "./canvas";
-import { collectWebGLInfo } from "./webgl";
-import { collectAudioFingerprint } from "./audio";
-import { collectFonts } from "./fonts";
-import { collectBattery } from "./battery";
-import { collectMediaInfo } from "./media";
-import { collectSpeechVoices } from "./speech";
+import type { CollectOptions, Signal } from "../types.js";
+import { FeatureID, FeatureType } from "../generated/tables.js";
+import { collectCanvasFingerprint } from "./canvas.js";
+import { collectWebGLInfo } from "./webgl.js";
+import { collectAudioFingerprint } from "./audio.js";
+import { collectFonts } from "./fonts.js";
+import { collectBattery } from "./battery.js";
+import { collectMediaInfo } from "./media.js";
+import { collectSpeechVoices } from "./speech.js";
 import {
 	detectKeyboardLayout,
 	collectPointerInfo,
 	collectGamepadInfo,
 	hasSharedWorker,
-} from "./input";
-import { collectPermissions } from "./permissions";
-
-export interface CollectorOptions {
-	/** Enable canvas fingerprinting (default: true) */
-	enableCanvas?: boolean;
-	/** Enable WebGL fingerprinting (default: true) */
-	enableWebGL?: boolean;
-	/** Enable audio fingerprinting (default: true) */
-	enableAudio?: boolean;
-	/** Enable font detection (default: true) */
-	enableFonts?: boolean;
-	/** Enable battery API (default: true) */
-	enableBattery?: boolean;
-	/** Enable media codec detection (default: true) */
-	enableMedia?: boolean;
-	/** Enable speech synthesis voices (default: true) */
-	enableSpeech?: boolean;
-	/** Enable input detection (default: true) */
-	enableInput?: boolean;
-	/** Enable permissions API (default: true) */
-	enablePermissions?: boolean;
-}
-
-export interface CollectedSignals {
-	/** Number of signals collected */
-	signalCount: number;
-	/** Compute result from the engine */
-	result: ComputeResult;
-	/** Fingerprint hex digest */
-	hex: string;
-	/** Collection timestamp */
-	collectedAt: number;
-	/** List of feature IDs that were collected */
-	collectedFeatures: FeatureID[];
-}
+} from "./input.js";
+import { collectPermissions } from "./permissions.js";
 
 /**
- * Collect all available browser signals and compute the fingerprint.
+ * Collect all available browser signals into a plain Signal[].
+ * The order of signals is deterministic; value collection may be async.
  */
-export async function collectFingerprint(
-	engine: FingerprintEngine,
-	options: CollectorOptions = {},
-): Promise<CollectedSignals> {
+export async function collectSignals(
+	options: CollectOptions = {},
+): Promise<Signal[]> {
 	const {
 		enableCanvas = true,
 		enableWebGL = true,
@@ -74,140 +43,98 @@ export async function collectFingerprint(
 		enablePermissions = true,
 	} = options;
 
-	const collectedFeatures: FeatureID[] = [];
+	const signals: Signal[] = [];
 
-	// ── Navigator signals (always collected) ──
-	collectNavigatorSignals(engine, collectedFeatures);
+	// ── Navigator (always collected) ──
+	collectNavigatorSignals(signals);
 
-	// ── Screen signals (always collected) ──
-	collectScreenSignals(engine, collectedFeatures);
+	// ── Screen (always collected) ──
+	collectScreenSignals(signals);
 
 	// ── Locale & timezone ──
-	collectLocaleSignals(engine, collectedFeatures);
+	collectLocaleSignals(signals);
 
 	// ── Storage availability ──
-	collectStorageSignals(engine, collectedFeatures);
+	collectStorageSignals(signals);
 
 	// ── Network info ──
-	collectNetworkSignals(engine, collectedFeatures);
+	collectNetworkSignals(signals);
 
 	// ── Crypto support ──
-	engine.addBoolean(FeatureID.CryptoSupport, "crypto" in window);
-	engine.addBoolean(FeatureID.SubtleCrypto, "subtle" in (window.crypto || {}));
-	collectedFeatures.push(FeatureID.CryptoSupport, FeatureID.SubtleCrypto);
+	signals.push(
+		{ id: FeatureID.CryptoSupport, type: FeatureType.Boolean, value: "crypto" in window },
+		{ id: FeatureID.SubtleCrypto, type: FeatureType.Boolean, value: "subtle" in (window.crypto || {}) },
+	);
 
 	// ── CSS features ──
-	engine.addBoolean(
-		FeatureID.CSSCustomProperties,
-		CSS.supports("color", "--test: red"),
-	);
-	engine.addBoolean(FeatureID.CSSGridSupport, CSS.supports("display", "grid"));
-	engine.addBoolean(
-		FeatureID.CSSFlexboxSupport,
-		CSS.supports("display", "flex"),
-	);
-	engine.addBoolean(
-		FeatureID.CSSContainerQuery,
-		CSS.supports("container-type", "inline-size"),
-	);
-	engine.addBoolean(
-		FeatureID.CSSHasSelector,
-		CSS.supports("selector(:has(*))"),
-	);
-	collectedFeatures.push(
-		FeatureID.CSSCustomProperties,
-		FeatureID.CSSGridSupport,
-		FeatureID.CSSFlexboxSupport,
-		FeatureID.CSSContainerQuery,
-		FeatureID.CSSHasSelector,
+	signals.push(
+		{ id: FeatureID.CSSCustomProperties, type: FeatureType.Boolean, value: cssSupports("color", "--test: red") },
+		{ id: FeatureID.CSSGridSupport, type: FeatureType.Boolean, value: cssSupports("display", "grid") },
+		{ id: FeatureID.CSSFlexboxSupport, type: FeatureType.Boolean, value: cssSupports("display", "flex") },
+		{ id: FeatureID.CSSContainerQuery, type: FeatureType.Boolean, value: cssSupports("container-type", "inline-size") },
+		{ id: FeatureID.CSSHasSelector, type: FeatureType.Boolean, value: cssSupports("selector(:has(*))") },
 	);
 
 	// ── Browser features ──
-	engine.addBoolean(
-		FeatureID.ServiceWorkerSupport,
-		"serviceWorker" in navigator,
-	);
-	engine.addBoolean(FeatureID.WebWorkerSupport, "Worker" in window);
-	engine.addBoolean(FeatureID.SharedWorkerSupport, hasSharedWorker());
-	engine.addBoolean(FeatureID.WebSocketSupport, "WebSocket" in window);
-	engine.addBoolean(FeatureID.WebRTCSupport, "RTCPeerConnection" in window);
-	collectedFeatures.push(
-		FeatureID.ServiceWorkerSupport,
-		FeatureID.WebWorkerSupport,
-		FeatureID.SharedWorkerSupport,
-		FeatureID.WebSocketSupport,
-		FeatureID.WebRTCSupport,
+	signals.push(
+		{ id: FeatureID.ServiceWorkerSupport, type: FeatureType.Boolean, value: "serviceWorker" in navigator },
+		{ id: FeatureID.WebWorkerSupport, type: FeatureType.Boolean, value: "Worker" in window },
+		{ id: FeatureID.SharedWorkerSupport, type: FeatureType.Boolean, value: hasSharedWorker() },
+		{ id: FeatureID.WebSocketSupport, type: FeatureType.Boolean, value: "WebSocket" in window },
+		{ id: FeatureID.WebRTCSupport, type: FeatureType.Boolean, value: "RTCPeerConnection" in window },
 	);
 
 	// ── Permissions ──
 	if (enablePermissions) {
 		const perms = await collectPermissions();
-		engine.addString(FeatureID.NotificationPermission, perms.notifications);
-		engine.addString(FeatureID.GeolocationPermission, perms.geolocation);
-		engine.addString(FeatureID.CameraPermission, perms.camera);
-		engine.addString(FeatureID.MicrophonePermission, perms.microphone);
-		collectedFeatures.push(
-			FeatureID.NotificationPermission,
-			FeatureID.GeolocationPermission,
-			FeatureID.CameraPermission,
-			FeatureID.MicrophonePermission,
+		signals.push(
+			{ id: FeatureID.NotificationPermission, type: FeatureType.String, value: perms.notifications },
+			{ id: FeatureID.GeolocationPermission, type: FeatureType.String, value: perms.geolocation },
+			{ id: FeatureID.CameraPermission, type: FeatureType.String, value: perms.camera },
+			{ id: FeatureID.MicrophonePermission, type: FeatureType.String, value: perms.microphone },
 		);
 	}
 
-	// ── Canvas fingerprinting ──
+	// ── Canvas ──
 	if (enableCanvas) {
 		const canvasData = collectCanvasFingerprint();
 		if (canvasData) {
-			engine.addBytes(FeatureID.CanvasHash, canvasData);
-			collectedFeatures.push(FeatureID.CanvasHash);
+			signals.push({ id: FeatureID.CanvasHash, type: FeatureType.Bytes, value: canvasData });
 		}
 	}
 
-	// ── WebGL fingerprinting ──
+	// ── WebGL ──
 	if (enableWebGL) {
 		const webglInfo = collectWebGLInfo();
 		if (webglInfo) {
-			engine.addString(FeatureID.WebGLVendor, webglInfo.vendor);
-			engine.addString(FeatureID.WebGLRenderer, webglInfo.renderer);
-			engine.addString(FeatureID.WebGLVersion, webglInfo.version);
-			engine.addStringArray(FeatureID.WebGLExtensions, webglInfo.extensions);
-
-			// Build parameters JSON
 			const params = JSON.stringify({
 				maxTextureSize: webglInfo.maxTextureSize,
 				maxViewportDims: webglInfo.maxViewportDims,
 				maxCombinedTextureUnits: webglInfo.maxCombinedTextureUnits,
 			});
-			engine.addString(FeatureID.WebGLParameters, params);
-
-			collectedFeatures.push(
-				FeatureID.WebGLVendor,
-				FeatureID.WebGLRenderer,
-				FeatureID.WebGLVersion,
-				FeatureID.WebGLExtensions,
-				FeatureID.WebGLParameters,
+			signals.push(
+				{ id: FeatureID.WebGLVendor, type: FeatureType.String, value: webglInfo.vendor },
+				{ id: FeatureID.WebGLRenderer, type: FeatureType.String, value: webglInfo.renderer },
+				{ id: FeatureID.WebGLVersion, type: FeatureType.String, value: webglInfo.version },
+				{ id: FeatureID.WebGLExtensions, type: FeatureType.StringArray, value: webglInfo.extensions },
+				{ id: FeatureID.WebGLParameters, type: FeatureType.String, value: params },
 			);
 		}
 	}
 
-	// ── Audio fingerprinting ──
+	// ── Audio ──
 	if (enableAudio) {
 		const audioData = await collectAudioFingerprint();
 		if (audioData) {
-			engine.addBytes(FeatureID.AudioHash, audioData);
-			collectedFeatures.push(FeatureID.AudioHash);
+			signals.push({ id: FeatureID.AudioHash, type: FeatureType.Bytes, value: audioData });
 		}
 	}
 
-	// ── Font detection ──
+	// ── Fonts ──
 	if (enableFonts) {
 		const fonts = collectFonts();
 		if (fonts.length > 0) {
-			engine.addStringArray(
-				FeatureID.FontsHash,
-				fonts.map((f) => f),
-			);
-			collectedFeatures.push(FeatureID.FontsHash);
+			signals.push({ id: FeatureID.FontsHash, type: FeatureType.StringArray, value: fonts });
 		}
 	}
 
@@ -215,13 +142,10 @@ export async function collectFingerprint(
 	if (enableBattery) {
 		const battery = await collectBattery();
 		if (battery) {
-			engine.addFloat(FeatureID.BatteryLevel, battery.level);
-			engine.addBoolean(FeatureID.BatteryCharging, battery.charging);
-			engine.addInteger(FeatureID.BatteryChargingTime, battery.chargingTime);
-			collectedFeatures.push(
-				FeatureID.BatteryLevel,
-				FeatureID.BatteryCharging,
-				FeatureID.BatteryChargingTime,
+			signals.push(
+				{ id: FeatureID.BatteryLevel, type: FeatureType.Float, value: battery.level },
+				{ id: FeatureID.BatteryCharging, type: FeatureType.Boolean, value: battery.charging },
+				{ id: FeatureID.BatteryChargingTime, type: FeatureType.Integer, value: battery.chargingTime },
 			);
 		}
 	}
@@ -229,18 +153,11 @@ export async function collectFingerprint(
 	// ── Media codecs ──
 	if (enableMedia) {
 		const media = collectMediaInfo();
-		engine.addStringArray(FeatureID.SupportedCodecs, [
-			...media.videoCodecs,
-			...media.audioCodecs,
-		]);
-		engine.addStringArray(FeatureID.MediaFormats, media.mediaFormats);
-		engine.addStringArray(FeatureID.AudioFormats, media.audioFormats);
-		engine.addBoolean(FeatureID.HDRSupport, media.hdrSupport);
-		collectedFeatures.push(
-			FeatureID.SupportedCodecs,
-			FeatureID.MediaFormats,
-			FeatureID.AudioFormats,
-			FeatureID.HDRSupport,
+		signals.push(
+			{ id: FeatureID.SupportedCodecs, type: FeatureType.StringArray, value: [...media.videoCodecs, ...media.audioCodecs] },
+			{ id: FeatureID.MediaFormats, type: FeatureType.StringArray, value: media.mediaFormats },
+			{ id: FeatureID.AudioFormats, type: FeatureType.StringArray, value: media.audioFormats },
+			{ id: FeatureID.HDRSupport, type: FeatureType.Boolean, value: media.hdrSupport },
 		);
 	}
 
@@ -248,204 +165,120 @@ export async function collectFingerprint(
 	if (enableSpeech) {
 		const voices = collectSpeechVoices();
 		if (voices.length > 0) {
-			engine.addStringArray(FeatureID.SpeechSynthesisVoices, voices);
-			collectedFeatures.push(FeatureID.SpeechSynthesisVoices);
+			signals.push({ id: FeatureID.SpeechSynthesisVoices, type: FeatureType.StringArray, value: voices });
 		}
 	}
 
 	// ── Input detection ──
 	if (enableInput) {
-		const keyboard = detectKeyboardLayout();
-		engine.addString(FeatureID.KeyboardLayout, keyboard);
-
-		const pointer = collectPointerInfo();
-		engine.addBoolean(FeatureID.PointerEvents, pointer.supported);
-
-		const gamepad = collectGamepadInfo();
-		engine.addBoolean(FeatureID.GamepadSupport, gamepad);
-
-		collectedFeatures.push(
-			FeatureID.KeyboardLayout,
-			FeatureID.PointerEvents,
-			FeatureID.GamepadSupport,
+		signals.push(
+			{ id: FeatureID.KeyboardLayout, type: FeatureType.String, value: detectKeyboardLayout() },
+			{ id: FeatureID.PointerEvents, type: FeatureType.Boolean, value: collectPointerInfo().supported },
+			{ id: FeatureID.GamepadSupport, type: FeatureType.Boolean, value: collectGamepadInfo() },
 		);
 	}
 
-	// ── Metadata ──
-	engine.addInteger(FeatureID.SchemaVersion, 1);
-	engine.addString(FeatureID.SDKVersion, "0.1.0");
-	engine.addInteger(FeatureID.CollectionTimestamp, Date.now());
-	collectedFeatures.push(
-		FeatureID.SchemaVersion,
-		FeatureID.SDKVersion,
-		FeatureID.CollectionTimestamp,
-	);
-
-	// ── Compute ──
-	const result = engine.compute();
-	const hex = Array.from(result.digest)
-		.map((b) => b.toString(16).padStart(2, "0"))
-		.join("");
-
-	return {
-		signalCount: collectedFeatures.length,
-		result,
-		hex,
-		collectedAt: Date.now(),
-		collectedFeatures,
-	};
+	return signals;
 }
 
-// ── Private collectors ──
-
-function collectNavigatorSignals(
-	engine: FingerprintEngine,
-	features: FeatureID[],
-): void {
-	engine.addString(FeatureID.UserAgent, navigator.userAgent);
-	engine.addString(FeatureID.Language, navigator.language);
-	engine.addStringArray(FeatureID.Languages, Array.from(navigator.languages));
-	engine.addString(FeatureID.Platform, navigator.platform);
-	engine.addString(FeatureID.Vendor, navigator.vendor);
-	engine.addString(FeatureID.Product, navigator.product);
-	engine.addString(FeatureID.ProductSub, (navigator as any).productSub || "");
-	engine.addString(FeatureID.AppName, navigator.appName);
-	engine.addString(FeatureID.AppVersion, navigator.appVersion);
-	engine.addBoolean(FeatureID.CookieEnabled, navigator.cookieEnabled);
-	engine.addString(FeatureID.DoNotTrack, navigator.doNotTrack || "unspecified");
-	engine.addInteger(
-		FeatureID.HardwareConcurrency,
-		navigator.hardwareConcurrency,
-	);
-	engine.addInteger(FeatureID.MaxTouchPoints, navigator.maxTouchPoints);
-
-	const nav = navigator as any;
-	if (nav.deviceMemory)
-		engine.addFloat(FeatureID.DeviceMemory, nav.deviceMemory);
-	if (nav.pdfViewerEnabled !== undefined)
-		engine.addBoolean(FeatureID.PdfViewerEnabled, nav.pdfViewerEnabled);
-	if (nav.vendorSub) engine.addString(FeatureID.VendorSub, nav.vendorSub);
-	if (nav.deviceMemory)
-		engine.addInteger(FeatureID.DeviceRam, Math.round(nav.deviceMemory));
-
-	features.push(
-		FeatureID.UserAgent,
-		FeatureID.Language,
-		FeatureID.Languages,
-		FeatureID.Platform,
-		FeatureID.Vendor,
-		FeatureID.Product,
-		FeatureID.ProductSub,
-		FeatureID.AppName,
-		FeatureID.AppVersion,
-		FeatureID.CookieEnabled,
-		FeatureID.DoNotTrack,
-		FeatureID.HardwareConcurrency,
-		FeatureID.MaxTouchPoints,
-	);
-}
-
-function collectScreenSignals(
-	engine: FingerprintEngine,
-	features: FeatureID[],
-): void {
-	engine.addInteger(FeatureID.ScreenWidth, screen.width);
-	engine.addInteger(FeatureID.ScreenHeight, screen.height);
-	engine.addInteger(FeatureID.AvailableWidth, screen.availWidth);
-	engine.addInteger(FeatureID.AvailableHeight, screen.availHeight);
-	engine.addInteger(FeatureID.ColorDepth, screen.colorDepth);
-	engine.addInteger(FeatureID.PixelDepth, screen.pixelDepth);
-	engine.addFloat(FeatureID.DevicePixelRatio, window.devicePixelRatio);
-	engine.addInteger(FeatureID.InnerWidth, window.innerWidth);
-	engine.addInteger(FeatureID.InnerHeight, window.innerHeight);
-	engine.addInteger(FeatureID.OuterWidth, window.outerWidth);
-	engine.addInteger(FeatureID.OuterHeight, window.outerHeight);
-
-	if (screen.orientation) {
-		engine.addString(FeatureID.ScreenOrientation, screen.orientation.type);
+/** CSS.supports wrapper that never throws. */
+function cssSupports(property: string, value?: string): boolean {
+	try {
+		return value === undefined ? CSS.supports(property) : CSS.supports(property, value);
+	} catch {
+		return false;
 	}
+}
 
-	features.push(
-		FeatureID.ScreenWidth,
-		FeatureID.ScreenHeight,
-		FeatureID.AvailableWidth,
-		FeatureID.AvailableHeight,
-		FeatureID.ColorDepth,
-		FeatureID.PixelDepth,
-		FeatureID.DevicePixelRatio,
-		FeatureID.InnerWidth,
-		FeatureID.InnerHeight,
-		FeatureID.OuterWidth,
-		FeatureID.OuterHeight,
+// ── Signal groups ──
+
+function collectNavigatorSignals(signals: Signal[]): void {
+	const nav = navigator as unknown as Record<string, unknown>;
+	signals.push(
+		{ id: FeatureID.UserAgent, type: FeatureType.String, value: navigator.userAgent },
+		{ id: FeatureID.Language, type: FeatureType.String, value: navigator.language },
+		{ id: FeatureID.Languages, type: FeatureType.StringArray, value: Array.from(navigator.languages) },
+		{ id: FeatureID.Platform, type: FeatureType.String, value: navigator.platform },
+		{ id: FeatureID.Vendor, type: FeatureType.String, value: navigator.vendor },
+		{ id: FeatureID.Product, type: FeatureType.String, value: navigator.product },
+		{ id: FeatureID.ProductSub, type: FeatureType.String, value: String(nav.productSub ?? "") },
+		{ id: FeatureID.AppName, type: FeatureType.String, value: navigator.appName },
+		{ id: FeatureID.AppVersion, type: FeatureType.String, value: navigator.appVersion },
+		{ id: FeatureID.CookieEnabled, type: FeatureType.Boolean, value: navigator.cookieEnabled },
+		{ id: FeatureID.DoNotTrack, type: FeatureType.String, value: String(nav.doNotTrack ?? "unspecified") },
+		{ id: FeatureID.HardwareConcurrency, type: FeatureType.Integer, value: navigator.hardwareConcurrency },
+		{ id: FeatureID.MaxTouchPoints, type: FeatureType.Integer, value: navigator.maxTouchPoints },
+	);
+	if (typeof nav.deviceMemory === "number") {
+		signals.push({ id: FeatureID.DeviceMemory, type: FeatureType.Float, value: nav.deviceMemory as number });
+	}
+	if (typeof nav.pdfViewerEnabled === "boolean") {
+		signals.push({ id: FeatureID.PdfViewerEnabled, type: FeatureType.Boolean, value: nav.pdfViewerEnabled as boolean });
+	}
+	if (typeof nav.vendorSub === "string" && (nav.vendorSub as string).length > 0) {
+		signals.push({ id: FeatureID.VendorSub, type: FeatureType.String, value: nav.vendorSub as string });
+	}
+	if (typeof nav.deviceMemory === "number") {
+		signals.push({ id: FeatureID.DeviceRam, type: FeatureType.Integer, value: Math.round(nav.deviceMemory as number) });
+	}
+}
+
+function collectScreenSignals(signals: Signal[]): void {
+	signals.push(
+		{ id: FeatureID.ScreenWidth, type: FeatureType.Integer, value: screen.width },
+		{ id: FeatureID.ScreenHeight, type: FeatureType.Integer, value: screen.height },
+		{ id: FeatureID.AvailableWidth, type: FeatureType.Integer, value: screen.availWidth },
+		{ id: FeatureID.AvailableHeight, type: FeatureType.Integer, value: screen.availHeight },
+		{ id: FeatureID.ColorDepth, type: FeatureType.Integer, value: screen.colorDepth },
+		{ id: FeatureID.PixelDepth, type: FeatureType.Integer, value: screen.pixelDepth },
+		{ id: FeatureID.DevicePixelRatio, type: FeatureType.Float, value: window.devicePixelRatio },
+		{ id: FeatureID.InnerWidth, type: FeatureType.Integer, value: window.innerWidth },
+		{ id: FeatureID.InnerHeight, type: FeatureType.Integer, value: window.innerHeight },
+		{ id: FeatureID.OuterWidth, type: FeatureType.Integer, value: window.outerWidth },
+		{ id: FeatureID.OuterHeight, type: FeatureType.Integer, value: window.outerHeight },
+	);
+	const orientation = screen.orientation?.type;
+	if (orientation) {
+		signals.push({ id: FeatureID.ScreenOrientation, type: FeatureType.String, value: orientation });
+	}
+}
+
+function collectLocaleSignals(signals: Signal[]): void {
+	signals.push(
+		{ id: FeatureID.Locale, type: FeatureType.String, value: navigator.language },
+		{ id: FeatureID.Timezone, type: FeatureType.String, value: Intl.DateTimeFormat().resolvedOptions().timeZone },
+		{ id: FeatureID.TimezoneOffset, type: FeatureType.Integer, value: new Date().getTimezoneOffset() },
+		{ id: FeatureID.DateTimeFormat, type: FeatureType.String, value: new Intl.DateTimeFormat().resolvedOptions().locale },
 	);
 }
 
-function collectLocaleSignals(
-	engine: FingerprintEngine,
-	features: FeatureID[],
-): void {
-	engine.addString(FeatureID.Locale, navigator.language);
-	engine.addString(
-		FeatureID.Timezone,
-		Intl.DateTimeFormat().resolvedOptions().timeZone,
-	);
-	engine.addInteger(FeatureID.TimezoneOffset, new Date().getTimezoneOffset());
-	engine.addString(
-		FeatureID.DateTimeFormat,
-		new Intl.DateTimeFormat().resolvedOptions().locale,
-	);
-
-	features.push(
-		FeatureID.Locale,
-		FeatureID.Timezone,
-		FeatureID.TimezoneOffset,
-		FeatureID.DateTimeFormat,
+function collectStorageSignals(signals: Signal[]): void {
+	signals.push(
+		{ id: FeatureID.LocalStorage, type: FeatureType.Boolean, value: isStorageAvailable("localStorage") },
+		{ id: FeatureID.SessionStorage, type: FeatureType.Boolean, value: isStorageAvailable("sessionStorage") },
+		{ id: FeatureID.IndexedDB, type: FeatureType.Boolean, value: "indexedDB" in window },
+		{ id: FeatureID.CacheStorage, type: FeatureType.Boolean, value: "caches" in window },
+		{ id: FeatureID.CookiesEnabled, type: FeatureType.Boolean, value: navigator.cookieEnabled },
 	);
 }
 
-function collectStorageSignals(
-	engine: FingerprintEngine,
-	features: FeatureID[],
-): void {
-	engine.addBoolean(FeatureID.LocalStorage, isStorageAvailable("localStorage"));
-	engine.addBoolean(
-		FeatureID.SessionStorage,
-		isStorageAvailable("sessionStorage"),
-	);
-	engine.addBoolean(FeatureID.IndexedDB, "indexedDB" in window);
-	engine.addBoolean(FeatureID.CacheStorage, "caches" in window);
-	engine.addBoolean(FeatureID.CookiesEnabled, navigator.cookieEnabled);
-
-	features.push(
-		FeatureID.LocalStorage,
-		FeatureID.SessionStorage,
-		FeatureID.IndexedDB,
-		FeatureID.CacheStorage,
-		FeatureID.CookiesEnabled,
-	);
-}
-
-function collectNetworkSignals(
-	engine: FingerprintEngine,
-	features: FeatureID[],
-): void {
-	const conn = (navigator as any).connection;
+function collectNetworkSignals(signals: Signal[]): void {
+	const conn = (navigator as unknown as {
+		connection?: {
+			type?: string;
+			downlink?: number;
+			effectiveType?: string;
+			rtt?: number;
+			saveData?: boolean;
+		};
+	}).connection;
 	if (conn) {
-		engine.addString(FeatureID.ConnectionType, conn.type || "unknown");
-		engine.addFloat(FeatureID.ConnectionDownlink, conn.downlink || 0);
-		engine.addString(
-			FeatureID.ConnectionEffectiveType,
-			conn.effectiveType || "unknown",
-		);
-		engine.addInteger(FeatureID.ConnectionRtt, conn.rtt || 0);
-		engine.addBoolean(FeatureID.ConnectionSaveData, conn.saveData || false);
-
-		features.push(
-			FeatureID.ConnectionType,
-			FeatureID.ConnectionDownlink,
-			FeatureID.ConnectionEffectiveType,
-			FeatureID.ConnectionRtt,
-			FeatureID.ConnectionSaveData,
+		signals.push(
+			{ id: FeatureID.ConnectionType, type: FeatureType.String, value: conn.type || "unknown" },
+			{ id: FeatureID.ConnectionDownlink, type: FeatureType.Float, value: conn.downlink || 0 },
+			{ id: FeatureID.ConnectionEffectiveType, type: FeatureType.String, value: conn.effectiveType || "unknown" },
+			{ id: FeatureID.ConnectionRtt, type: FeatureType.Integer, value: conn.rtt || 0 },
+			{ id: FeatureID.ConnectionSaveData, type: FeatureType.Boolean, value: conn.saveData || false },
 		);
 	}
 }

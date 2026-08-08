@@ -465,19 +465,25 @@ No global feature buffer, no init/reset/scratch: input is allocated via
    package version from `package.json`, and the ingress URL — resolved in
    this order: `--ingress-url=<url>` build option → `FINGERPRINT_INGRESS_URL`
    env var → built-in default — and writes two generated modules into
-   `src/clients/browser/generated/` (gitignored):
+   `src/clients/browser/src/generated/` (gitignored):
    - `tables.ts` — `FeatureID` / `FeatureType` const tables + literal-union
      types derived from the Zig enums (kills the hand-synced duplicates),
    - `config.ts` — `SDK_VERSION` and `DEFAULT_INGRESS_URL` constants.
-2. **Compile** (documented Node exception, D13): `tsc` runs twice — ESM
-   (`dist/esm/`) and CJS (`dist/cjs/`) — plus declaration emit. Node is
+2. **Compile** (documented Node exception, D13): `tsc` runs once — ESM
+   emit plus declarations (`dist/`), resolved through the package `exports`
+   map (`types`/`default` conditions). Node is
    required only for this step, `npm publish`, and the TS test suite; the
    core gates (`zig build test`, `zig build wasm`) never need Node.
-3. **Assemble** `dist/` via the package `exports` map
-   (`import`/`require`/`types` conditions). The base64-wasm-inlined UMD
+3. **Assemble** `dist/` (stale files wiped first so old artifacts can never
+   leak): the base64-wasm-inlined UMD
    template (`scripts/fingerprint-umd-template.js`) and its substitution
    logic are **deleted**; no wasm, no stateful engine buffer, no `hash`
    export anywhere in the package.
+4. **Guard** (`src/build/dist_surface.zig`, run by `clients:browser` after
+   tsc): rejects `.wasm` files, wasm-instantiation markers (base64 blobs,
+   `WebAssembly`, the old engine exports) in any JS file, and `hash`/
+   `compute` identifiers in the public `.d.ts` surface — the canonical path
+   stays server-side.
 
 #### 9.4.2 Generated module contract
 
@@ -486,7 +492,7 @@ No global feature buffer, no init/reset/scratch: input is allocated via
 // FeatureID: { UserAgent: 0, ... } as const;  type FeatureID = typeof FeatureID[keyof typeof FeatureID]
 // FeatureType: { Boolean: 0, ... } as const;  type FeatureType = typeof FeatureType[keyof typeof FeatureType]
 // generated/config.ts
-// export const SDK_VERSION = "0.2.0";
+// export const SDK_VERSION = "0.2.1";
 // export const DEFAULT_INGRESS_URL = "https://...";
 ```
 
@@ -552,9 +558,10 @@ back as the HTTP response. No RabbitMQ on this path.
   (Node, documented exception) rebuilds the bytes from the manifest via
   `package.ts` and asserts equality with the `.bin` — cross-language
   golden parity, no TS decoder needed.
-- A Zig test asserts the generated `dist/` surface: no wasm module, no
+- A Zig guard (`src/build/dist_surface.zig`, run by `clients:browser` after
+  tsc) asserts the generated `dist/` surface: no wasm module, no
   `hash`/`compute` exports, no base64 blob — the canonical path stays
-  server-side.
+  server-side. The same scan is unit-tested in `tests/build/`.
 
 ## 10. Docker
 

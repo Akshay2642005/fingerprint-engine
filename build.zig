@@ -45,7 +45,7 @@ const zig_version = std.SemanticVersion{
 const package_version = std.SemanticVersion{
     .major = 0,
     .minor = 2,
-    .patch = 0,
+    .patch = 1,
 };
 
 comptime {
@@ -187,8 +187,9 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    // Browser package generator: emits the npm package dist/ from the wasm
-    // binary and the model definitions. Depends on Model.
+    // Browser package generator: emits generated/tables.ts + generated/config.ts
+    // (FeatureID/FeatureType, version, ingress URL) that the hand-written TS
+    // SDK imports. Depends on Model only.
     const browser_package = b.createModule(.{
         .root_source_file = b.path("src/build/browser_package.zig"),
         .target = target,
@@ -196,6 +197,14 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "model", .module = model },
         },
+    });
+
+    // Dist surface guard: scans the generated browser dist/ for forbidden
+    // surface (wasm, base64 blobs, hash/compute exports). Depends on nothing.
+    const dist_surface = b.createModule(.{
+        .root_source_file = b.path("src/build/dist_surface.zig"),
+        .target = target,
+        .optimize = mode,
     });
 
     // Test utilities: assertions, generators, and mocks.
@@ -225,6 +234,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "worker", .module = worker },
             .{ .name = "test_utils", .module = test_utils },
             .{ .name = "browser_package", .module = browser_package },
+            .{ .name = "dist_surface", .module = dist_surface },
         },
     });
 
@@ -243,8 +253,8 @@ pub fn build(b: *std.Build) !void {
     // zig build test
     build_test(b, build_steps.@"test", .{ .test_core_module = test_core_module });
 
-    // zig build wasm
-    const wasm_exe = build_wasm(b, .{
+    // zig build wasm (installs the infra artifact; the SDK no longer inlines it)
+    _ = build_wasm(b, .{
         .wasm_step = build_steps.wasm,
         .install_step = b.getInstallStep(),
     }, .{ .wasm_module = wasm });
@@ -259,9 +269,19 @@ pub fn build(b: *std.Build) !void {
     const bench = build_bench(b, build_steps.bench, .{ .bench_module = bench_module });
 
     // zig build clients:browser
+    // Ingress URL resolution: --ingress-url option, then the
+    // FINGERPRINT_INGRESS_URL env var, then the built-in dev default. The
+    // resolved value is baked into the generated SDK config (DESIGN §9.4.1).
+    const ingress_url = b.option(
+        []const u8,
+        "ingress-url",
+        "Default ingress URL baked into the browser SDK (overrides FINGERPRINT_INGRESS_URL)",
+    ) orelse (std.process.getEnvVarOwned(b.allocator, "FINGERPRINT_INGRESS_URL") catch
+        "http://127.0.0.1:8080");
     build_browser_client(b, build_steps.clients_browser, .{
-        .wasm = wasm_exe,
         .browser_package_module = browser_package,
+        .dist_surface_module = dist_surface,
+        .ingress_url = ingress_url,
     });
 
     // zig build scripts, zig build scripts:build
@@ -395,22 +415,44 @@ fn build_bench(b: *std.Build, step: *std.Build.Step, options: struct {
 }
 
 fn build_browser_client(b: *std.Build, step: *std.Build.Step, options: struct {
-    wasm: *std.Build.Step.Compile,
     browser_package_module: *std.Build.Module,
+    dist_surface_module: *std.Build.Module,
+    ingress_url: []const u8,
 }) void {
+    // 1. Generator: writes generated/tables.ts + generated/config.ts from the
+    //    model enums, package.json version, and the resolved ingress URL.
+    //    Side-effecting: runs on every invocation.
     const generator = b.addExecutable(.{
         .name = "browser_package",
         .root_module = options.browser_package_module,
     });
     const run = b.addRunArtifact(generator);
-    // Inputs: wasm binary, UMD template, and the package metadata; the
-    // generator writes dist/ into the package directory. The demo page lives
-    // outside the package (examples/) and is never shipped.
-    run.addFileArg(options.wasm.getEmittedBin());
-    run.addFileArg(b.path("src/clients/browser/scripts/fingerprint-umd-template.js"));
     run.addFileArg(b.path("src/clients/browser/package.json"));
+    run.addArg(options.ingress_url);
     run.addDirectoryArg(b.path("src/clients/browser"));
-    step.dependOn(&run.step);
+
+    // 2. tsc: compiles the hand-written TS SDK into dist/. This is the
+    //    documented Node exception (D13/D14) — everything else builds via
+    //    Zig. Side-effecting so dist/ is refreshed on every invocation.
+    //    The dist tree is wiped first so stale artifacts from older builds
+    //    (e.g. the pre-rework UMD/ESM bundles) can never leak into dist/.
+    const clean_dist = b.addRemoveDirTree(b.path("src/clients/browser/dist"));
+    const tsc = b.addSystemCommand(&.{ "tsc", "-p", "src/clients/browser/tsconfig.json" });
+    tsc.has_side_effects = true;
+    tsc.step.dependOn(&clean_dist.step);
+    tsc.step.dependOn(&run.step);
+
+    // 3. Surface guard: rejects wasm/base64/hash/compute leaks in dist/
+    //    (DESIGN §9.4.6) — the canonical digest stays server-side.
+    const surface = b.addExecutable(.{
+        .name = "dist_surface",
+        .root_module = options.dist_surface_module,
+    });
+    const surface_run = b.addRunArtifact(surface);
+    surface_run.addDirectoryArg(b.path("src/clients/browser/dist"));
+    surface_run.step.dependOn(&tsc.step);
+
+    step.dependOn(&surface_run.step);
 }
 
 fn build_scripts(b: *std.Build, steps: struct {

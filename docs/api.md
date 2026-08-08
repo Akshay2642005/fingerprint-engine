@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Fingerprint Engine is a browser fingerprinting engine written in
+The Fingerprint Engine is a deterministic computation engine written in
 Zig 0.14.1. It provides:
 
 - **Feature collection**: 102 browser signals across 21 categories (canvas, WebGL, audio, fonts, battery, media codecs, speech, input, permissions, etc.)
@@ -11,71 +11,90 @@ Zig 0.14.1. It provides:
 - **Similarity scoring**: Feature-level and fingerprint-level comparison
 - **Entropy analysis**: Shannon entropy measurement
 - **Risk assessment**: Browser fingerprint risk scoring
-- **Serialization**: Compact TLV binary and JSON codecs
-- **WASM**: The only shipped artifact — `ReleaseSmall`, built by Zig
+- **Serialization**: Versioned TLV binary and JSON codecs
+- **Engine**: Versioned `Operation`/`Status`, immutable `Request`, caller-owned `Response`, comptime dispatch
+- **IO primitives**: Arena `Message`/`MessagePool`, `RingBuffer`, typed `Channel`, `Executor`, FPKG `Frame`, fixed-buffer `Reader`/`Writer`, comptime `Dispatcher`
+- **Worker executable**: `--transport=loopback|tcp`, `--publish=none|amqp`, ships as a Docker container
 
-There is no native SDK and no C ABI. Fingerprint workers run the engine as
-Docker containers.
+The canonical fingerprint is computed **only** by the workers. There is no
+native SDK and no C ABI. The browser TypeScript SDK collects signals and ships
+a versioned `SignalPackage` to the ingress; it never computes the digest.
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    SDK[Browser SDK] -->|SignalPackage v2| ING[Ingress]
+    ING -->|FPKG frame| WK[Worker]
+    WK -->|engine.process| RES[Fingerprint · risk · metadata]
+    RES -->|reply + AMQP events| FP[Fraud platform]
+    FP -->|WebSocket| SDK
 ```
-┌─────────────────────────────────────────────────────┐
-│                    Engine (Zig)                     │
-├─────────────┬─────────────┬─────────────┬───────────┤
-│   model     │    core     │serialization│  browser  │
-│  registry   │  hashing    │ binary      │  (WASM)   │
-│  102 sigs   │  normalize  │ JSON        │  exports  │
-│  fingerprint│  similarity │             │           │
-│             │  entropy    │             │           │
-│             │  risk       │             │           │
-├─────────────┴─────────────┴─────────────┴───────────┤
-│  dependencies flow inward; no transport, no I/O     │
-└─────────────────────────────────────────────────────┘
+
+```mermaid
+sequenceDiagram
+    participant A as Adapter
+    participant E as Engine
+    A->>E: process(Request{ operation, input })
+    E->>E: comptime dispatch to op handler
+    E-->>A: Response (caller-owned)
+    A->>A: serialize + publish/reply
 ```
+
+Dependencies flow inward: `model` → `core`/`serialization` → `engine`;
+`io` → `adapter` → `worker`. Nothing depends outward; no circular imports.
 
 ## Quick Start
 
-### Browser (WASM — script tag)
+### Browser (TypeScript SDK)
 
-```html
-<script src="https://cdn.jsdelivr.net/npm/@akshay2642005/fingerprint-sdk"></script>
-<script>
-  const result = await Fingerprint.collect();
-  console.log('Digest:',  result.hex);      // 64-char hex digest
-  console.log('Signals:', result.signals);  // ~102
-  console.log('Risk:',    result.risk);     // 0.0 – 1.0
-  console.log('Entropy:', result.entropy);  // bits/signal
-  console.log('Warnings:', result.warnings);// normalization warning count
-</script>
+```typescript
+import { configure, collect, onSessionBlocked, assertAllowed } from '@akshay2642005/fingerprint-sdk';
+
+configure({ ingressUrl: 'https://ingress.example.com/v1/fingerprints' });
+
+const result = await collect();
+console.log('package id:', result.packageId); // replay identity
+console.log('signals:   ', result.signalCount);
+console.log('sent:      ', result.sent);        // ingress accepted (HTTP 2xx)
+console.log('reply:     ', result.reply);       // worker digest, when relayed
 ```
 
-`Fingerprint.collect()` returns:
+`collect()` returns:
 
 | Field | Type | Description |
 | ----- | ---- | ----------- |
-| `hex` | `string` | 64-char hex digest |
-| `digest` | `Uint8Array` | 32-byte digest |
-| `risk` | `number` | 0.0 (low) – 1.0 (high) |
-| `entropy` | `number` | bits/signal |
-| `warnings` | `number` | normalization warning count |
-| `signals` | `number` | feature count |
-| `collectedAt` | `number` | epoch ms |
+| `packageId` | `Uint8Array` | 16-byte replay identity |
+| `bytes` | `Uint8Array` | serialized SignalPackage v2 body (exact bytes POSTed) |
+| `hex` | `string` | hex of `bytes` |
+| `signalCount` | `number` | number of signals collected |
+| `sent` | `boolean` | ingress accepted the package (HTTP 2xx) |
+| `reply` | `WorkerReply?` | worker digest, when relayed |
 
-### Browser (TypeScript — lower level)
+`WorkerReply`: `{ status, digestHex?, schemaVersion?, featureCount? }` — the
+`status` byte is the engine `Status` value (0 = ok).
+
+Fraud-platform middleware:
 
 ```typescript
-import { FingerprintEngine, FeatureID } from '@akshay2642005/fingerprint-sdk';
-
-const engine = await FingerprintEngine.create('/fingerprint.wasm');
-engine.addString(FeatureID.UserAgent, navigator.userAgent);
-engine.addBoolean(FeatureID.CookieEnabled, navigator.cookieEnabled);
-
-const result = engine.compute();          // { digest, featureCount }
-const risk = engine.risk();               // 0.0 – 1.0
-const entropy = engine.entropy();         // bits/signal
-const warnings = engine.normalize();      // warning count
+onSessionBlocked((decision) => UI.notify(`blocked: ${decision.reason}`));
+if (assertAllowed().blocked) return; // client-side UX gate; app enforces
 ```
+
+### Engine (Zig)
+
+```zig
+const engine = @import("engine");
+
+// Operations: validate, normalize, serialize, deserialize, hash,
+//             entropy, similarity, risk, package
+var response = try engine.process(allocator, &request);
+defer response.deinit(allocator);
+```
+
+`engine.process()` is the single entry point: it takes an immutable
+`Request` (operation + input slices) and produces a caller-owned `Response`.
+Dispatch is a comptime table — no reflection, no dynamic dispatch.
 
 ## Core Modules
 
@@ -91,26 +110,8 @@ const model = @import("model");
 // .DeviceMemory, .ScreenWidth, .ScreenHeight, .Timezone, etc.
 ```
 
-### Fingerprint model (`model`)
-
-The core data model for fingerprints.
-
-```zig
-const Fingerprint = model.Fingerprint;
-const Feature = model.Feature;
-const FeatureValue = model.FeatureValue;
-
-// FeatureValue is a tagged union:
-// .Boolean(bool)
-// .String([]const u8)
-// .Integer(i64)
-// .Float(f64)
-// .Bytes([]const u8)
-// .StringArray([]const []const u8)
-// .IntegerArray([]const i64)
-// .FloatArray([]const f64)
-// .BytesArray([]const []const u8)
-```
+The runtime data model (`Fingerprint`, `Feature`, `FeatureValue`, metadata,
+registry) depends on nothing.
 
 ### Hashing (`core.hashing`)
 
@@ -126,9 +127,6 @@ try core.hashing.hashFeature(feature.value, &hash);
 // Hash an entire fingerprint
 try core.hashing.hashFingerprint(fingerprint, &hash);
 
-// Hash a feature slice (used by the WASM target)
-try core.hashing.hashFingerprintBuffer(features, &hash);
-
 // Incremental hashing
 var hasher = core.hashing.Hasher.init(schema_version, sdk_version, collected_at);
 try hasher.add(feature.id, feature.value);
@@ -137,14 +135,15 @@ hasher.final(&hash);
 
 ### Serialization (`serialization`)
 
-Binary and JSON encoding/decoding.
+Versioned binary and JSON encoding/decoding. The binary body is schema v2:
+`"FNGR"` magic, `u16` schema version, SDK version, `i64` collected-at,
+`[16]u8` package id, `u16` feature count, then TLV features.
 
 ```zig
 const serialization = @import("serialization");
 
 // Binary encode
-var buf: [1024]u8 = undefined;
-var w = std.io.Writer(...);
+var w = std.io.fixedBufferStream(&buf);
 try serialization.encode(&w, fingerprint);
 
 // Binary decode
@@ -160,11 +159,9 @@ try serialization.jsonEncode(&json_w, fingerprint);
 Type and bounds validation.
 
 ```zig
-// Validate feature types
 const type_warnings = try core.normalization.validateTypes(fingerprint, allocator);
 defer allocator.free(type_warnings);
 
-// Check value bounds
 const bound_warnings = try core.normalization.checkAllBounds(fingerprint, allocator);
 defer allocator.free(bound_warnings);
 ```
@@ -174,11 +171,8 @@ defer allocator.free(bound_warnings);
 Feature-level and fingerprint-level comparison.
 
 ```zig
-// Compare two feature values (0.0 to 1.0)
-const score = core.similarity.featureScore(value_a, value_b);
-
-// Compare two fingerprints (0.0 to 1.0)
-const fp_score = core.similarity.fingerprintScore(fp_a, fp_b);
+const score = core.similarity.featureScore(value_a, value_b);       // 0.0–1.0
+const fp_score = core.similarity.fingerprintScore(fp_a, fp_b);      // 0.0–1.0
 ```
 
 ### Entropy (`core.entropy`)
@@ -186,11 +180,8 @@ const fp_score = core.similarity.fingerprintScore(fp_a, fp_b);
 Shannon entropy measurement.
 
 ```zig
-// Shannon entropy of raw bytes (0.0 to 8.0 bits/byte)
-const entropy = core.entropy.shannonEntropy(data);
-
-// Fingerprint entropy (weighted average)
-const fp_entropy = core.entropy.fingerprintEntropy(fingerprint);
+const entropy = core.entropy.shannonEntropy(data);                  // bits/byte
+const fp_entropy = core.entropy.fingerprintEntropy(fingerprint);    // weighted bits
 ```
 
 ### Risk (`core.risk`)
@@ -204,38 +195,45 @@ const assessment = core.risk.computeRisk(fingerprint, allocator);
 // assessment.flags: missing_features, bound_violations, etc.
 ```
 
-## Browser SDK (WASM)
+## IO Primitives (`io`)
 
-### Exported Functions
+Transport-independent async primitives used by adapters and the worker:
 
-| Function | Description |
-| ---------- | ------------- |
-| `fingerprint_init()` | Initialize the engine |
-| `fingerprint_reset()` | Reset all features |
-| `fingerprint_feature_count()` | Number of added features |
-| `fingerprint_get_error()` | Pointer to last error message |
-| `fingerprint_add_boolean(id, value)` | Add a boolean feature |
-| `fingerprint_add_integer(id, value)` | Add an integer feature |
-| `fingerprint_add_float(id, value)` | Add a float feature |
-| `fingerprint_add_string(id, ptr, len)` | Add a string feature |
-| `fingerprint_add_bytes(id, ptr, len)` | Add a bytes feature |
-| `fingerprint_compute()` | Compute digest (returns pointer) |
-| `fingerprint_get_digest_ptr()` | Pointer to the 32-byte digest |
-| `fingerprint_get_scratch_ptr()` | Pointer to the 64 KB scratch buffer |
-| `fingerprint_normalize()` | Validate types and bounds (warning count) |
-| `fingerprint_risk()` | Risk score (0.0–1.0) |
-| `fingerprint_entropy()` | Entropy (bits/signal × 100) |
+- `Message` / `MessagePool` — arena-backed message ownership
+- `RingBuffer`, `Channel` — bounded FIFO primitives
+- `Executor` — deterministic single-threaded completion loop
+- `Frame` — FPKG envelope (magic, version, type, length, payload, integrity)
+- `Reader` / `Writer` — fixed-buffer streams
+- `Dispatcher` — comptime request dispatch
 
-### Error Codes
+## Adapters (`adapter`)
 
-| Code | Value |
-| ---- | ----- |
-| `success` | 0 |
-| `buffer_full` | 1 |
-| `invalid_feature_id` | 2 |
-| `invalid_value_type` | 3 |
-| `not_initialized` | 4 |
-| `invalid_input` | 5 |
+Transport implementations — the only place that touches sockets or brokers:
+
+- `Loopback` — in-memory queues (tests) / stdin/stdout pipes (processes)
+- `Tcp` — FPKG-framed request/response server (ingress → worker)
+- `AMQP` 0-9-1 — synchronous client over a generated-style protocol layer,
+  with publisher confirms, queue/binding declarations, and a result
+  publisher (`result.<message-type>` routing keys on the durable
+  `fingerprint` exchange)
+
+## Worker (`worker`)
+
+Deterministic worker executable. Usage:
+
+```
+worker start --transport=loopback|tcp [--listen=host:port]
+             [--publish=none|amqp]
+             [--amqp-address=host:port] [--amqp-user=user]
+             [--amqp-password=pass] [--amqp-vhost=vhost]
+worker version
+worker help
+```
+
+Inbound message types map to engine operations (`signal_package` → `hash` is
+the canonical path); replies are FPKG frames whose payload is
+`u8 status | engine result`. The worker ships as a Docker container
+(`deploy/Dockerfile.worker`).
 
 ## Test Data
 
@@ -244,6 +242,12 @@ const assessment = core.risk.computeRisk(fingerprint, allocator);
 - `tests/data/fingerprints/chrome_win10.json` — Chrome on Windows 10
 - `tests/data/fingerprints/firefox_macos.json` — Firefox on macOS
 - `tests/data/fingerprints/minimal.json` — Minimal valid fingerprint
+
+### Golden Fixtures
+
+- `tests/fixtures/fingerprints/signal-package-v2.bin` — canonical v2 signal
+  package; its engine hash is pinned as a compile-time constant in the worker
+  e2e tests and cross-checked by the TS parity test (`signal-package-v2.signals.json`)
 
 ### Similarity Matrix
 
@@ -257,29 +261,8 @@ Run performance benchmarks:
 zig build bench
 ```
 
-12 benchmark targets cover hashing, serialization, normalization, similarity,
-and entropy (illustrative output):
-
-```
-Fingerprint Engine — Benchmark Harness
-Zig 0.14.1 | ReleaseSafe | x86_64
-------------------------------------------------------------
-                    Benchmark    Ops/Sec        Avg
-------------------------------------------------------------
-             hashing: hashFeature    2659221 376ns
-         hashing: hashFingerprint     171656 5.83µs
-      hashing: incremental hasher     182705 5.47µs
-     serialization: binary encode     274816 3.64µs
-       serialization: json encode     165755 6.03µs
-     normalization: validateTypes     300409 3.33µs
-       normalization: checkBounds    1513317 660ns
-         normalization: normalize     124247 8.05µs
-         similarity: featureScore     330737 3.02µs
-     similarity: fingerprintScore      56700 17.64µs
-          entropy: shannonEntropy    1222344 818ns
-      entropy: fingerprintEntropy     258572 3.87µs
-------------------------------------------------------------
-```
+Benchmark targets cover hashing, serialization, normalization, similarity,
+and entropy.
 
 ## Fuzz Testing
 
