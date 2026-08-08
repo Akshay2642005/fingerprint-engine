@@ -22,6 +22,7 @@ pub const MessageType = enum(u8) {
     similarity_result = 6,
     diagnostics = 7,
     fingerprint_computed = 8,
+    entropy_result = 9,
 };
 
 pub const Codec = enum(u8) {
