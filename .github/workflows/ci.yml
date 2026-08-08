@@ -118,11 +118,17 @@ jobs:
       - name: Build worker Docker image
         run: zig build docker:worker
 
+      - name: Resolve image tag from build.zig.zon
+        id: tag
+        run: |
+          VERSION=$(grep -oP '(?<=\.version = ")[^"]+' build.zig.zon)
+          echo "tag=fingerprint-worker:$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Verify image exists
         run: |
-          docker image inspect fingerprint-worker:0.2.0 > /dev/null
-          echo "✅ image fingerprint-worker:0.2.0 built"
+          docker image inspect ${{ steps.tag.outputs.tag }} > /dev/null
+          echo "✅ image ${{ steps.tag.outputs.tag }} built"
 
       - name: Smoke test image entrypoint
         run: |
-          docker run --rm --entrypoint /usr/local/bin/worker fingerprint-worker:0.2.0 version
+          docker run --rm --entrypoint /usr/local/bin/worker ${{ steps.tag.outputs.tag }} version

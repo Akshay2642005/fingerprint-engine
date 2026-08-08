@@ -1,0 +1,22 @@
+# Version control
+.git/
+
+# Local Zig build artifacts — the image builds its own inside the builder stage
+.zig-cache/
+zig-out/
+
+# Dependencies and generated output — never needed in a worker image context
+**/node_modules/
+**/dist/
+src/clients/browser/src/generated/
+
+# Not needed by the in-image `zig build worker` step
+.github/
+docs/
+examples/
+specs/
+tests/
+
+# Packing leftovers
+*.tgz
+*.tar.xz

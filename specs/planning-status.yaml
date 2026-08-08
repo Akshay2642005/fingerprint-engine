@@ -9,7 +9,7 @@ design_phase:
 
 plan_phase:
   status: completed
-  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed. Distributed rework (specs/rework/) executed to v0.2.1."
+  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed. Distributed rework (specs/rework/) executed to v0.2.2."
 
 build_phase:
   status: completed
@@ -31,6 +31,11 @@ verify_phase:
   release_green: true
 
 release_phase:
+  v0.2.2:
+    status: released
+    date: "2026-08-08"
+    notes: "Release pipeline hardening — GHCR worker image, idempotent npm publish"
+
   v0.2.1:
     status: released
     date: "2026-08-08"
@@ -53,4 +58,4 @@ release_phase:
 next_phase:
   status: planning
   recommended_skill: elaborate-spec
-  note: "v0.2.1 released. Follow-ups: ingress + worker deployment hardening, AMQP consumer e2e, fraud-platform (Go) integration."
+  note: "v0.2.2 released. Follow-ups: ingress + worker deployment hardening, AMQP consumer e2e, fraud-platform (Go) integration."

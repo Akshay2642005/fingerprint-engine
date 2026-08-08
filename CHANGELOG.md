@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-08
+
+### Added
+
+- Worker image published to GitHub Container Registry from the release
+  pipeline — `ghcr.io/akshay2642005/fingerprint-engine/fingerprint-worker`
+  with `:latest` and version tags.
+
+### Fixed
+
+- Release pipeline: GHCR image tags are now lowercased (Docker requires
+  lowercase repository names, but `github.repository` preserves case),
+  fixing the v0.2.1 image-push failure.
+- npm publish is idempotent — it skips when the exact version is already on
+  the registry, so re-running a tag after a failed job never redeploys npm.
+
+### Changed
+
+- Version bumped to 0.2.2 across `build.zig`/`build.zig.zon`, the browser SDK
+  `package.json`, and the worker container tag (`fingerprint-worker:0.2.2`).
+- Specs status files refreshed for v0.2.2 (`release-plan.yaml`,
+  `planning-status.yaml`, `state.yaml`, `SCOPE_LATEST`, `DESIGN.md`).
+
+## [0.2.1] - 2026-08-08
+
 ### Added
 
 - `examples/demo.html` rewired to the hand-written browser SDK — the dev-only
@@ -15,32 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and shows the SignalPackage metadata, worker reply, and session decision gate.
 - `src/clients/browser/README.md` — npm package readme covering install, quick
   start, collect options, integrity headers, and the session decision gate.
-
-### Changed
-
-- Docs site (`docs/`) rewritten for the distributed architecture — browser
-  quick start moved to the TypeScript SDK (`configure`/`collect`), API page
-  documents the engine/io/adapter/worker layers and the v2 wire format, and
-  the architecture page reflects the real event flow and test counts. Mermaid
-  diagrams (system flow, dependency graph, engine/worker sequence) added to
-  the README and the docs site.
-- Specs status files refreshed for v0.2.0/v0.2.1 (`release-plan.yaml`,
-  `execution-status.yaml`, `planning-status.yaml`, `state.yaml`, `SCOPE_LATEST`).
-- `CONVENTIONS.md` rewritten as a full style guide — the essence of style,
-  safety (limits, assertions, determinism, memory), performance, and developer
-  experience rules (naming, cache invalidation, off-by-one, tooling), with the
-  project's operational conventions (commits, git, always-green, specs, tests)
-  preserved.
-
-### Removed
-
-- Automated npm publish job from the release pipeline — the npm package is
-  published manually (`npm publish` from `src/clients/browser`); the registry
-  OIDC trusted publisher is not configured.
-
-## [0.2.1] - 2026-08-08
-
-### Added
 
 - AMQP 0-9-1 adapter in `src/adapter/amqp/` — a synchronous client (`client.zig`) over a generated-style protocol layer (`spec.zig`/`protocol.zig`/`types.zig`) with publisher confirms on connect, `queue_declare`/`queue_bind` for consumers, and `get_message`/`get_message_body`/`nack` polling; plus a result publisher (`publisher.zig`) that converts each worker reply frame into one published message — routing key `result.<message-type>` (kebab-case), headers `fpkg-message-type`/`fpkg-envelope-version`, persistent delivery, timestamps, on the durable `fingerprint` direct exchange. Wired to the worker CLI as `--amqp-address`/`--amqp-user`/`--amqp-password`/`--amqp-vhost` (defaults `127.0.0.1:5672`, `guest`/`guest`, `/`). Broker topology and connection concerns live entirely behind the adapter; the engine and worker stay transport-free (D16).
 - `zig build scripts -- amqp` — live broker smoke test: connects, declares the `fingerprint` exchange, binds a throwaway queue to `result.fingerprint-result`, publishes a frame, and verifies the round trip.
@@ -58,6 +57,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Docs site (`docs/`) rewritten for the distributed architecture — browser
+  quick start moved to the TypeScript SDK (`configure`/`collect`), API page
+  documents the engine/io/adapter/worker layers and the v2 wire format, and
+  the architecture page reflects the real event flow and test counts. Mermaid
+  diagrams (system flow, dependency graph, engine/worker sequence) added to
+  the README and the docs site.
+- Specs status files refreshed for v0.2.0/v0.2.1 (`release-plan.yaml`,
+  `execution-status.yaml`, `planning-status.yaml`, `state.yaml`, `SCOPE_LATEST`).
+- `CONVENTIONS.md` rewritten as a full style guide — the essence of style,
+  safety (limits, assertions, determinism, memory), performance, and developer
+  experience rules (naming, cache invalidation, off-by-one, tooling), with the
+  project's operational conventions (commits, git, always-green, specs, tests)
+  preserved.
+- npm publishing is automated through the OIDC trusted publisher
+  (`release.yml` `publish-npm` job) — v0.2.1 published straight from CI.
 - Browser npm package is now strictly the runtime SDK — `dist/` ships only the UMD/ESM bundles and type declarations, no demo page. The browser demo moved to `examples/demo.html` at the repo root (dev-only, never published).
 - Browser SDK rewritten as a hand-written TypeScript package (`src/clients/browser/src/`): `collect()` gathers plain `Signal[]`, `package.ts` serializes a versioned SignalPackage v2 body (mirroring `serialization/binary.zig` byte-for-byte, cross-checked by a golden parity test), and `transport.ts` POSTs it to the ingress URL (`--ingress-url` build option → `FINGERPRINT_INGRESS_URL` env → built-in default) with `x-fpkg-*` headers plus a SHA-256 integrity header. The browser never computes the canonical fingerprint. The base64-wasm-inlined UMD template and the wasm bindings are deleted; wasm stays in-repo for bench/test containers only. The package is ESM-only (`exports` map with `types`/`default` conditions, NodeNext module resolution so every import carries a `.js` extension).
 - SDK middleware surface for the fraud platform (D17): `configure({ wsUrl })` opens the decision WebSocket, `assertAllowed()` returns the last-known decision, `onSessionBlocked(cb)` registers `session.blocked` callbacks — a client-side UX gate only; the app enforces.

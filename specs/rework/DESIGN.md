@@ -492,7 +492,7 @@ No global feature buffer, no init/reset/scratch: input is allocated via
 // FeatureID: { UserAgent: 0, ... } as const;  type FeatureID = typeof FeatureID[keyof typeof FeatureID]
 // FeatureType: { Boolean: 0, ... } as const;  type FeatureType = typeof FeatureType[keyof typeof FeatureType]
 // generated/config.ts
-// export const SDK_VERSION = "0.2.1";
+// export const SDK_VERSION = "0.2.2";
 // export const DEFAULT_INGRESS_URL = "https://...";
 ```
 
