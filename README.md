@@ -133,7 +133,7 @@ if (assertAllowed().blocked) {
 │   ├── scripts.zig           # Automation dispatcher subcommands
 │   └── docs_website/         # Nested Zig project — `zig build docs`
 ├── examples/
-│   └── demo.html             # Dev-only browser demo (never shipped in the npm package)
+│   └── demo.html             # Dev-only SDK demo (configure + collect; never shipped in the npm package)
 ├── tests/
 │   ├── root.zig              # Self-verifying test registry (SNAP_UPDATE=1 regenerates)
 │   ├── model/ core/ serialization/ engine/ io/ adapter/ worker/ build/ browser/
@@ -158,23 +158,41 @@ outward. The core contains only deterministic computation — no HTTP, no
 queues, no databases, no business logic; adapters and the worker own every
 transport concern.
 
+```mermaid
+flowchart TD
+    SDK[Browser SDK<br/>collectors · package · transport] -->|POST SignalPackage v2<br/>x-fpkg-* + SHA-256 integrity| ING[Ingress]
+    ING -->|FPKG request frame| WK[Worker<br/>engine.process]
+    WK -->|reply frame| ING
+    ING -->|HTTP reply<br/>worker digest| SDK
+    WK -->|AMQP result events| FP[Fraud platform]
+    FP -->|WebSocket session.blocked| MW[SDK middleware<br/>assertAllowed · onSessionBlocked]
+    MW --> UI[Application UX]
 ```
-Browser (TS SDK)
-  │  collectors (102 signals)
-  ▼
-SignalPackage v2  ← validated, normalized, serialized in the browser
-  │  POST (integrity header)
-  ▼
-Ingress (out of repo)
-  │  FPKG request/response
-  ▼
-Worker (Docker)   ← engine.process(): validate → normalize → hash → entropy → risk
-  │  reply frame
-  ▼
-Fraud platform (Go, out of repo)
-  │  WebSocket push
-  ▼
-Browser SDK middleware (assertAllowed / onSessionBlocked)
+
+```mermaid
+graph TD
+    MODEL[model] --> CORE[core]
+    MODEL --> SER[serialization]
+    CORE --> ENG[engine]
+    SER --> ENG
+    IO[io] --> ADP[adapter]
+    ADP --> WK2[worker]
+    ENG --> WK2
+```
+
+```mermaid
+sequenceDiagram
+    participant SDK as Browser SDK
+    participant ING as Ingress
+    participant WK as Worker
+    participant FP as Fraud platform
+    SDK->>ING: POST SignalPackage v2
+    ING->>WK: FPKG request frame
+    WK->>WK: engine.process: validate, normalize, hash, entropy, risk
+    WK-->>ING: reply frame (status + digest)
+    ING-->>SDK: HTTP reply (worker digest)
+    WK-->>FP: AMQP result event (routing key result.*)
+    FP-->>SDK: WebSocket session.blocked (optional)
 ```
 
 The canonical fingerprint is computed only by the workers; the browser SDK

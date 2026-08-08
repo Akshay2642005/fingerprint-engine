@@ -5,22 +5,25 @@ discover_phase:
 
 design_phase:
   status: completed
-  notes: "Architecture decisions recorded in ADRs and tech-stack.md"
+  notes: "Architecture decisions recorded in ADRs and tech-stack.md; rework design in specs/rework/DESIGN.md"
 
 plan_phase:
   status: completed
-  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed."
+  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed. Distributed rework (specs/rework/) executed to v0.2.1."
 
 build_phase:
   status: completed
   epics_completed:
     - Core engine (features, fingerprint, serialization, normalization, hashing, validation, similarity, entropy, risk)
-    - Browser SDK (WASM, TypeScript bindings, 11 collectors, demo)
-    - Server SDK (C ABI, C header, Rust SDK, Python SDK)
-    - Testing (290 tests, 8 fuzz targets, 12 benchmarks)
-    - CI/CD (CI + Release workflows, all green)
-    - npm publishing pipeline
-  total_tests: 290
+    - Deterministic engine (Operation/Request/Response, comptime dispatch)
+    - Async IO primitives (Message, RingBuffer, Channel, Executor, FPKG Frame, Reader/Writer, Dispatcher)
+    - Serialization v2 (SignalPackage v2 body, codec interface, integrity, v1 compat)
+    - Transports and adapter layer (loopback, tcp, AMQP 0-9-1 + result publisher)
+    - Worker executable and Docker image
+    - Hand-written TypeScript SDK (collect → package → POST; decision middleware)
+    - Testing (382 tests, 3 fuzz targets, 12 benchmarks)
+    - CI/CD (test, wasm-build, worker-build, docker-worker)
+  total_tests: 382
 
 verify_phase:
   status: completed
@@ -28,6 +31,16 @@ verify_phase:
   release_green: true
 
 release_phase:
+  v0.2.1:
+    status: released
+    date: "2026-08-08"
+    notes: "Distributed rework delivery — engine, io, worker, amqp, SDK, docs refresh"
+
+  v0.2.0:
+    status: released
+    date: "2026-08-07"
+    notes: "Breaking rework milestone — Zig 0.14.1, layered repo, O(1) build, native SDK removed"
+
   v0.1.1:
     status: released
     date: "2026-07-11"
@@ -40,4 +53,4 @@ release_phase:
 next_phase:
   status: planning
   recommended_skill: elaborate-spec
-  note: "Plan v0.2.0 epics — npm automation, PyPI, crates.io, WASM size, docs, matching"
+  note: "v0.2.1 released. Follow-ups: ingress + worker deployment hardening, AMQP consumer e2e, fraud-platform (Go) integration."
