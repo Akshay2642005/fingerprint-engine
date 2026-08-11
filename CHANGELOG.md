@@ -31,6 +31,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   targeting both `develop` and `master`. Docs updated: `CONVENTIONS.md`,
   `CONTRIBUTING.md`, `specs/planning/SESSION.yaml`.
 
+### Fixed
+
+- Browser SDK `parseWorkerReply()` no longer swaps `schema_version` and
+  `feature_count` — it reads `featureCount` at bytes 33..35 and
+  `schemaVersion` at 35..37 (LE), matching the worker's
+  `[32]digest | u16 feature_count | u16 schema` layout; a golden TS test
+  pins the reply against the integration digest constant (BUG-001).
+- Version is now a single source of truth: `build.zig` injects
+  `package_version` via `build_options` into the worker, AMQP adapter,
+  wasm, and scripts modules — `worker version`, the AMQP connection
+  properties, and the wasm `sdk_version` can no longer drift from the
+  release (BUG-002).
+- Stale test counts refreshed in the current-status specs (SESSION.yaml,
+  tech-stack.md, TEST_PLAN.md) to 385/378/7 (BUG-003).
+
 ## [0.2.2] - 2026-08-08
 
 ### Added

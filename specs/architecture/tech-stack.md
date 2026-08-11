@@ -66,7 +66,7 @@ io/transport code; adapters never import the engine.
 
 ## Testing
 
-- 383 tests (376 unit + 7 integration/e2e); 3 fuzz targets; 12 benchmarks.
+- 385 tests (378 unit + 7 integration/e2e); 3 fuzz targets; 12 benchmarks.
 - Golden fixture `signal-package-v2.bin` (digest `db29fc13…e6c75`, features=3,
   schema=2) pins the canonical digest across Zig/worker/TS parity tests.
 - TS parity test cross-checks the SDK serializer against the Zig codec.

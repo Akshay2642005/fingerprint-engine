@@ -12,7 +12,8 @@ git:
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch; all
     feature branches branch off develop. Session specs+amqp-get work landed
-    as the first develop commit."
+    as the first develop commit. fix/s1-bugs in flight: BUG-001/002/003
+    resolved, verifying before merge to develop."
   latest_tag: v0.2.2
 
 releases:
@@ -53,8 +54,8 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 383
-  unit_tests: 376
+  total_tests: 385
+  unit_tests: 378
   integration_tests: 7
   status: all_green
   fuzz_targets: 3
