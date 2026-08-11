@@ -19,13 +19,36 @@ test("parseWorkerReply: empty body yields undefined", () => {
 test("parseWorkerReply: ok reply carries digest, schema, feature count", () => {
 	const body = new Uint8Array(1 + 32 + 2 + 2);
 	const view = new DataView(body.buffer);
-	view.setUint16(33, 2, true); // schema_version
-	view.setUint16(35, 3, true); // feature_count
+	view.setUint16(33, 3, true); // feature_count
+	view.setUint16(35, 2, true); // schema_version
 	const reply = parseWorkerReply(body);
 	assert.equal(reply.status, 0);
 	assert.equal(reply.schemaVersion, 2);
 	assert.equal(reply.featureCount, 3);
 	assert.match(reply.digestHex, /^[0-9a-f]{64}$/);
+});
+
+test("parseWorkerReply: layout pinned against the worker reply golden", () => {
+	// Golden from src/integration_tests.zig `expectHashReply`: the worker
+	// writes `status ok | sha256 digest | u16 feature_count | u16
+	// schema_version` for the signal-package-v2 fixture (digest
+	// db29fc13..., features=3, schema=2). If this test breaks, the SDK
+	// layout drifted from the worker — fix both sides together.
+	const digest = "db29fc13d8dad5dc0bd7b1f997155cff411f3da88a597619f5e0d67a251e6c75";
+	const digestBytes = new Uint8Array(digest.length / 2);
+	for (let i = 0; i < digestBytes.length; i += 1) {
+		digestBytes[i] = Number.parseInt(digest.slice(i * 2, i * 2 + 2), 16);
+	}
+	const body = new Uint8Array(1 + 32 + 2 + 2);
+	body.set(digestBytes, 1);
+	const view = new DataView(body.buffer);
+	view.setUint16(33, 3, true); // feature_count
+	view.setUint16(35, 2, true); // schema_version
+	const reply = parseWorkerReply(body);
+	assert.equal(reply.status, 0);
+	assert.equal(reply.digestHex, digest);
+	assert.equal(reply.featureCount, 3);
+	assert.equal(reply.schemaVersion, 2);
 });
 
 test("parseWorkerReply: truncated ok reply yields status only", () => {
