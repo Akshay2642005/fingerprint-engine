@@ -39,14 +39,23 @@ const zig_version = std.SemanticVersion{
     .patch = 1,
 };
 
-/// Matches build.zig.zon; kept here until a shared version source of truth
-/// lands — image tags and release artifacts track it so local builds and
-/// releases never drift.
+/// Matches build.zig.zon. Single source of truth for the product version:
+/// injected into the worker, adapter, wasm, and scripts modules via
+/// `b.addOptions()` (BUG-002) so the CLI, AMQP properties, and image tags
+/// can never drift from the release.
 const package_version = std.SemanticVersion{
     .major = 0,
     .minor = 2,
     .patch = 2,
 };
+
+/// Canonical "major.minor.patch" string, derived from `package_version` and
+/// injected as `@import("build_options").version`.
+const version_string = std.fmt.comptimePrint("{d}.{d}.{d}", .{
+    package_version.major,
+    package_version.minor,
+    package_version.patch,
+});
 
 comptime {
     const zig_version_equal =
@@ -86,6 +95,14 @@ pub fn build(b: *std.Build) !void {
         .cpu_arch = .wasm32,
         .os_tag = .freestanding,
     });
+
+    // Version single source of truth (BUG-002): `package_version` above is
+    // injected here as `@import("build_options").version` into every module
+    // that advertises a version (worker CLI, AMQP properties, wasm sdk
+    // metadata, scripts image tag).
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", version_string);
+    const build_options_module = build_options.createModule();
 
     // Model: runtime data model (feature definitions, registry, fingerprint
     // value types). Depends on nothing.
@@ -157,6 +174,7 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "io", .module = io },
             .{ .name = "stdx", .module = stdx },
+            .{ .name = "build_options", .module = build_options_module },
         },
     });
 
@@ -170,6 +188,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "engine", .module = engine },
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
+            .{ .name = "build_options", .module = build_options_module },
         },
     });
 
@@ -184,6 +203,7 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "core", .module = core },
             .{ .name = "model", .module = model },
+            .{ .name = "build_options", .module = build_options_module },
         },
     });
 
@@ -235,6 +255,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "test_utils", .module = test_utils },
             .{ .name = "browser_package", .module = browser_package },
             .{ .name = "dist_surface", .module = dist_surface },
+            .{ .name = "build_options", .module = build_options_module },
         },
     });
 
@@ -296,6 +317,7 @@ pub fn build(b: *std.Build) !void {
         .io = io,
         .adapter = adapter,
         .stdx = stdx,
+        .build_options = build_options_module,
     });
 
     // zig build docker:worker
@@ -466,6 +488,7 @@ fn build_scripts(b: *std.Build, steps: struct {
     io: *std.Build.Module,
     adapter: *std.Build.Module,
     stdx: *std.Build.Module,
+    build_options: *std.Build.Module,
 }) *std.Build.Step.Compile {
     const scripts_exe = b.addExecutable(.{
         .name = "scripts",
@@ -480,6 +503,7 @@ fn build_scripts(b: *std.Build, steps: struct {
                 .{ .name = "io", .module = options.io },
                 .{ .name = "adapter", .module = options.adapter },
                 .{ .name = "stdx", .module = options.stdx },
+                .{ .name = "build_options", .module = options.build_options },
             },
         }),
     });
