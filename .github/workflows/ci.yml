@@ -1,6 +1,6 @@
 # Fingerprint Engine — CI Pipeline
 #
-# Runs on pushes to master and PRs targeting master.
+# Runs on pushes to develop/master and PRs targeting develop/master.
 # Verifies the test suite and the WASM build on a single Linux runner.
 #
 # The engine is deterministic and ships two artifacts — the browser WASM
@@ -12,9 +12,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [develop, master]
   pull_request:
-    branches: [master]
+    branches: [develop, master]
 
 env:
   ZIG_VERSION: 0.14.1

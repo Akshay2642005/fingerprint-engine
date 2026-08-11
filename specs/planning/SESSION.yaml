@@ -7,9 +7,12 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: master
-  status: dirty
-  note: "Uncommitted session work: `zig build scripts -- amqp get` inspector (src/scripts.zig, src/adapter/tcp.zig, src/worker/main.zig, src/integration_tests.zig) + specs/ audit, ingress, logging, and this docs pass. Batching with the S1 code slice per user instruction."
+  branch: develop
+  status: clean
+  note: "Git Flow adopted: master is locked (branch protection, merges only
+    from develop after full gate); develop is the integration branch; all
+    feature branches branch off develop. Session specs+amqp-get work landed
+    as the first develop commit."
   latest_tag: v0.2.2
 
 releases:

@@ -64,10 +64,12 @@ Rules of thumb:
 ## How to Contribute
 
 1. **Fork** the repository on GitHub.
-2. **Create a feature branch** — never commit directly to `master`:
+2. **Create a feature branch off `develop`** — never commit directly to
+   `master` (locked) or `develop` (integration):
 
    ```bash
-   git checkout -b feat/my-change
+   git fetch origin
+   git checkout -b feat/my-change origin/develop
    ```
 
 3. **Make your change.** Keep it minimal and focused. One responsibility
@@ -81,9 +83,11 @@ Rules of thumb:
    ```
 
 6. **Commit** following the commit conventions below.
-7. **Open a pull request** targeting `master` and fill out the
+7. **Open a pull request** targeting `develop` and fill out the
    [pull request template](.github/PULL_REQUEST_TEMPLATE.md). CI runs
-   automatically on your PR; it must pass before the PR can merge.
+   automatically on your PR; it must pass before the PR can merge. `develop`
+   is merged to `master` only after the full gate — test suite, simulations,
+   and regression testing — is green.
 
 ## Commit Conventions
 

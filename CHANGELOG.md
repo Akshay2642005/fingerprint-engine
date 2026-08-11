@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   architecture plans, verification checklists, epic archive, refreshed
   `plan.md` and status files. See `specs/README.md`.
 
+### Changed
+
+- **Git Flow adopted**: `master` is now locked (protected, no direct
+  pushes) and only receives merges from `develop` after the full gate
+  (test suite, simulations, regression). `develop` is the integration
+  branch — all commits, features, and fixes land there first; feature
+  branches branch off `develop`. CI now runs on pushes to and PRs
+  targeting both `develop` and `master`. Docs updated: `CONVENTIONS.md`,
+  `CONTRIBUTING.md`, `specs/planning/SESSION.yaml`.
+
 ## [0.2.2] - 2026-08-08
 
 ### Added
