@@ -170,13 +170,13 @@ pub const IO = struct {
             const filter: i16 = switch (completion.operation) {
                 .accept => posix.system.EVFILT.READ,
                 .recv => posix.system.EVFILT.READ,
-                .send => posix.system.EVFILT.WRITE,
+                .send, .connect => posix.system.EVFILT.WRITE,
                 else => @panic("invalid completion operation queued for io"),
             };
             const ident: usize = switch (completion.operation) {
                 .accept => |op| @intCast(op.socket),
                 .recv => |op| @intCast(op.socket),
-                .send => |op| @intCast(op.socket),
+                .send, .connect => |op| @intCast(op.socket),
                 else => unreachable,
             };
 
@@ -263,6 +263,13 @@ pub const IO = struct {
                 socket: socket_t,
                 buf: []const u8,
             },
+            connect: struct {
+                socket: socket_t,
+                address: std.net.Address,
+                /// Set after pass 1 parks with EINPROGRESS; pass 2 harvests
+                /// the result via getsockoptError instead of re-connecting.
+                pending: bool = false,
+            },
             timeout: struct {
                 deadline: u64,
             },
@@ -296,7 +303,7 @@ pub const IO = struct {
 
                 // Requeue onto io_pending if error.WouldBlock.
                 switch (op_tag) {
-                    .accept, .recv, .send => {
+                    .accept, .recv, .send, .connect => {
                         _ = result catch |err| switch (err) {
                             error.WouldBlock => {
                                 ctx.completion.link = .{};
@@ -428,6 +435,50 @@ pub const IO = struct {
         );
     }
 
+    pub const ConnectError = posix.ConnectError || error{Canceled};
+
+    /// Outbound TCP connect (S4-a). Pass 1 starts the non-blocking connect;
+    /// EINPROGRESS (error.WouldBlock) parks the completion on EVFILT.WRITE,
+    /// which fires when the connect finishes — success or failure. Pass 2
+    /// harvests SO_ERROR via getsockoptError. The caller owns the socket: on
+    /// failure it stays open for the caller to close.
+    pub fn connect(
+        self: *IO,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (
+            context: Context,
+            completion: *Completion,
+            result: ConnectError!void,
+        ) void,
+        completion: *Completion,
+        socket: socket_t,
+        address: std.net.Address,
+    ) void {
+        self.submit(
+            context,
+            callback,
+            completion,
+            .connect,
+            .{ .socket = socket, .address = address, .pending = false },
+            struct {
+                fn do_operation(_: Completion.Context, op: anytype) ConnectError!void {
+                    if (!op.pending) {
+                        posix.connect(op.socket, &op.address.any, op.address.getOsSockLen()) catch |err| switch (err) {
+                            error.WouldBlock => {
+                                op.pending = true;
+                                return error.WouldBlock;
+                            },
+                            else => return err,
+                        };
+                        return; // completed synchronously (e.g. loopback)
+                    }
+                    return posix.getsockoptError(op.socket);
+                }
+            },
+        );
+    }
+
     pub const TimeoutError = error{Canceled} || posix.UnexpectedError;
 
     pub fn timeout(
@@ -498,13 +549,13 @@ pub const IO = struct {
         const filter: i16 = switch (completion.operation) {
             .accept => posix.system.EVFILT.READ,
             .recv => posix.system.EVFILT.READ,
-            .send => posix.system.EVFILT.WRITE,
+            .send, .connect => posix.system.EVFILT.WRITE,
             else => unreachable,
         };
         const ident: usize = switch (completion.operation) {
             .accept => |op| @intCast(op.socket),
             .recv => |op| @intCast(op.socket),
-            .send => |op| @intCast(op.socket),
+            .send, .connect => |op| @intCast(op.socket),
             else => unreachable,
         };
         var change = [_]posix.Kevent{.{

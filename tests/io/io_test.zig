@@ -302,3 +302,217 @@ test "io: platform supports an event loop" {
         builtin.target.os.tag == .tvos or
         builtin.target.os.tag == .watchos);
 }
+
+// ── connect (S4-a) ────────────────────────────────────────────────────
+
+const ConnectCtx = struct {
+    done: bool = false,
+    connected: bool = false,
+    err: ?anyerror = null,
+
+    fn on_connect(
+        ctx: *ConnectCtx,
+        completion: *IO.Completion,
+        result: IO.ConnectError!void,
+    ) void {
+        _ = completion;
+        if (ctx.done) return; // stale
+        result catch |err| {
+            ctx.err = err;
+            ctx.done = true;
+            return;
+        };
+        ctx.connected = true;
+        ctx.done = true;
+    }
+};
+
+/// Accepts one connection on `server` and holds it open briefly so the
+/// connecting side observes a live peer.
+fn acceptAndHold(server: *std.net.Server, accepted: *std.atomic.Value(bool)) void {
+    const conn = server.accept() catch return;
+    defer conn.stream.close();
+    accepted.store(true, .release);
+    std.time.sleep(200 * std.time.ns_per_ms);
+}
+
+test "io: connect completes when a listener accepts" {
+    var ioo = try IO.init(64, 0);
+    defer ioo.deinit();
+
+    var server = try std.net.Address.listen(
+        try std.net.Address.parseIp("127.0.0.1", 0),
+        .{ .reuse_address = true },
+    );
+    defer server.deinit();
+
+    var accepted = std.atomic.Value(bool).init(false);
+    const thread = try std.Thread.spawn(.{}, acceptAndHold, .{ &server, &accepted });
+    defer thread.join();
+
+    const socket = try ioo.open_socket_tcp(posix.AF.INET, tcp_options);
+    defer ioo.close_socket(socket);
+
+    var ctx = ConnectCtx{};
+    var completion: IO.Completion = undefined;
+    ioo.connect(
+        *ConnectCtx,
+        &ctx,
+        ConnectCtx.on_connect,
+        &completion,
+        socket,
+        server.listen_address,
+    );
+
+    while (!ctx.done) try ioo.flush(.blocking);
+    try testing.expect(ctx.err == null);
+    try testing.expect(ctx.connected);
+    // The connect completed at the kernel level as soon as the listener's
+    // backlog accepted the handshake; give the accept() thread time to run
+    // so the connection is genuinely held when the test ends.
+    const deadline = std.time.milliTimestamp() + 2000;
+    while (!accepted.load(.acquire) and std.time.milliTimestamp() < deadline) {
+        std.time.sleep(10 * std.time.ns_per_ms);
+    }
+    try testing.expect(accepted.load(.acquire));
+}
+
+test "io: connect fails with ConnectionRefused when nothing listens" {
+    var ioo = try IO.init(64, 0);
+    defer ioo.deinit();
+
+    // Bind an ephemeral port, release it, and connect to the now-empty
+    // address: loopback refuses immediately on every platform.
+    var server = try std.net.Address.listen(
+        try std.net.Address.parseIp("127.0.0.1", 0),
+        .{ .reuse_address = true },
+    );
+    const address = server.listen_address;
+    server.deinit();
+
+    const socket = try ioo.open_socket_tcp(posix.AF.INET, tcp_options);
+    defer ioo.close_socket(socket);
+
+    var ctx = ConnectCtx{};
+    var completion: IO.Completion = undefined;
+    ioo.connect(
+        *ConnectCtx,
+        &ctx,
+        ConnectCtx.on_connect,
+        &completion,
+        socket,
+        address,
+    );
+
+    while (!ctx.done) try ioo.flush(.blocking);
+    const connect_err = ctx.err orelse return error.TestDidNotRefuse;
+    try testing.expect(connect_err == error.ConnectionRefused);
+    try testing.expect(!ctx.connected);
+}
+
+const ConnectTimeoutCtx = struct {
+    io: *IO,
+    connect_completion: IO.Completion = undefined,
+    timeout_completion: IO.Completion = undefined,
+    connected: bool = false,
+    timed_out: bool = false,
+    connect_error: ?anyerror = null,
+
+    fn on_connect(
+        ctx: *ConnectTimeoutCtx,
+        completion: *IO.Completion,
+        result: IO.ConnectError!void,
+    ) void {
+        _ = completion;
+        if (ctx.timed_out) return; // stale: the deadline won first
+        result catch |err| {
+            // The environment resolved the connect before the deadline (no
+            // default route to drop the SYN); surface it instead of hanging.
+            ctx.connect_error = err;
+            return;
+        };
+        ctx.connected = true;
+    }
+
+    fn on_timeout(
+        ctx: *ConnectTimeoutCtx,
+        completion: *IO.Completion,
+        result: IO.TimeoutError!void,
+    ) void {
+        _ = completion;
+        _ = result catch unreachable;
+        ctx.timed_out = true;
+        // Stop the pending connect; the race is over.
+        ctx.io.cancel(&ctx.connect_completion);
+    }
+};
+
+test "io: connect loses to the deadline when the peer never responds" {
+    var ioo = try IO.init(64, 0);
+    defer ioo.deinit();
+
+    // 192.0.2.1 is TEST-NET-1 (RFC 5737): routers must not forward it, so a
+    // SYN to it is silently dropped on any network with a default route and
+    // the connect hangs until the deadline fires. (Environments without a
+    // default route fail fast instead; loopback cannot be used because a
+    // refused loopback connect errors immediately and never parks.)
+    const address = std.net.Address.parseIp("192.0.2.1", 9) catch unreachable;
+
+    const socket = try ioo.open_socket_tcp(posix.AF.INET, tcp_options);
+    defer ioo.close_socket(socket);
+
+    var ctx = ConnectTimeoutCtx{ .io = &ioo };
+    ioo.connect(
+        *ConnectTimeoutCtx,
+        &ctx,
+        ConnectTimeoutCtx.on_connect,
+        &ctx.connect_completion,
+        socket,
+        address,
+    );
+    ioo.timeout(
+        *ConnectTimeoutCtx,
+        &ctx,
+        ConnectTimeoutCtx.on_timeout,
+        &ctx.timeout_completion,
+        100 * std.time.ns_per_ms,
+    );
+
+    while (!ctx.timed_out and !ctx.connected and ctx.connect_error == null) {
+        try ioo.flush(.blocking);
+    }
+    try testing.expect(ctx.connect_error == null);
+    try testing.expect(ctx.timed_out);
+    try testing.expect(!ctx.connected);
+}
+
+test "io: a cancelled connect completes with Canceled and never connects" {
+    var ioo = try IO.init(64, 0);
+    defer ioo.deinit();
+
+    const socket = try ioo.open_socket_tcp(posix.AF.INET, tcp_options);
+    defer ioo.close_socket(socket);
+
+    var ctx = ConnectCtx{};
+    var completion: IO.Completion = undefined;
+    ioo.connect(
+        *ConnectCtx,
+        &ctx,
+        ConnectCtx.on_connect,
+        &completion,
+        socket,
+        try std.net.Address.parseIp("127.0.0.1", 1),
+    );
+    ioo.cancel(&completion);
+
+    // The aborted delivery surfaces on the next drain — exactly once, with
+    // error.Canceled, never a kernel result (the adapter's race relies on
+    // this: the deadline winner cancels the loser, whose stale delivery is
+    // ignored). Nothing is pending after the cancel, so a blocking flush
+    // would assert on io_pending == 0; a non-blocking drain suffices.
+    try ioo.flush(.non_blocking);
+    try testing.expect(ctx.done);
+    const connect_err = ctx.err orelse return error.TestDidNotCancel;
+    try testing.expect(connect_err == error.Canceled);
+    try testing.expect(!ctx.connected);
+}

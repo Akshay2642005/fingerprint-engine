@@ -6,6 +6,7 @@
 pub const transport = @import("transport.zig");
 pub const Loopback = @import("loopback.zig").Loopback;
 pub const Tcp = @import("tcp.zig").Tcp;
+pub const TcpClient = @import("client.zig").TcpClient;
 
 /// Outbound AMQP 0.9.1 client (worker → fraud platform / broker).
 pub const amqp = @import("amqp/client.zig");

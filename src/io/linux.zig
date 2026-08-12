@@ -226,6 +226,11 @@ pub const IO = struct {
                 buf: []const u8,
                 pending: bool = false,
             },
+            connect: struct {
+                socket: socket_t,
+                address: std.net.Address,
+                pending: bool = false,
+            },
             timeout: struct {
                 deadline: u64,
             },
@@ -266,7 +271,7 @@ pub const IO = struct {
                 // (register on start, unregister on finish), so nothing to do
                 // here on WouldBlock.
                 switch (op_tag) {
-                    .accept, .recv, .send => {
+                    .accept, .recv, .send, .connect => {
                         _ = result catch |err| switch (err) {
                             error.WouldBlock => return,
                             else => {},
@@ -439,6 +444,67 @@ pub const IO = struct {
         );
     }
 
+    pub const ConnectError = posix.ConnectError || error{Canceled};
+
+    /// Outbound TCP connect (the ingress pool's missing primitive, S4-a):
+    /// races like accept/recv/send — pass 1 starts the non-blocking connect
+    /// and registers EPOLLOUT on EINPROGRESS; EPOLLOUT fires when the
+    /// connect completes (success or failure); pass 2 harvests SO_ERROR via
+    /// getsockoptError. The caller owns the socket: on failure it stays open
+    /// for the caller to close.
+    pub fn connect(
+        self: *IO,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (
+            context: Context,
+            completion: *Completion,
+            result: ConnectError!void,
+        ) void,
+        completion: *Completion,
+        socket: socket_t,
+        address: std.net.Address,
+    ) void {
+        self.submit(
+            context,
+            callback,
+            completion,
+            .connect,
+            .{ .socket = socket, .address = address, .pending = false },
+            struct {
+                fn do_operation(ctx: Completion.Context, op: anytype) ConnectError!void {
+                    if (!op.pending) {
+                        // Start the connect. On a non-blocking socket the
+                        // kernel returns EINPROGRESS (error.WouldBlock); the
+                        // connection itself completes later. A synchronous
+                        // return means the connect already finished (e.g.
+                        // loopback) — complete immediately, never register.
+                        posix.connect(op.socket, &op.address.any, op.address.getOsSockLen()) catch |err| switch (err) {
+                            error.WouldBlock => {
+                                op.pending = true;
+                                // EPOLLOUT fires when the connect finishes,
+                                // success or failure (level-triggered: a
+                                // failed connect that was already accepted by
+                                // the peer re-fires).
+                                try ctx.io.register(op.socket, .out, ctx.completion);
+                                return error.WouldBlock;
+                            },
+                            else => return err,
+                        };
+                        return; // completed synchronously
+                    }
+                    // Ready: the connect finished. SO_ERROR carries the
+                    // result — success or the error that aborted it.
+                    const result = posix.getsockoptError(op.socket);
+                    ctx.io.unregister(op.socket, ctx.completion);
+                    ctx.io.io_pending -= 1;
+                    op.pending = false;
+                    return result;
+                }
+            },
+        );
+    }
+
     pub const TimeoutError = error{Canceled} || posix.UnexpectedError;
 
     pub fn timeout(
@@ -491,6 +557,11 @@ pub const IO = struct {
                 op.pending = false;
             },
             .send => |*op| if (op.pending) {
+                self.unregister(op.socket, completion);
+                self.io_pending -= 1;
+                op.pending = false;
+            },
+            .connect => |*op| if (op.pending) {
                 self.unregister(op.socket, completion);
                 self.io_pending -= 1;
                 op.pending = false;

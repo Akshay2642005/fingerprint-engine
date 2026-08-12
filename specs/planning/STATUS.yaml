@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m5-platform-integration
-active_story: s4-ingress-shared-cli
+active_story: s4-ingress-http
 
 epics:
   e01-core-engine:
@@ -69,7 +69,7 @@ epics:
       - S1: "BUG-001 + H-1 idle timeout + H-2 graceful shutdown"
       - S2: "Version single source of truth (BUG-002/003)"
       - S3: "Application logging (specs/architecture/logging.md)"
-      - S4: "HTTP ingress MVP (specs/architecture/ingress.md; shared CLI folder per ADR-011 — src/cmd/{main,worker,ingress}.zig, combined fingerprint + standalone worker/ingress binaries, version single-sourced from build.zig.zon)"
+      - S4: "HTTP ingress MVP (specs/architecture/ingress.md; CLI + version single-sourcing done in ADR-011; io.connect + TcpClient in specs/architecture/ingress-io.md; server/pool/e2e/deploy next)"
       - S5: "AMQP consumer + DLQ"
       - S6: "Full-stack compose + ingress release surface"
 

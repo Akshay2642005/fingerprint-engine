@@ -25,6 +25,19 @@ const assert = std.debug.assert;
 const common = @import("./common.zig");
 const QueueType = @import("./queue.zig").QueueType;
 
+/// ConnectEx — the overlapped outbound connect used by the io layer (S4-a).
+/// Loaded per socket via WSAIoctl(SIO_GET_EXTENSION_FUNCTION_POINTER,
+/// WSAID_CONNECTEX); the pointer type is a plain function pointer.
+const ConnectEx = *const fn (
+    socket: posix.socket_t,
+    name: *const posix.sockaddr,
+    namelen: c_int,
+    send_buffer: ?*anyopaque,
+    send_data_length: os.windows.DWORD,
+    bytes_sent: *os.windows.DWORD,
+    overlapped: *os.windows.OVERLAPPED,
+) callconv(.winapi) os.windows.BOOL;
+
 pub const IO = struct {
     pub const TCPOptions = common.TCPOptions;
     pub const ListenOptions = common.ListenOptions;
@@ -217,6 +230,13 @@ pub const IO = struct {
         context: ?*anyopaque,
         callback: *const fn (Context) void,
         operation: Operation,
+        /// Set by `cancel` for a queued-but-never-started op; the next drain
+        /// short-circuits to `error.Canceled` instead of running
+        /// `do_operation`, so a cancelled completion always completes exactly
+        /// once (the Linux/Darwin contract). In-flight ops need no flag:
+        /// `CancelIoEx` aborts them and the IOCP delivery surfaces
+        /// `error.Canceled` through `do_operation`.
+        cancelled: bool = false,
 
         /// Benign initial state for completions that may be cancelled before
         /// their first submission (the adapter's defensive cancels). The
@@ -255,6 +275,16 @@ pub const IO = struct {
             },
             recv: Transfer,
             send: Transfer,
+            connect: struct {
+                socket: socket_t,
+                address: std.net.Address,
+                overlapped: Overlapped,
+                /// Loaded lazily per socket (WSAIoctl, SIO_GET_EXTENSION_
+                /// FUNCTION_POINTER) on the first pass; ConnectEx is not a
+                /// regular ws2_32 export.
+                connect_ex: ?ConnectEx = null,
+                pending: bool = false,
+            },
             timeout: struct {
                 deadline: u64,
             },
@@ -272,6 +302,18 @@ pub const IO = struct {
     ) void {
         const Callback = struct {
             fn onComplete(ctx: Completion.Context) void {
+                // A queued-but-never-started completion cancelled before its
+                // first drain completes exactly once, with error.Canceled,
+                // without touching the kernel (the Linux/Darwin contract).
+                if (ctx.completion.cancelled) {
+                    callback(
+                        @ptrCast(@alignCast(ctx.completion.context)),
+                        ctx.completion,
+                        error.Canceled,
+                    );
+                    return;
+                }
+
                 // Perform the operation and get the result.
                 const data = &@field(ctx.completion.operation, @tagName(op_tag));
                 const result = OperationImpl.do_operation(ctx, data);
@@ -279,7 +321,7 @@ pub const IO = struct {
                 // For OVERLAPPED IO, error.WouldBlock assumes that it will
                 // be completed by IOCP.
                 switch (op_tag) {
-                    .accept, .recv, .send => {
+                    .accept, .recv, .send, .connect => {
                         _ = result catch |err| switch (err) {
                             error.WouldBlock => {
                                 ctx.io.io_pending += 1;
@@ -650,6 +692,134 @@ pub const IO = struct {
         );
     }
 
+    pub const ConnectError = posix.ConnectError || error{Canceled};
+
+    /// Outbound TCP connect via ConnectEx (S4-a). ConnectEx is an overlapped
+    /// operation like AcceptEx: pass 1 binds the socket (ConnectEx requires
+    /// a bound socket), loads the per-socket ConnectEx pointer with WSAIoctl,
+    /// and starts the overlapped connect; WSA_IO_PENDING parks the completion
+    /// with IOCP. Pass 2 harvests the result with WSAGetOverlappedResult. The
+    /// caller owns the socket: on failure it stays open for the caller to
+    /// close.
+    pub fn connect(
+        self: *IO,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (
+            context: Context,
+            completion: *Completion,
+            result: ConnectError!void,
+        ) void,
+        completion: *Completion,
+        socket: socket_t,
+        address: std.net.Address,
+    ) void {
+        self.submit(
+            context,
+            callback,
+            completion,
+            .connect,
+            .{
+                .socket = socket,
+                .address = address,
+                .overlapped = undefined,
+                .connect_ex = null,
+                .pending = false,
+            },
+            struct {
+                fn do_operation(ctx: Completion.Context, op: anytype) ConnectError!void {
+                    var flags: os.windows.DWORD = undefined;
+                    var transferred: os.windows.DWORD = undefined;
+
+                    const rc = blk: {
+                        // Poll for the result if we've already started the
+                        // connect op.
+                        if (op.pending) {
+                            break :blk os.windows.ws2_32.WSAGetOverlappedResult(
+                                op.socket,
+                                &op.overlapped.raw,
+                                &transferred,
+                                os.windows.FALSE, // Don't wait.
+                                &flags,
+                            );
+                        }
+
+                        // ConnectEx requires the socket to be bound first;
+                        // bind to the wildcard address if not already bound.
+                        var any_address = std.net.Address.parseIp("0.0.0.0", 0) catch unreachable;
+                        if (os.windows.ws2_32.bind(
+                            op.socket,
+                            &any_address.any,
+                            @intCast(any_address.getOsSockLen()),
+                        ) == os.windows.ws2_32.SOCKET_ERROR) {
+                            switch (os.windows.ws2_32.WSAGetLastError()) {
+                                .WSAEINVAL => {}, // already bound
+                                else => |err| return os.windows.unexpectedWSAError(err),
+                            }
+                        }
+
+                        // ConnectEx is an extension function; load it per
+                        // socket (cached for pass 2). A valid socket + known
+                        // GUID cannot fail here; surface as Unexpected.
+                        const connect_ex = op.connect_ex orelse load: {
+                            const fn_ptr = os.windows.loadWinsockExtensionFunction(
+                                ConnectEx,
+                                op.socket,
+                                os.windows.ws2_32.WSAID_CONNECTEX,
+                            ) catch return error.Unexpected;
+                            op.connect_ex = fn_ptr;
+                            break :load fn_ptr;
+                        };
+
+                        op.pending = true;
+                        op.overlapped = .{
+                            .raw = std.mem.zeroes(os.windows.OVERLAPPED),
+                            .completion = ctx.completion,
+                        };
+
+                        // Start the overlapped connect.
+                        break :blk connect_ex(
+                            op.socket,
+                            @ptrCast(&op.address.any),
+                            @intCast(op.address.getOsSockLen()),
+                            null, // No send buffer.
+                            0,
+                            &transferred,
+                            &op.overlapped.raw,
+                        );
+                    };
+
+                    // Connected (or already connected on a synchronous
+                    // loopback connect).
+                    if (rc != os.windows.FALSE) return;
+
+                    return switch (os.windows.ws2_32.WSAGetLastError()) {
+                        .WSA_IO_PENDING, .WSAEWOULDBLOCK, .WSA_IO_INCOMPLETE => error.WouldBlock,
+                        .WSANOTINITIALISED => unreachable, // WSAStartup() was called.
+                        .WSAEADDRINUSE => error.AddressInUse,
+                        .WSAEADDRNOTAVAIL => error.AddressNotAvailable,
+                        .WSAECONNREFUSED => error.ConnectionRefused,
+                        .WSAECONNRESET => error.ConnectionResetByPeer,
+                        .WSAETIMEDOUT => error.ConnectionTimedOut,
+                        .WSAEHOSTUNREACH, .WSAENETUNREACH => error.NetworkUnreachable,
+                        .WSAEACCES => unreachable, // Socket flags are ours.
+                        .WSAEFAULT => unreachable, // Address buffer is valid.
+                        .WSAEINVAL => unreachable, // Bound socket, valid address.
+                        .WSAEISCONN => unreachable, // Not yet connected.
+                        .WSAENOTSOCK => unreachable, // Open socket from open_socket.
+                        .WSAENOBUFS => error.SystemResources,
+                        .WSAEAFNOSUPPORT => error.AddressFamilyNotSupported,
+                        // Our own cancel() (CancelIoEx) or a socket teardown
+                        // aborts the overlapped connect; complete Canceled so
+                        // the user callback can ignore it (stale generation).
+                        .WSA_OPERATION_ABORTED => error.Canceled,
+                        else => |err| os.windows.unexpectedWSAError(err),
+                    };
+                }
+            },
+        );
+    }
+
     pub const TimeoutError = error{Canceled} || posix.UnexpectedError;
 
     pub fn timeout(
@@ -688,6 +858,8 @@ pub const IO = struct {
     /// balances on delivery, so it is not touched here. The user callback is
     /// never invoked for a cancelled operation.
     pub fn cancel(self: *IO, completion: *Completion) void {
+        const was_queued = self.timeouts.contains(completion) or
+            self.completed.contains(completion);
         if (self.timeouts.contains(completion)) self.timeouts.remove(completion);
         if (self.completed.contains(completion)) self.completed.remove(completion);
 
@@ -710,11 +882,29 @@ pub const IO = struct {
                 handle = @ptrCast(op.socket);
                 overlapped = &op.overlapped.raw;
             },
+            .connect => |*op| if (op.pending) {
+                started = true;
+                handle = @ptrCast(op.socket);
+                overlapped = &op.overlapped.raw;
+            },
             .timeout => {},
         }
 
         if (started) {
+            // Abort the overlapped operation; the IOCP delivers the aborted
+            // result, which do_operation surfaces as error.Canceled (and
+            // io_pending balances on that delivery).
             _ = os.windows.kernel32.CancelIoEx(handle, overlapped);
+        } else if (was_queued and
+            std.meta.activeTag(completion.operation) != .timeout)
+        {
+            // Queued but never started (cancelled before the first flush):
+            // deliver the synthetic error.Canceled on the next drain so a
+            // cancelled completion always completes exactly once — the
+            // Linux/Darwin contract. Timeouts complete silently: the adapter
+            // cancels leftover deadlines and never expects a callback.
+            completion.cancelled = true;
+            self.completed.push(completion);
         }
     }
 

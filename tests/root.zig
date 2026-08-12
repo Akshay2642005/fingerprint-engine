@@ -1,5 +1,6 @@
 comptime {
     _ = @import("adapter/amqp_test.zig");
+    _ = @import("adapter/client_test.zig");
     _ = @import("adapter/loopback_test.zig");
     _ = @import("adapter/tcp_test.zig");
     _ = @import("adapter/transport_test.zig");
