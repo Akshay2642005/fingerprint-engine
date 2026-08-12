@@ -32,7 +32,7 @@ public surface.
 
 | Slice | Action |
 |-------|--------|
-| S1 | H-1 socket idle timeout (`SO_RCVTIMEO` on accepted sockets; AMQP client already has receive deadlines). H-2 graceful shutdown (drain before exit). |
+| S1 | H-1 socket idle timeout (completion-based deadline race over the new `src/io/` layer — epoll/IOCP/kqueue — surfacing `error.ConnectionTimedOut` on every platform; `SO_RCVTIMEO` is dead on Windows, see `specs/architecture/worker-resilience.md`). H-2 graceful shutdown (drain before exit, bounded accept). |
 | S2 | Version SSoT (accurate versioning is a supply-chain hygiene property). |
 | S3 | Structured logging with `--log-format`; no secrets in log fields. |
 | S4 | H-4/H-5: decide auth (network ACL / mTLS worker↔ingress, optional API key on HTTP), rate limiting, TLS termination, body-size policy (default 1 MiB → 413 before proxying). |

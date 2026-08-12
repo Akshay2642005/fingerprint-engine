@@ -96,6 +96,16 @@ pub fn build(b: *std.Build) !void {
         .os_tag = .freestanding,
     });
 
+    // Darwin has no `std.posix.system` without libc (kqueue, EVFILT, EV, ...),
+    // and the io layer's darwin backend needs that API surface. Roots that
+    // transitively import `io` link libc on Darwin targets only (Zig bundles
+    // the macOS SDK, so cross-compilation works from any host); Linux and
+    // Windows stay libc-free.
+    const link_libc_on_darwin = switch (target.result.os.tag) {
+        .macos, .ios, .tvos, .watchos, .visionos => true,
+        else => false,
+    };
+
     // Version single source of truth (BUG-002): `package_version` above is
     // injected here as `@import("build_options").version` into every module
     // that advertises a version (worker CLI, AMQP properties, wasm sdk
@@ -184,6 +194,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/worker/main.zig"),
         .target = target,
         .optimize = mode,
+        .link_libc = link_libc_on_darwin,
         .imports = &.{
             .{ .name = "engine", .module = engine },
             .{ .name = "adapter", .module = adapter },
@@ -243,6 +254,7 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("tests/root.zig"),
         .target = target,
         .optimize = mode,
+        .link_libc = link_libc_on_darwin,
         .imports = &.{
             .{ .name = "model", .module = model },
             .{ .name = "core", .module = core },
@@ -490,12 +502,19 @@ fn build_scripts(b: *std.Build, steps: struct {
     stdx: *std.Build.Module,
     build_options: *std.Build.Module,
 }) *std.Build.Step.Compile {
+    // Darwin needs libc for std.posix.system (see build()); scripts transitively
+    // import io through the adapter.
+    const link_libc = switch (options.target.result.os.tag) {
+        .macos, .ios, .tvos, .watchos, .visionos => true,
+        else => false,
+    };
     const scripts_exe = b.addExecutable(.{
         .name = "scripts",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/scripts.zig"),
             .target = options.target,
             .optimize = .Debug,
+            .link_libc = link_libc,
             .imports = &.{
                 .{ .name = "model", .module = options.model },
                 .{ .name = "serialization", .module = options.serialization },

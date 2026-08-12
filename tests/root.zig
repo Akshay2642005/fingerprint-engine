@@ -33,6 +33,7 @@ comptime {
     _ = @import("io/dispatcher_test.zig");
     _ = @import("io/executor_test.zig");
     _ = @import("io/frame_test.zig");
+    _ = @import("io/io_test.zig");
     _ = @import("io/message_test.zig");
     _ = @import("io/reader_writer_test.zig");
     _ = @import("io/ring_buffer_test.zig");

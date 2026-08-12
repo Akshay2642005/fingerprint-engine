@@ -51,6 +51,32 @@ test "worker: parse version and help commands" {
     try testing.expect(try worker.parse(&.{ "worker", "-h" }) == .help);
 }
 
+test "worker: parse idle-timeout-ms defaults to 30000" {
+    const command = try worker.parse(&.{ "worker", "start" });
+    switch (command) {
+        .start => |options| try testing.expectEqual(@as(u64, 30_000), options.idle_timeout_ms),
+        else => unreachable,
+    }
+}
+
+test "worker: parse idle-timeout-ms overrides and zero disables" {
+    const command = try worker.parse(&.{ "worker", "start", "--idle-timeout-ms=500" });
+    switch (command) {
+        .start => |options| try testing.expectEqual(@as(u64, 500), options.idle_timeout_ms),
+        else => unreachable,
+    }
+
+    const disabled = try worker.parse(&.{ "worker", "start", "--idle-timeout-ms=0" });
+    switch (disabled) {
+        .start => |options| try testing.expectEqual(@as(u64, 0), options.idle_timeout_ms),
+        else => unreachable,
+    }
+}
+
+test "worker: parse rejects a non-numeric idle-timeout-ms" {
+    try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--idle-timeout-ms=soon" }));
+}
+
 test "worker: parse rejects unknown subcommands and options" {
     try testing.expectError(error.UnknownSubcommand, worker.parse(&.{ "worker", "bogus" }));
     try testing.expectError(error.UnknownOption, worker.parse(&.{ "worker", "start", "--bogus=1" }));
