@@ -17,10 +17,14 @@
 //! are dropped and acked as poison (no DLQ in v1).
 
 const std = @import("std");
+const builtin = @import("builtin");
+const windows = std.os.windows;
 const engine = @import("engine");
 const adapter = @import("adapter");
 const io = @import("io");
 const build_options = @import("build_options");
+
+const native_os = builtin.os.tag;
 
 /// Product version, injected from build.zig's `package_version` (BUG-002).
 pub const version = build_options.version;
@@ -28,6 +32,50 @@ pub const version = build_options.version;
 /// Upper bound on an operation's result payload. The engine folds oversized
 /// results into `status.buffer_overflow`, so this is a cap, not a contract.
 pub const max_result: usize = 64 * 1024;
+
+// ── Graceful shutdown (H-2) ──────────────────────────────────────────
+
+/// Set by the signal handlers; the accept/serve loops poll it so the worker
+/// can drain in-flight requests and exit 0 on SIGTERM/SIGINT (H-2).
+pub var shutdown_requested = std.atomic.Value(bool).init(false);
+
+/// How long the tcp accept loop waits for a client before re-checking the
+/// shutdown flag while idle.
+const accept_poll_ms: u32 = 250;
+
+/// Async-signal-safe POSIX handler: only an atomic store.
+fn onShutdownSignal(sig: c_int) callconv(.c) void {
+    _ = sig;
+    shutdown_requested.store(true, .release);
+}
+
+/// Windows console control handler: claims Ctrl+C / Ctrl+Break and lets the
+/// drain path shut the process down.
+fn onConsoleEvent(dw_ctrl_type: windows.DWORD) callconv(.C) windows.BOOL {
+    _ = dw_ctrl_type;
+    shutdown_requested.store(true, .release);
+    return windows.TRUE;
+}
+
+/// Installs the shutdown handlers. Linux covers CI and the container
+/// deployment target (tini forwards SIGTERM); Windows covers local dev
+/// Ctrl+C. Other platforms are a no-op for now (worker-resilience.md).
+fn installShutdownHandlers() void {
+    switch (native_os) {
+        .windows => windows.SetConsoleCtrlHandler(onConsoleEvent, true) catch {},
+        .linux => {
+            var act = std.posix.Sigaction{
+                .handler = .{ .handler = onShutdownSignal },
+                .mask = std.posix.empty_sigset,
+                .flags = 0,
+                .restorer = null,
+            };
+            std.posix.sigaction(std.posix.SIG.INT, &act, null);
+            std.posix.sigaction(std.posix.SIG.TERM, &act, null);
+        },
+        else => {},
+    }
+}
 
 // ── CLI ──────────────────────────────────────────────────────────────
 
@@ -40,6 +88,8 @@ pub const StartOptions = struct {
     /// host:port for --transport=tcp; port 0 binds an ephemeral port.
     listen: ?[]const u8 = null,
     publish: PublishKind = .none,
+    /// Idle receive deadline for tcp clients, in ms; 0 disables (H-1).
+    idle_timeout_ms: u64 = 30_000,
     /// Broker host:port for --publish=amqp.
     amqp_address: []const u8 = "127.0.0.1:5672",
     amqp_user: []const u8 = "guest",
@@ -60,6 +110,7 @@ pub const usage =
     \\
     \\  worker start --transport=loopback|tcp [--listen=host:port]
     \\               [--publish=amqp|none]
+    \\               [--idle-timeout-ms=ms]
     \\               [--amqp-address=host:port] [--amqp-user=user]
     \\               [--amqp-password=pass] [--amqp-vhost=vhost]
     \\
@@ -72,6 +123,10 @@ pub const usage =
     \\                --listen)
     \\  --listen      host:port to bind for --transport=tcp; port 0 picks an
     \\                ephemeral port, announced on stderr
+    \\  --idle-timeout-ms  tcp client idle deadline in ms; 0 disables
+    \\                (default 30000). A client that sends nothing for this
+    \\                long is disconnected so a stalled connection cannot
+    \\                wedge the accept loop (H-1).
     \\  --publish     outbound event sink: none or amqp. With amqp, every
     \\                reply frame is published to the broker's `fingerprint`
     \\                exchange (direct, durable) under routing key
@@ -109,6 +164,9 @@ pub fn parse(args: []const []const u8) CliError!Command {
         } else if (std.mem.startsWith(u8, arg, "--publish=")) {
             const value = arg["--publish=".len..];
             options.publish = parsePublish(value) orelse return error.InvalidOption;
+        } else if (std.mem.startsWith(u8, arg, "--idle-timeout-ms=")) {
+            options.idle_timeout_ms = std.fmt.parseInt(u64, arg["--idle-timeout-ms=".len..], 10) catch
+                return error.InvalidOption;
         } else if (std.mem.startsWith(u8, arg, "--amqp-address=")) {
             options.amqp_address = arg["--amqp-address=".len..];
         } else if (std.mem.startsWith(u8, arg, "--amqp-user=")) {
@@ -275,7 +333,11 @@ fn serve(
     defer arena.deinit();
     const a = arena.allocator();
 
-    while (true) {
+    // H-2: check the flag at the top of the frame loop so an in-flight
+    // request completes (process → reply → publish → ack) before the worker
+    // drains and exits. readFrame stays bounded by H-1, so an idle client
+    // cannot stall the drain indefinitely.
+    while (!shutdown_requested.load(.acquire)) {
         const frame = t.readFrame(a) catch |err| {
             if (peerGone(err)) return;
             return err;
@@ -348,13 +410,23 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
                 std.debug.print("worker: invalid --listen '{s}' (expected host:port)\n", .{listen});
                 std.process.exit(1);
             };
-            var t = try adapter.Tcp.init(alloc, host, port);
+            var t = try adapter.Tcp.init(
+                alloc,
+                host,
+                port,
+                // H-1: per-client receive deadline (0 disables). Clamp the
+                // multiply so a huge --idle-timeout-ms cannot overflow.
+                std.math.mul(u64, options.idle_timeout_ms, std.time.ns_per_ms) catch std.math.maxInt(u64),
+            );
             defer t.deinit();
             // Announce the bound address so supervisors and tests can learn
             // the ephemeral port (--listen=...:0).
             std.debug.print("worker: listening on {s}:{d}\n", .{ host, t.port() });
-            while (true) {
-                try t.accept();
+            // H-2: acceptWait bounds the accept so the loop observes the
+            // shutdown flag while idle; accept() applies the per-client idle
+            // deadline (H-1). On exit the current client is closed by deinit.
+            while (!shutdown_requested.load(.acquire)) {
+                if (!try t.acceptWait(accept_poll_ms)) continue;
                 serve(adapter.Tcp, &t, alloc, publisher_ptr) catch |err| {
                     if (peerGone(err)) continue; // client done; serve the next
                     // Protocol errors (InvalidMagic, Truncated,
@@ -381,6 +453,10 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
+
+    // H-2: SIGTERM/SIGINT (POSIX) and Ctrl+C/Ctrl+Break (Windows) set the
+    // shutdown flag; the accept/serve loops drain in-flight work and exit 0.
+    installShutdownHandlers();
 
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);

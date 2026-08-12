@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Completion-based async IO layer** (`src/io/linux.zig` epoll, `src/io/windows.zig` IOCP, `src/io/darwin.zig` kqueue; `src/io/common.zig`, `src/io/queue.zig`): a TigerBeetle-style event loop with `Completion`/`submit`/`flush`, deadline races, and `cancel`. io_uring is the documented design vision for the Linux backend. The user-space primitives (`reader`, `writer`, `frame`, `message`, `ring_buffer`, `channel`, `dispatcher`, `executor`) are unchanged.
+- **Worker TCP transport rebuilt on the io layer (S1)**: sockets are always non-blocking, reads race a deadline completion and fail `error.ConnectionTimedOut` on every platform (H-1 — the old `SO_RCVTIMEO` approach is dead on Windows, see `specs/architecture/worker-resilience.md`), and `acceptWait` races accept against a wait deadline so graceful shutdown stays responsive (H-2). No `WsaReader` shim, no platform-specific error mapping.
+- `tests/io/io_test.zig` — io layer tests (timeout firing/order, cancel, accept races); integration e2e tests for H-1 (idle client closed, worker keeps serving) and H-2 (SIGTERM → drain → exit 0, POSIX-only).
 - `zig build scripts -- amqp get [--address=host:port] [--count=N]
   [--timeout-ms=N]` — live broker inspector: binds a throwaway queue to all
   nine result routing keys (comptime loop over `io.frame.MessageType`),

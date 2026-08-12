@@ -10,6 +10,7 @@
 //! this binary (which still imports no engine code — framing is duplicated
 //! here on purpose, exactly as an external client would).
 const std = @import("std");
+const builtin = @import("builtin");
 
 const Shell = @import("testing/shell.zig");
 
@@ -235,4 +236,125 @@ test "worker: survives a protocol-violating tcp client" {
 
     var reply_buf: [header_size + 1 << 16]u8 = undefined;
     try expectHashReply(try readFrame(stream.reader(), &reply_buf));
+}
+
+/// Spawns a tcp worker and reads its `worker: listening on host:port`
+/// announcement from stderr, returning the bound port.
+fn spawnWorker(args: []const []const u8, alloc: std.mem.Allocator) !struct {
+    child: std.process.Child,
+    port: u16,
+} {
+    var child = std.process.Child.init(args, alloc);
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    try child.spawn();
+
+    const stderr_reader = child.stderr.?.reader();
+    var announce_buf: [256]u8 = undefined;
+    while (true) {
+        const line = (try stderr_reader.readUntilDelimiterOrEof(&announce_buf, '\n')) orelse
+            return error.WorkerNeverListened;
+        if (std.mem.indexOf(u8, line, "worker: listening on ")) |idx| {
+            const rest = line[idx + "worker: listening on ".len ..];
+            const colon = std.mem.lastIndexOfScalar(u8, rest, ':') orelse
+                return error.MalformedAnnouncement;
+            const port = try std.fmt.parseInt(u16, rest[colon + 1 ..], 10);
+            return .{ .child = child, .port = port };
+        }
+    }
+}
+
+test "worker: closes an idle tcp client and keeps serving (H-1)" {
+    const alloc = std.testing.allocator;
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+        "--idle-timeout-ms=500",
+    }, alloc);
+    defer {
+        _ = spawned.child.kill() catch {};
+        _ = spawned.child.wait() catch {};
+    }
+
+    // Client A connects and sends nothing; the worker must close it after
+    // the 500ms idle deadline instead of wedging the accept loop.
+    var idle = try std.net.tcpConnectToHost(alloc, "127.0.0.1", spawned.port);
+    defer idle.close();
+
+    std.time.sleep(1500 * std.time.ns_per_ms);
+
+    // The idle client observes EOF (or a reset) — the worker dropped it.
+    var sink: [64]u8 = undefined;
+    const n = idle.read(&sink) catch 0;
+    try std.testing.expectEqual(@as(usize, 0), n);
+
+    // Client B is still served with the pinned digest: the accept loop was
+    // not wedged.
+    const fixture = try std.fs.cwd().readFileAlloc(
+        alloc,
+        "tests/fixtures/fingerprints/signal-package-v2.bin",
+        1 << 16,
+    );
+    defer alloc.free(fixture);
+
+    var frame_buf: [header_size + 1 << 16]u8 = undefined;
+    const frame = try buildFrame(signal_package_type, fixture, &frame_buf);
+
+    var stream = try std.net.tcpConnectToHost(alloc, "127.0.0.1", spawned.port);
+    defer stream.close();
+    try stream.writeAll(frame);
+
+    var reply_buf: [header_size + 1 << 16]u8 = undefined;
+    try expectHashReply(try readFrame(stream.reader(), &reply_buf));
+}
+
+test "worker: exits 0 on SIGTERM after draining (H-2)" {
+    // Signal handling is POSIX-only today (worker-resilience.md); Windows
+    // relies on SetConsoleCtrlHandler, which e2e tests cannot send.
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const alloc = std.testing.allocator;
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+        // Keep the read deadline short so the drain after SIGTERM is
+        // bounded (an idle readFrame cannot stall the exit).
+        "--idle-timeout-ms=500",
+    }, alloc);
+    defer _ = spawned.child.kill() catch {};
+
+    // Exchange one frame so the in-flight path is exercised before the
+    // shutdown signal.
+    const fixture = try std.fs.cwd().readFileAlloc(
+        alloc,
+        "tests/fixtures/fingerprints/signal-package-v2.bin",
+        1 << 16,
+    );
+    defer alloc.free(fixture);
+
+    var frame_buf: [header_size + 1 << 16]u8 = undefined;
+    const frame = try buildFrame(signal_package_type, fixture, &frame_buf);
+
+    var stream = try std.net.tcpConnectToHost(alloc, "127.0.0.1", spawned.port);
+    defer stream.close();
+    try stream.writeAll(frame);
+
+    var reply_buf: [header_size + 1 << 16]u8 = undefined;
+    try expectHashReply(try readFrame(stream.reader(), &reply_buf));
+
+    // SIGTERM (Child.kill on POSIX): the worker stops accepting, drains, and
+    // exits 0. The idle read deadline (500ms) bounds the drain.
+    _ = spawned.child.kill() catch {};
+    const term = try spawned.child.wait();
+    // Compare the union's active tag (0.14.1 rejects coercing the enum to
+    // the union in expectEqual on Linux); then check the exit code.
+    try std.testing.expectEqual(std.process.Child.Term.Exited, std.meta.activeTag(term));
+    try std.testing.expectEqual(@as(u8, 0), term.Exited);
 }

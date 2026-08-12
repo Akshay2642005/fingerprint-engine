@@ -35,7 +35,7 @@ builds through `zig build`.
 - **Entropy analysis** — Shannon entropy per feature and weighted fingerprint entropy
 - **Risk assessment** — quantifies missing features, bound violations, coverage, entropy deficit
 - **Deterministic engine** — versioned `Operation`/`Status`, immutable `Request`, caller-owned `Response`, comptime dispatch — no io/transport code inside
-- **Async IO primitives** — arena-backed `Message`/`MessagePool`, `RingBuffer`, typed `Channel`, `Executor`, FPKG `Frame`, fixed-buffer `Reader`/`Writer`, comptime `Dispatcher`
+- **Async IO primitives** — completion-based event loop (epoll on Linux, IOCP on Windows, kqueue on Darwin; io_uring is the documented design vision) with `Completion`/`submit`/`flush`, deadline races and `cancel`; arena-backed `Message`/`MessagePool`, `RingBuffer`, typed `Channel`, FPKG `Frame`, fixed-buffer `Reader`/`Writer`, comptime `Dispatcher`
 - **Worker executable** — `--transport=loopback|tcp`, `--publish=none|amqp`, ships as a Docker container
 - **Browser SDK** — hand-written TypeScript (`dist/` from `zig build clients:browser`): collect → `SignalPackage` v2 → POST to the ingress, plus `assertAllowed()`/`onSessionBlocked()` middleware for the fraud platform's blocking decisions
 
@@ -128,7 +128,7 @@ if (assertAllowed().blocked) {
 │   ├── core/                 # Deterministic algorithms: hashing, normalization, validation, similarity, entropy, risk — depends on model
 │   ├── serialization/        # Binary TLV + JSON codecs, codec interface, integrity — depends on model
 │   ├── engine/               # Operation/Status/Request/Response/process — comptime dispatch, no io — depends on core+serialization
-│   ├── io/                   # Async transport primitives (message, ring buffer, channel, completion, executor, frame, reader, writer, dispatcher) — depends on nothing
+│   ├── io/                   # Completion-based event loop (linux.zig epoll, windows.zig IOCP, darwin.zig kqueue) + user-space primitives (message, ring buffer, channel, frame, reader, writer, dispatcher) — depends on nothing
 │   ├── adapter/              # Transport implementations: loopback, tcp, AMQP 0-9-1 — depends on io+stdx only
 │   ├── worker/               # Deterministic worker executable — depends on engine+adapter
 │   ├── stdx.zig              # Leaf utilities (copy helpers, bitsets, test PRNG)
