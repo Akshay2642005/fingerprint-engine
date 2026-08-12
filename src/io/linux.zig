@@ -23,8 +23,8 @@ const builtin = @import("builtin");
 const posix = std.posix;
 const assert = std.debug.assert;
 
-const common = @import("./common.zig");
-const QueueType = @import("./queue.zig").QueueType;
+const common = @import("common.zig");
+const QueueType = @import("queue.zig").QueueType;
 
 const linux = std.os.linux;
 
@@ -100,10 +100,16 @@ pub const IO = struct {
         }
     }
 
-    /// One event-loop pass: expire timeouts, wait (or poll) for readiness,
-    /// then drain every ready completion. Callbacks may submit new
+    /// One event-loop pass: settle queued user-space work (first-pass
+    /// submits register their fds here), expire timeouts, wait (or poll) for
+    /// readiness, then drain every ready completion. Callbacks may submit new
     /// completions, which are picked up in the same drain.
     pub fn flush(self: *IO, mode: FlushMode) !void {
+        // Draining before the kernel wait means a freshly submitted
+        // completion registers its fd in the same flush — the wait below
+        // never sleeps on (or asserts about) work that was already queued.
+        self.drain();
+
         var timeout_ms: ?i32 = null;
         if (self.flush_timeouts()) |expires_ns| {
             // 0ns expires should have been completed, not returned.
@@ -114,11 +120,6 @@ pub const IO = struct {
 
         const wait_ms: i32 = switch (mode) {
             .blocking => timeout_ms orelse blk: {
-                // A completion already in the queue — a first-pass submit
-                // awaiting its first do_operation, a cancelled delivery, or
-                // an expired timeout — is work that needs no kernel wait;
-                // poll and drain it instead of blocking.
-                if (!self.completed.empty()) break :blk 0;
                 // Blocking with nothing to wait on would hang forever.
                 assert(self.io_pending > 0);
                 break :blk -1; // wait indefinitely
@@ -139,6 +140,13 @@ pub const IO = struct {
         // at the same instant are collected in the same batch.
         _ = self.flush_timeouts();
 
+        self.drain();
+    }
+
+    /// Runs every queued completion's callback until the queue is empty.
+    /// Callbacks may push new completions (resubmits, cancelled deliveries),
+    /// which are picked up in the same pass.
+    fn drain(self: *IO) void {
         while (self.completed.pop()) |completion| {
             (completion.callback)(Completion.Context{
                 .io = self,
@@ -518,6 +526,9 @@ pub const IO = struct {
             error.SystemResources => return error.SystemResources,
             else => return error.SystemResources,
         };
+        // One registration per op; `do_operation`'s finish paths and `cancel`
+        // each decrement exactly once, so io_pending counts registered fds.
+        self.io_pending += 1;
     }
 
     fn unregister(self: *IO, fd: i32, completion: *Completion) void {

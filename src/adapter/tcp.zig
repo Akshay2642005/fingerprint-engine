@@ -195,7 +195,11 @@ pub const Tcp = struct {
         const full = try allocator.alloc(u8, frame_len);
         errdefer allocator.free(full);
         @memcpy(full[0..io.frame.header_size], &header_buf);
-        try self.recvExact(client, full[io.frame.header_size..]);
+        // A zero-length payload is a complete frame after the header — an
+        // empty recv would wait on a readiness event that never comes.
+        if (header.payload_len > 0) {
+            try self.recvExact(client, full[io.frame.header_size..]);
+        }
 
         _ = try transport.decodeFrame(full); // validates integrity
         return full;

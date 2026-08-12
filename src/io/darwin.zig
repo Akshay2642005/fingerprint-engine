@@ -147,6 +147,8 @@ pub const IO = struct {
             for (events[0..new_events]) |event| {
                 const completion: *Completion = @ptrFromInt(event.udata);
                 assert(completion.link.next == null);
+                // The ONESHOT filter was consumed by this delivery.
+                completion.registered = false;
                 self.completed.push(completion);
             }
         }
@@ -186,6 +188,7 @@ pub const IO = struct {
                 .data = 0,
                 .udata = @intFromPtr(completion),
             };
+            completion.registered = true;
         }
         return events.len;
     }
@@ -226,6 +229,11 @@ pub const IO = struct {
         /// `error.Canceled` instead of running `do_operation`, so a cancelled
         /// completion always completes exactly once.
         cancelled: bool = false,
+        /// Whether this completion's EV.ONESHOT filter has been submitted to
+        /// the kernel (flush_io) and not yet harvested. cancel uses this to
+        /// EV_DELETE the registration instead of waiting for a readiness
+        /// event that may never come.
+        registered: bool = false,
 
         /// Benign initial state for completions that may be cancelled before
         /// their first submission (the adapter's defensive cancels). The
@@ -450,30 +458,65 @@ pub const IO = struct {
         );
     }
 
-    /// Aborts an in-flight operation: unlinks it from the queues. A
-    /// completion already registered with the kernel (EV.ONESHOT) delivers
-    /// later and short-circuits to `error.Canceled` via the cancelled flag; a
-    /// completion still queued for registration is completed Canceled now.
-    /// In both cases the user callback runs exactly once.
+    /// Aborts an in-flight operation: unlinks it from the queues and removes
+    /// any kernel registration, then completes `error.Canceled` on the next
+    /// drain so the caller's slot bookkeeping settles. A completion still
+    /// queued for registration or already registered is both completed now —
+    /// never left waiting on a readiness event that may not arrive. The user
+    /// callback runs exactly once.
     pub fn cancel(self: *IO, completion: *Completion) void {
-        const was_queued = self.completed.contains(completion) or
+        const was_queued = self.timeouts.contains(completion) or
+            self.completed.contains(completion) or
             self.io_pending.contains(completion);
         if (self.timeouts.contains(completion)) self.timeouts.remove(completion);
         if (self.completed.contains(completion)) self.completed.remove(completion);
         if (self.io_pending.contains(completion)) self.io_pending.remove(completion);
 
-        if (was_queued) {
-            // Not registered with the kernel yet — no delivery will come, so
-            // complete Canceled on the next drain.
-            completion.cancelled = true;
-            self.completed.push(completion);
+        if (completion.registered) {
+            // The EV.ONESHOT event only delivers when the fd becomes ready —
+            // which may be never (no client connects, no data arrives).
+            // Remove the registration so it cannot fire later, and complete
+            // Canceled on the next drain.
+            self.unregister(completion);
+            self.io_inflight -= 1;
+            completion.registered = false;
+        } else if (!was_queued) {
+            // Never submitted (or already resolved): leave it alone. The
+            // adapter defensively cancels init-state completions — no
+            // callback may fire for a completion that was never queued.
             return;
         }
 
-        // Already registered with the kernel (or a timeout): the ONESHOT
-        // delivery settles it; the cancelled flag short-circuits
-        // do_operation when it fires.
         completion.cancelled = true;
+        self.completed.push(completion);
+    }
+
+    /// Removes a registered EV.ONESHOT filter from the kernel. ENOENT means
+    /// the event already fired and was consumed — nothing to do, and no
+    /// callback will fire because ONESHOT delivers at most once.
+    fn unregister(self: *IO, completion: *Completion) void {
+        const filter: i16 = switch (completion.operation) {
+            .accept => posix.system.EVFILT.READ,
+            .recv => posix.system.EVFILT.READ,
+            .send => posix.system.EVFILT.WRITE,
+            else => unreachable,
+        };
+        const ident: usize = switch (completion.operation) {
+            .accept => |op| @intCast(op.socket),
+            .recv => |op| @intCast(op.socket),
+            .send => |op| @intCast(op.socket),
+            else => unreachable,
+        };
+        var change = [_]posix.Kevent{.{
+            .ident = ident,
+            .filter = filter,
+            .flags = posix.system.EV.DELETE,
+            .fflags = 0,
+            .data = 0,
+            .udata = 0,
+        }};
+        var eventlist: [0]posix.Kevent = undefined;
+        _ = posix.kevent(self.kq, &change, &eventlist, &std.mem.zeroes(posix.timespec)) catch {};
     }
 
     pub const socket_t = posix.socket_t;
