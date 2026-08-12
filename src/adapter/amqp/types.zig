@@ -1,13 +1,14 @@
 const std = @import("std");
 const stdx = @import("stdx");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 const protocol = @import("protocol.zig");
 const Encoder = protocol.Encoder;
 const Decoder = protocol.Decoder;
 
-/// Matches build.zig's `package_version`; kept here so the AMQP connection
-/// properties advertise the product version without importing the build.
-pub const product_version = "0.2.0";
+/// Product version advertised in AMQP connection properties; injected from
+/// build.zig's `package_version` (BUG-002).
+pub const product_version = build_options.version;
 
 pub const ConnectOptions = struct {
     host: std.net.Address,

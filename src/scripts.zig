@@ -18,6 +18,7 @@ const engine = @import("engine");
 const io = @import("io");
 const adapter = @import("adapter");
 const stdx = @import("stdx");
+const build_options = @import("build_options");
 
 const usage =
     \\Usage:
@@ -33,7 +34,7 @@ const usage =
     \\
     \\  zig build scripts -- docker build-worker [--tag=name]
     \\    Build the worker container image (deploy/Dockerfile.worker);
-    \\    defaults to the fingerprint-worker:0.2.2 tag.
+    \\    defaults to the fingerprint-worker:<version> tag.
     \\
     \\  zig build scripts -- docker run [--tag=name]
     \\    Run the worker image in the foreground, publishing port 8080.
@@ -131,8 +132,9 @@ pub fn main() !void {
     std.process.exit(1);
 }
 
-/// Default image tag, matching `zig build docker:worker`.
-const default_tag = "fingerprint-worker:0.2.2";
+/// Default image tag, derived from the injected package version (BUG-002)
+/// so it matches `zig build docker:worker`.
+const default_tag = "fingerprint-worker:" ++ build_options.version;
 
 /// docker build-worker [--tag=name] / docker run [--tag=name]. Child stdio
 /// is inherited so docker's own progress and interactive output flow through.

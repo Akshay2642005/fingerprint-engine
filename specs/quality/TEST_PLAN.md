@@ -1,6 +1,6 @@
 # Test plan — Fingerprint Engine
 
-Refreshed 2026-08-08. Current: 383 tests (376 unit + 7 integration/e2e),
+Refreshed 2026-08-11. Current: 385 tests (378 unit + 7 integration/e2e),
 3 fuzz targets, 12 benchmarks. `zig build test --summary all` must stay green
 on every commit (Zig 0.14.1).
 

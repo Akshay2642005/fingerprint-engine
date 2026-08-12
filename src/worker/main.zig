@@ -20,10 +20,10 @@ const std = @import("std");
 const engine = @import("engine");
 const adapter = @import("adapter");
 const io = @import("io");
+const build_options = @import("build_options");
 
-/// Matches build.zig.zon; kept here until the CLI lands a shared version
-/// source of truth.
-pub const version = "0.2.0";
+/// Product version, injected from build.zig's `package_version` (BUG-002).
+pub const version = build_options.version;
 
 /// Upper bound on an operation's result payload. The engine folds oversized
 /// results into `status.buffer_overflow`, so this is a cap, not a contract.

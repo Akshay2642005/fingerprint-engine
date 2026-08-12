@@ -70,7 +70,7 @@ export async function sendPackage(
 /**
  * Parses the ingress-relayed worker reply frame payload:
  * `u8 status | engine result`. fingerprint_result bodies are
- * `{ digest: [32]u8, schema: u16, feature_count: u16 }` (DESIGN §5.1).
+ * `{ digest: [32]u8, feature_count: u16, schema_version: u16 }` (DESIGN §5.1).
  */
 export function parseWorkerReply(body: Uint8Array): WorkerReply | undefined {
 	if (body.byteLength < 1) return undefined;
@@ -79,8 +79,8 @@ export function parseWorkerReply(body: Uint8Array): WorkerReply | undefined {
 	if (status === 0 && body.byteLength >= 1 + 32 + 2 + 2) {
 		const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
 		reply.digestHex = toHex(body.subarray(1, 33));
-		reply.schemaVersion = view.getUint16(33, true);
-		reply.featureCount = view.getUint16(35, true);
+		reply.featureCount = view.getUint16(33, true);
+		reply.schemaVersion = view.getUint16(35, true);
 	}
 	return reply;
 }

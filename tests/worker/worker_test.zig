@@ -6,11 +6,18 @@ const engine = @import("engine");
 const adapter = @import("adapter");
 const io = @import("io");
 const worker = @import("worker");
+const build_options = @import("build_options");
 
 const test_package_id = [16]u8{
     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 };
+
+test "worker: version matches the injected build version (BUG-002)" {
+    // The CLI must advertise the same version the build injected; a drift
+    // here means the version single-source-of-truth was bypassed.
+    try testing.expectEqualStrings(build_options.version, worker.version);
+}
 
 test "worker: parse defaults to start with loopback transport" {
     const command = try worker.parse(&.{ "worker", "start" });

@@ -10,7 +10,7 @@ bugs:
   - id: BUG-001
     title: "Browser SDK swaps schema_version and feature_count when parsing the worker reply"
     severity: high
-    status: open
+    status: fixed
     found: "2026-08-08"
     areas: [browser-sdk, wire-protocol]
     files:
@@ -39,11 +39,19 @@ bugs:
       - Update tests/clients/browser/transport.test.mjs
       - Consider a parity test that runs `zig build scripts -- worker request`
         and feeds the captured reply bytes through `parseWorkerReply`.
+    resolution: |
+      Fixed 2026-08-11 on fix/s1-bugs. `parseWorkerReply()` now reads
+      `featureCount` at bytes 33..35 and `schemaVersion` at 35..37 (LE),
+      matching the worker's `[32]digest | u16 feature_count | u16 schema`
+      layout in src/engine/ops/hash.zig. The self-consistent swapped test
+      was re-encoded to the real wire layout and a golden test pins the
+      reply against the integration digest constant
+      (db29fc13...e6c75, features=3, schema=2). TS suite: 13/13.
 
   - id: BUG-002
     title: "Version drift — worker, AMQP client, and wasm advertise stale versions"
     severity: medium
-    status: open
+    status: fixed
     found: "2026-08-08"
     areas: [versioning, worker, amqp, wasm]
     files:
@@ -71,11 +79,20 @@ bugs:
     tests:
       - Unit test: worker `version` output equals the injected version.
       - AMQP test: connection properties carry the injected version.
+    resolution: |
+      Fixed 2026-08-11 on fix/s1-bugs. `build.zig` now derives a version
+      string from `package_version` via `b.addOptions()` and injects a
+      `build_options` module into the worker, adapter, wasm, and scripts
+      modules; the hardcoded constants in src/worker/main.zig,
+      src/adapter/amqp/types.zig, src/wasm.zig, and src/scripts.zig are
+      deleted. Regression tests added: worker `version` output equals the
+      injected version (tests/worker/worker_test.zig) and AMQP connection
+      properties carry it (tests/adapter/amqp_test.zig).
 
   - id: BUG-003
     title: "Stale test counts in specs/planning/SESSION.yaml"
     severity: low
-    status: open
+    status: fixed
     found: "2026-08-08"
     areas: [docs, specs]
     files:
@@ -91,3 +108,10 @@ bugs:
       Refresh counts (383/376/7) on the next docs pass; consider making
       the CI summary the reference and keeping specs counts best-effort.
     tests: n/a
+    resolution: |
+      Fixed 2026-08-11 on fix/s1-bugs. Counts refreshed to the current
+      suite (385 total / 378 unit / 7 integration) in SESSION.yaml,
+      specs/architecture/tech-stack.md, and specs/quality/TEST_PLAN.md
+      (the suite grew 383 -> 385 with the two BUG-002 regression tests).
+      Historical references in PHASES.yaml, PLAN.md, STATUS.yaml, and the
+      v0.2.2 snapshot describe the shipped state and were left unchanged.
