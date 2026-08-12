@@ -103,6 +103,51 @@ jobs:
           path: zig-out/bin/worker
           retention-days: 30
 
+  cmd-build:
+    name: Combined + Ingress Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build combined and standalone binaries
+        run: zig build fingerprint ingress --release=safe
+
+      - name: Verify outputs exist
+        run: |
+          if [ -f zig-out/bin/fingerprint ]; then
+            echo "✅ fingerprint binary found: $(ls -lh zig-out/bin/fingerprint | awk '{print $5}')"
+          else
+            echo "❌ fingerprint binary not found"
+            exit 1
+          fi
+          if [ -f zig-out/bin/ingress ]; then
+            echo "✅ ingress binary found: $(ls -lh zig-out/bin/ingress | awk '{print $5}')"
+          else
+            echo "❌ ingress binary not found"
+            exit 1
+          fi
+
+      - name: Smoke test combined binary dispatch (ADR-011)
+        run: |
+          ./zig-out/bin/fingerprint version
+          ./zig-out/bin/fingerprint worker version
+          ./zig-out/bin/ingress version
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fingerprint-binaries
+          path: |
+            zig-out/bin/fingerprint
+            zig-out/bin/ingress
+          retention-days: 30
+
   docker-worker:
     name: Docker Image Build
     runs-on: ubuntu-latest

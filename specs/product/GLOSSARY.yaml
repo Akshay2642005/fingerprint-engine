@@ -27,7 +27,7 @@ terms:
   status:
     definition: "Engine result status enum: ok, invalid_request, invalid_payload, unsupported_version, invalid_input, buffer_overflow, out_of_memory, internal_error."
   worker:
-    definition: "Stateless Zig executable (src/worker/) that receives FPKG frames (loopback pipes or tcp), runs engine.process(), and optionally publishes results to AMQP. Shipped as a Docker container."
+    definition: "Stateless Zig executable (src/cmd/worker.zig, ADR-011) that receives FPKG frames (loopback pipes or tcp), runs engine.process(), and optionally publishes results to AMQP. Shipped as a Docker container; also dispatched by the combined fingerprint binary."
   ingress:
     definition: "Planned HTTP component (src/ingress/, M5) that terminates the SDK's POST, verifies integrity, wraps the body in an FPKG frame, forwards to a pooled worker, and relays the reply back to HTTP. Contains no engine code."
   adapter:

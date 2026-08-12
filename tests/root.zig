@@ -7,6 +7,7 @@ comptime {
     _ = @import("browser/wasm_test.zig");
     _ = @import("build/browser_package_test.zig");
     _ = @import("build/dist_surface_test.zig");
+    _ = @import("cmd/ingress_test.zig");
     _ = @import("core/bounds_test.zig");
     _ = @import("core/entropy_test.zig");
     _ = @import("core/feature_sim_test.zig");

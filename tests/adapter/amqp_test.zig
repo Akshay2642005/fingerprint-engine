@@ -9,7 +9,7 @@ const stdx = @import("stdx");
 const io = @import("io");
 const adapter = @import("adapter");
 const amqp = adapter.amqp;
-const build_options = @import("build_options");
+const version_info = @import("version");
 
 test "amqp: connection properties carry the injected product version (BUG-002)" {
     // The AMQP handshake advertises the product version; it must match the
@@ -20,7 +20,7 @@ test "amqp: connection properties carry the injected product version (BUG-002)" 
         .password = "guest",
         .vhost = "/",
     };
-    try std.testing.expectEqualStrings(build_options.version, options.properties.version);
+    try std.testing.expectEqualStrings(version_info.version, options.properties.version);
 }
 
 test "amqp: connect to a closed port fails cleanly" {

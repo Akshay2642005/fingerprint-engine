@@ -15,7 +15,9 @@ const builtin = @import("builtin");
 //   engine          - deterministic process dispatch (src/engine/), depends on model+core+serialization
 //   io              - async transport primitives (src/io/), depends on nothing
 //   adapter         - transport implementations (src/adapter/), depends on io
-//   worker          - deterministic worker executable (src/worker/), depends on engine+adapter
+//   worker          - worker app + CLI (src/cmd/worker.zig), depends on engine+adapter
+//   ingress         - ingress app + CLI (src/cmd/ingress.zig), depends on adapter only (never engine)
+//   cmd             - combined fingerprint binary (src/cmd/main.zig), depends on worker+ingress
 //   wasm            - WebAssembly infra artifact (src/wasm.zig), depends on core+model
 //   browser_package - build-time npm package generator (src/build/), depends on model
 //   test_utils      - test helpers (tests/utils/), depends on model
@@ -26,8 +28,11 @@ const builtin = @import("builtin");
 //   zig build test-integration      - run integration and e2e tests
 //   zig build test-integration-build - build the integration test binary
 //   zig build wasm                  - build the WebAssembly module
-//   zig build worker                - build the worker executable
+//   zig build worker                - build the standalone worker executable
+//   zig build ingress               - build the standalone ingress executable
+//   zig build fingerprint           - build the combined worker+ingress binary
 //   zig build docker:worker         - build the worker Docker image
+//   zig build docker:ingress        - build the ingress Docker image
 //   zig build bench                 - run performance benchmarks
 //   zig build clients:browser       - build the browser npm package (dist/)
 //   zig build docs                  - build docs (nested src/docs_website/)
@@ -39,18 +44,26 @@ const zig_version = std.SemanticVersion{
     .patch = 1,
 };
 
-/// Matches build.zig.zon. Single source of truth for the product version:
-/// injected into the worker, adapter, wasm, and scripts modules via
-/// `b.addOptions()` (BUG-002) so the CLI, AMQP properties, and image tags
-/// can never drift from the release.
-const package_version = std.SemanticVersion{
-    .major = 0,
-    .minor = 2,
-    .patch = 2,
+/// The product version, parsed from build.zig.zon at comptime — the single
+/// source of truth (ADR-011). Injected into the worker, ingress, adapter,
+/// wasm, and scripts modules as the `version` build-options module
+/// (TigerBeetle pattern, BUG-002) so the CLI, AMQP properties, and image
+/// tags can never drift from the release; CI reads the same value from
+/// build.zig.zon.
+const package_version = blk: {
+    const zon = @embedFile("build.zig.zon");
+    const marker = ".version = \"";
+    const start = std.mem.indexOf(u8, zon, marker) orelse
+        @compileError("build.zig.zon is missing .version");
+    const rest = zon[start + marker.len ..];
+    const end = std.mem.indexOfScalar(u8, rest, '"') orelse
+        @compileError("build.zig.zon .version is not quoted");
+    break :blk std.SemanticVersion.parse(rest[0..end]) catch
+        @compileError("build.zig.zon .version is not a valid semantic version");
 };
 
 /// Canonical "major.minor.patch" string, derived from `package_version` and
-/// injected as `@import("build_options").version`.
+/// injected as `@import("version").version`.
 const version_string = std.fmt.comptimePrint("{d}.{d}.{d}", .{
     package_version.major,
     package_version.minor,
@@ -80,13 +93,16 @@ pub fn build(b: *std.Build) !void {
         .test_integration = b.step("test-integration", "Run integration and e2e tests"),
         .test_integration_build = b.step("test-integration-build", "Build integration tests"),
         .wasm = b.step("wasm", "Build the browser WebAssembly module"),
-        .worker = b.step("worker", "Build the fingerprint worker executable"),
+        .worker = b.step("worker", "Build the standalone worker executable"),
+        .ingress = b.step("ingress", "Build the standalone ingress executable"),
+        .fingerprint = b.step("fingerprint", "Build the combined fingerprint binary (worker + ingress subcommands)"),
         .bench = b.step("bench", "Run performance benchmarks"),
         .clients_browser = b.step("clients:browser", "Build the browser SDK npm package"),
         .docs = b.step("docs", "Build docs"),
         .scripts = b.step("scripts", "Free form automation scripts"),
         .scripts_build = b.step("scripts:build", "Build automation scripts"),
         .docker_worker = b.step("docker:worker", "Build the worker Docker image (requires docker)"),
+        .docker_ingress = b.step("docker:ingress", "Build the ingress Docker image (requires docker)"),
     };
 
     const mode = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSafe });
@@ -106,13 +122,15 @@ pub fn build(b: *std.Build) !void {
         else => false,
     };
 
-    // Version single source of truth (BUG-002): `package_version` above is
-    // injected here as `@import("build_options").version` into every module
+    // Version single source of truth (ADR-011/BUG-002): `package_version`
+    // above is injected as `@import("version").version` into every module
     // that advertises a version (worker CLI, AMQP properties, wasm sdk
-    // metadata, scripts image tag).
-    const build_options = b.addOptions();
-    build_options.addOption([]const u8, "version", version_string);
-    const build_options_module = build_options.createModule();
+    // metadata, scripts image tag) — the TigerBeetle pattern. A drift from
+    // build.zig.zon is impossible; the BUG-002 regression tests compare the
+    // injected value against CLI output.
+    const version_options = b.addOptions();
+    version_options.addOption([]const u8, "version", version_string);
+    const version_module = version_options.createModule();
 
     // Model: runtime data model (feature definitions, registry, fingerprint
     // value types). Depends on nothing.
@@ -184,14 +202,15 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "io", .module = io },
             .{ .name = "stdx", .module = stdx },
-            .{ .name = "build_options", .module = build_options_module },
+            .{ .name = "version", .module = version_module },
         },
     });
 
-    // Worker: the deterministic worker executable (D9, D16). Depends on
-    // Engine and Adapter; contains no business logic.
+    // Worker app: the deterministic worker CLI (D9, D16, ADR-011). Depends
+    // on Engine and Adapter; contains no business logic. Root of the
+    // standalone `worker` binary and of the unit-test import `worker`.
     const worker = b.createModule(.{
-        .root_source_file = b.path("src/worker/main.zig"),
+        .root_source_file = b.path("src/cmd/worker.zig"),
         .target = target,
         .optimize = mode,
         .link_libc = link_libc_on_darwin,
@@ -199,7 +218,39 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "engine", .module = engine },
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
-            .{ .name = "build_options", .module = build_options_module },
+            .{ .name = "version", .module = version_module },
+        },
+    });
+
+    // Ingress app: the HTTP ingress CLI (F-1/M5, S4, ADR-011). Depends on
+    // Adapter and IO only — `engine` is intentionally absent from this
+    // module's import map, so the "no engine code in the ingress" rule
+    // (design §7, D16) is structurally enforced.
+    const ingress = b.createModule(.{
+        .root_source_file = b.path("src/cmd/ingress.zig"),
+        .target = target,
+        .optimize = mode,
+        .link_libc = link_libc_on_darwin,
+        .imports = &.{
+            .{ .name = "adapter", .module = adapter },
+            .{ .name = "io", .module = io },
+            .{ .name = "version", .module = version_module },
+        },
+    });
+
+    // Combined CLI: the single `fingerprint` binary (ADR-011), dispatching
+    // worker|ingress subcommands plus top-level version/help. Depends on the
+    // same modules as the apps; the apps are imported as files.
+    const cmd = b.createModule(.{
+        .root_source_file = b.path("src/cmd/main.zig"),
+        .target = target,
+        .optimize = mode,
+        .link_libc = link_libc_on_darwin,
+        .imports = &.{
+            .{ .name = "engine", .module = engine },
+            .{ .name = "adapter", .module = adapter },
+            .{ .name = "io", .module = io },
+            .{ .name = "version", .module = version_module },
         },
     });
 
@@ -214,7 +265,7 @@ pub fn build(b: *std.Build) !void {
         .imports = &.{
             .{ .name = "core", .module = core },
             .{ .name = "model", .module = model },
-            .{ .name = "build_options", .module = build_options_module },
+            .{ .name = "version", .module = version_module },
         },
     });
 
@@ -264,10 +315,11 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "stdx", .module = stdx },
             .{ .name = "adapter", .module = adapter },
             .{ .name = "worker", .module = worker },
+            .{ .name = "ingress", .module = ingress },
             .{ .name = "test_utils", .module = test_utils },
             .{ .name = "browser_package", .module = browser_package },
             .{ .name = "dist_surface", .module = dist_surface },
-            .{ .name = "build_options", .module = build_options_module },
+            .{ .name = "version", .module = version_module },
         },
     });
 
@@ -292,11 +344,20 @@ pub fn build(b: *std.Build) !void {
         .install_step = b.getInstallStep(),
     }, .{ .wasm_module = wasm });
 
-    // zig build worker
-    const worker_exe = build_worker(b, .{
-        .worker_step = build_steps.worker,
+    // zig build worker / ingress / fingerprint — individual + combined
+    // binaries (ADR-011); the default install ships all three.
+    const worker_exe = build_executable(b, .{
+        .step = build_steps.worker,
         .install_step = b.getInstallStep(),
-    }, .{ .worker_module = worker });
+    }, .{ .name = "worker", .module = worker });
+    const ingress_exe = build_executable(b, .{
+        .step = build_steps.ingress,
+        .install_step = b.getInstallStep(),
+    }, .{ .name = "ingress", .module = ingress });
+    const fingerprint_exe = build_executable(b, .{
+        .step = build_steps.fingerprint,
+        .install_step = b.getInstallStep(),
+    }, .{ .name = "fingerprint", .module = cmd });
 
     // zig build bench
     const bench = build_bench(b, build_steps.bench, .{ .bench_module = bench_module });
@@ -329,11 +390,12 @@ pub fn build(b: *std.Build) !void {
         .io = io,
         .adapter = adapter,
         .stdx = stdx,
-        .build_options = build_options_module,
+        .version = version_module,
     });
 
-    // zig build docker:worker
+    // zig build docker:worker, zig build docker:ingress
     build_docker_worker(b, build_steps.docker_worker);
+    build_docker_ingress(b, build_steps.docker_ingress);
 
     // zig build test-integration, zig build test-integration-build
     build_test_integration(b, .{
@@ -345,6 +407,8 @@ pub fn build(b: *std.Build) !void {
         .bench_exe = bench.getEmittedBin(),
         .scripts_exe = scripts_exe.getEmittedBin(),
         .worker_exe = worker_exe.getEmittedBin(),
+        .ingress_exe = ingress_exe.getEmittedBin(),
+        .fingerprint_exe = fingerprint_exe.getEmittedBin(),
     });
     if (b.args == null) {
         // `zig build test -- <filter>` runs only matching unit tests; the
@@ -403,20 +467,24 @@ fn build_wasm(b: *std.Build, steps: struct {
     return wasm;
 }
 
-fn build_worker(b: *std.Build, steps: struct {
-    worker_step: *std.Build.Step,
+/// Installs an executable and wires it to `zig build <name>` plus the
+/// default install step. Shared by the worker/ingress/fingerprint binaries
+/// (ADR-011).
+fn build_executable(b: *std.Build, steps: struct {
+    step: *std.Build.Step,
     install_step: *std.Build.Step,
 }, options: struct {
-    worker_module: *std.Build.Module,
+    name: []const u8,
+    module: *std.Build.Module,
 }) *std.Build.Step.Compile {
-    const worker = b.addExecutable(.{
-        .name = "worker",
-        .root_module = options.worker_module,
+    const exe = b.addExecutable(.{
+        .name = options.name,
+        .root_module = options.module,
     });
-    const worker_install = b.addInstallArtifact(worker, .{});
-    steps.install_step.dependOn(&worker_install.step);
-    steps.worker_step.dependOn(&worker_install.step);
-    return worker;
+    const exe_install = b.addInstallArtifact(exe, .{});
+    steps.install_step.dependOn(&exe_install.step);
+    steps.step.dependOn(&exe_install.step);
+    return exe;
 }
 
 /// `zig build docker:worker` — builds the worker container image with the
@@ -430,6 +498,23 @@ fn build_docker_worker(b: *std.Build, step: *std.Build.Step) void {
     const docker = b.addSystemCommand(&.{ "docker", "build" });
     docker.addArg("-f");
     docker.addArg("deploy/Dockerfile.worker");
+    docker.addArg("-t");
+    docker.addArg(tag);
+    docker.addArg(".");
+    step.dependOn(&docker.step);
+}
+
+/// `zig build docker:ingress` — builds the ingress container image with the
+/// system docker (deploy/Dockerfile.ingress). The image tag tracks
+/// build.zig.zon (package_version), mirroring build_docker_worker.
+fn build_docker_ingress(b: *std.Build, step: *std.Build.Step) void {
+    const tag = std.fmt.comptimePrint(
+        "fingerprint-ingress:{d}.{d}.{d}",
+        .{ package_version.major, package_version.minor, package_version.patch },
+    );
+    const docker = b.addSystemCommand(&.{ "docker", "build" });
+    docker.addArg("-f");
+    docker.addArg("deploy/Dockerfile.ingress");
     docker.addArg("-t");
     docker.addArg(tag);
     docker.addArg(".");
@@ -500,7 +585,7 @@ fn build_scripts(b: *std.Build, steps: struct {
     io: *std.Build.Module,
     adapter: *std.Build.Module,
     stdx: *std.Build.Module,
-    build_options: *std.Build.Module,
+    version: *std.Build.Module,
 }) *std.Build.Step.Compile {
     // Darwin needs libc for std.posix.system (see build()); scripts transitively
     // import io through the adapter.
@@ -522,7 +607,7 @@ fn build_scripts(b: *std.Build, steps: struct {
                 .{ .name = "io", .module = options.io },
                 .{ .name = "adapter", .module = options.adapter },
                 .{ .name = "stdx", .module = options.stdx },
-                .{ .name = "build_options", .module = options.build_options },
+                .{ .name = "version", .module = options.version },
             },
         }),
     });
@@ -548,6 +633,8 @@ fn build_test_integration(b: *std.Build, steps: struct {
     bench_exe: std.Build.LazyPath,
     scripts_exe: std.Build.LazyPath,
     worker_exe: std.Build.LazyPath,
+    ingress_exe: std.Build.LazyPath,
+    fingerprint_exe: std.Build.LazyPath,
 }) void {
     // Integration tests: the test binary contains no engine
     // code and only interacts with the engine through pre-built executables,
@@ -557,6 +644,8 @@ fn build_test_integration(b: *std.Build, steps: struct {
     integration_tests_options.addOptionPath("bench_exe", options.bench_exe);
     integration_tests_options.addOptionPath("scripts_exe", options.scripts_exe);
     integration_tests_options.addOptionPath("worker_exe", options.worker_exe);
+    integration_tests_options.addOptionPath("ingress_exe", options.ingress_exe);
+    integration_tests_options.addOptionPath("fingerprint_exe", options.fingerprint_exe);
     const integration_tests = b.addTest(.{
         .name = "test-integration",
         .root_module = b.createModule(.{

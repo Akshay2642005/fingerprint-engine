@@ -1,11 +1,13 @@
-//! Deterministic fingerprint worker executable (D9, D16).
+//! Deterministic fingerprint worker app (D9, D16), part of the shared CLI
+//! folder `src/cmd/` (ADR-011).
 //!
 //! Tiny by design: parse CLI args, select the inbound transport at comptime,
 //! then loop `read frame → map to engine request → engine.process() → reply`.
 //! No business logic — the engine performs every computation, and every
 //! transport concern lives in the adapter layer.
 //!
-//! CLI:
+//! CLI (invoked standalone or via the combined `fingerprint` binary — the
+//! argv contract is identical, see `parse`):
 //!   worker start --transport=loopback|tcp [--listen=host:port]
 //!                [--publish=amqp|none]
 //!   worker version
@@ -22,12 +24,13 @@ const windows = std.os.windows;
 const engine = @import("engine");
 const adapter = @import("adapter");
 const io = @import("io");
-const build_options = @import("build_options");
+const version_info = @import("version");
 
 const native_os = builtin.os.tag;
 
-/// Product version, injected from build.zig's `package_version` (BUG-002).
-pub const version = build_options.version;
+/// Product version, injected from build.zig.zon as the `version`
+/// build-options module (ADR-011/BUG-002).
+pub const version = version_info.version;
 
 /// Upper bound on an operation's result payload. The engine folds oversized
 /// results into `status.buffer_overflow`, so this is a cap, not a contract.
@@ -60,7 +63,9 @@ fn onConsoleEvent(dw_ctrl_type: windows.DWORD) callconv(.C) windows.BOOL {
 /// Installs the shutdown handlers. Linux covers CI and the container
 /// deployment target (tini forwards SIGTERM); Windows covers local dev
 /// Ctrl+C. Other platforms are a no-op for now (worker-resilience.md).
-fn installShutdownHandlers() void {
+/// Public so the combined `fingerprint` binary (src/cmd/main.zig) can
+/// install them once before dispatching.
+pub fn installShutdownHandlers() void {
     switch (native_os) {
         .windows => windows.SetConsoleCtrlHandler(onConsoleEvent, true) catch {},
         .linux => {
@@ -461,6 +466,15 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
+    try run(alloc, args);
+}
+
+/// Runs the worker CLI against an argv slice that includes argv[0] (the
+/// subcommand name, e.g. `"worker"`). Shared by the standalone `worker`
+/// binary (`main`) and the combined `fingerprint` binary
+/// (`src/cmd/main.zig` passes `args[1..]`). The caller owns shutdown
+/// handler installation and the args allocation.
+pub fn run(alloc: std.mem.Allocator, args: []const []const u8) !void {
     const command = parse(args) catch |err| {
         const message: []const u8 = switch (err) {
             error.UnknownSubcommand => "unknown subcommand",

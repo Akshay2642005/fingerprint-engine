@@ -1,14 +1,14 @@
 const std = @import("std");
 const stdx = @import("stdx");
 const builtin = @import("builtin");
-const build_options = @import("build_options");
+const version_info = @import("version");
 const protocol = @import("protocol.zig");
 const Encoder = protocol.Encoder;
 const Decoder = protocol.Decoder;
 
 /// Product version advertised in AMQP connection properties; injected from
-/// build.zig's `package_version` (BUG-002).
-pub const product_version = build_options.version;
+/// build.zig.zon as the `version` build-options module (ADR-011/BUG-002).
+pub const product_version = version_info.version;
 
 pub const ConnectOptions = struct {
     host: std.net.Address,

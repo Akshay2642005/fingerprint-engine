@@ -6,15 +6,19 @@ forwards it to a pooled worker over the existing `--transport=tcp` path,
 and translates the FPKG reply back to HTTP. It contains **no engine code**:
 `engine.process()` stays exclusively in the workers (design §7, D16).
 
-## Why a separate executable
+## Why a shared CLI folder with separate processes
 
 The ingress scales differently from the workers (few replicas, long-lived
 connections) and owns concerns the worker must never see: HTTP, TLS, rate
-limiting, body-size policy, and worker selection. Keeping `ingress` and
-`worker` as separate binaries preserves process separation while both ship
-as containers. A combined `fingerprint-edge` binary with subcommands was
-considered and rejected for now — revisit only if ops overhead proves
-real.
+limiting, body-size policy, and worker selection. It therefore stays a
+separate *process* from the worker, but both apps now live in one CLI folder
+(`src/cmd/`) per ADR-011: `main.zig` (combined `fingerprint` binary),
+`worker.zig`, and `ingress.zig` each with their own `pub fn main`. This keeps
+process separation (both ship as containers with a single entrypoint) while
+sharing the CLI conventions, shutdown handling, and build plumbing. The
+combined `fingerprint` binary is the single-artifact distribution;
+`zig build worker` and `zig build ingress` produce the individual
+components.
 
 ## The contract it serves (already fixed by the SDK)
 
@@ -97,16 +101,27 @@ sequenceDiagram
 ## CLI (mirrors the worker)
 
 ```
+# Standalone binary (zig build ingress -> zig-out/bin/ingress)
 ingress start --listen=host:port --worker=host:port [--worker=...]
               [--max-body=bytes] [--log-level=level] [--log-format=text|json]
 ingress version
 ingress help
+
+# Combined binary (zig build fingerprint -> zig-out/bin/fingerprint)
+fingerprint ingress start --listen=host:port --worker=host:port [--worker=...]
+fingerprint ingress version
+fingerprint ingress help
 ```
+
+Both invocations share the same parser (`ingress.parse`, ADR-011 argv
+contract).
 
 ## Build, deploy, CI
 
-- `src/ingress/main.zig` (imports `io` + `adapter` framing helpers only —
-  never `engine`), built by `zig build ingress`.
+- `src/cmd/ingress.zig` (imports `io` + `adapter` framing helpers only —
+  never `engine`), built by `zig build ingress` → `zig-out/bin/ingress`;
+  also shipped inside the combined `fingerprint` binary
+  (`zig build fingerprint` → `zig-out/bin/fingerprint`, ADR-011).
 - `deploy/Dockerfile.ingress` — same multi-stage alpine pattern as
   `deploy/Dockerfile.worker` (host-built binary, tini, non-root, EXPOSE
   8080/8443).

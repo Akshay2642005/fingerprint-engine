@@ -17,6 +17,8 @@ const Shell = @import("testing/shell.zig");
 const bench_exe: []const u8 = @import("test_options").bench_exe;
 const scripts_exe: []const u8 = @import("test_options").scripts_exe;
 const worker_exe: []const u8 = @import("test_options").worker_exe;
+const ingress_exe: []const u8 = @import("test_options").ingress_exe;
+const fingerprint_exe: []const u8 = @import("test_options").fingerprint_exe;
 
 test "scripts: no arguments prints usage and exits 0" {
     const shell = try Shell.create(std.testing.allocator);
@@ -53,6 +55,60 @@ test "bench: fingerprint-bench runs every benchmark and reports a total" {
     try std.testing.expect(std.mem.indexOf(u8, result.stderr, "Completed 12 benchmarks.") != null);
     try std.testing.expect(std.mem.indexOf(u8, result.stderr, "hashing: hashFeature") != null);
     try std.testing.expect(std.mem.indexOf(u8, result.stderr, "entropy: fingerprintEntropy") != null);
+}
+
+// ── Combined CLI e2e (ADR-011) ───────────────────────────────────────
+
+test "fingerprint: version prints the product version and exits 0" {
+    const shell = try Shell.create(std.testing.allocator);
+    defer shell.destroy();
+
+    const result = try shell.exec(&.{ fingerprint_exe, "version" }, .{});
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "fingerprint version ") != null);
+}
+
+test "fingerprint: help prints the combined usage and exits 0" {
+    const shell = try Shell.create(std.testing.allocator);
+    defer shell.destroy();
+
+    const result = try shell.exec(&.{ fingerprint_exe, "help" }, .{});
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "fingerprint worker start") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "fingerprint ingress start") != null);
+}
+
+test "fingerprint: dispatches to the worker subcommand" {
+    const shell = try Shell.create(std.testing.allocator);
+    defer shell.destroy();
+
+    // The combined binary must stay byte-compatible with the standalone
+    // worker CLI (ADR-011 argv contract): `fingerprint worker version` is
+    // the same command as `worker version`.
+    const result = try shell.exec(&.{ fingerprint_exe, "worker", "version" }, .{});
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "worker version ") != null);
+}
+
+test "fingerprint: unknown subcommand prints diagnostics and exits 1" {
+    const shell = try Shell.create(std.testing.allocator);
+    defer shell.destroy();
+
+    const result = try shell.exec(&.{ fingerprint_exe, "bogus" }, .{ .expected_exit_code = 1 });
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "unknown subcommand 'bogus'") != null);
+}
+
+test "ingress: version prints and exits 0" {
+    const shell = try Shell.create(std.testing.allocator);
+    defer shell.destroy();
+
+    const result = try shell.exec(&.{ ingress_exe, "version" }, .{});
+    try std.testing.expect(std.mem.indexOf(u8, result.stdout, "ingress version ") != null);
+}
+
+test "ingress: missing --listen prints diagnostics and exits 1" {
+    const shell = try Shell.create(std.testing.allocator);
+    defer shell.destroy();
+
+    const result = try shell.exec(&.{ ingress_exe, "start" }, .{ .expected_exit_code = 1 });
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "requires --listen") != null);
 }
 
 // ── Worker e2e ────────────────────────────────────────────────────────

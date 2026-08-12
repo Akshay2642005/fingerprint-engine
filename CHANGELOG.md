@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Shared CLI folder `src/cmd/` (ADR-011)**: the worker and ingress apps
+  live side by side — `main.zig` (combined `fingerprint` binary,
+  `worker|ingress` subcommands plus top-level `version`/`help`),
+  `worker.zig`, `ingress.zig` (S4 CLI scaffold: `start`/`version`/`help`,
+  parse fully implemented and unit-tested; the HTTP server is the next
+  backlog slice). Three build targets ship three executables:
+  `zig build fingerprint` (combined), `zig build worker`,
+  `zig build ingress` (standalone). Distribution works both ways: Docker
+  images (`deploy/Dockerfile.worker`, `deploy/Dockerfile.ingress`,
+  `zig build docker:worker` / `docker:ingress`) run the component binary;
+  binary releases can ship the single `fingerprint` artifact or the
+  individual components. `worker start ...` stays byte-compatible.
+- **Version single source of truth (ADR-011)**: `build.zig` parses
+  `.version` from `build.zig.zon` at comptime and injects it as the
+  `version` build-options module (TigerBeetle pattern); the "0.0.0-dev"
+  `build_options` fallback stubs are gone. The CLI, AMQP properties, wasm
+  metadata, and image tags all derive from the one `.version` in the
+  manifest — a drift is impossible by construction.
+- CI `cmd-build` job: builds the combined `fingerprint` and standalone
+  `ingress` binaries, smoke-tests `fingerprint version`,
+  `fingerprint worker version`, `ingress version`, and uploads artifacts.
+
+### Added
+
 - **Completion-based async IO layer** (`src/io/linux.zig` epoll, `src/io/windows.zig` IOCP, `src/io/darwin.zig` kqueue; `src/io/common.zig`, `src/io/queue.zig`): a TigerBeetle-style event loop with `Completion`/`submit`/`flush`, deadline races, and `cancel`. io_uring is the documented design vision for the Linux backend. The user-space primitives (`reader`, `writer`, `frame`, `message`, `ring_buffer`, `channel`, `dispatcher`, `executor`) are unchanged.
 - **Worker TCP transport rebuilt on the io layer (S1)**: sockets are always non-blocking, reads race a deadline completion and fail `error.ConnectionTimedOut` on every platform (H-1 — the old `SO_RCVTIMEO` approach is dead on Windows, see `specs/architecture/worker-resilience.md`), and `acceptWait` races accept against a wait deadline so graceful shutdown stays responsive (H-2). No `WsaReader` shim, no platform-specific error mapping.
 - `tests/io/io_test.zig` — io layer tests (timeout firing/order, cancel, accept races); integration e2e tests for H-1 (idle client closed, worker keeps serving) and H-2 (SIGTERM → drain → exit 0, POSIX-only).

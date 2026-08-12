@@ -28,13 +28,13 @@ specs/
 | `product/SCOPE.md` | What the product does — targets, milestones, out-of-scope | Current |
 | `product/GLOSSARY.yaml` | Domain terms (wire, engine, platform) | Current |
 | `product/snapshots/` | "What exists today" per release (`v0.2.2.md`) | Current |
-| `decisions/` | ADR-0001…0010 — architectural decision records | Adopted |
+| `decisions/` | ADR-0001…0011 — architectural decision records | Adopted |
 | `decisions/rework/` | Locked D1–D20 rework series: ANALYSIS, DECISIONS, DESIGN, MIGRATION | Complete |
 | `architecture/tech-stack.md` | Toolchain, module inventory, formats, build targets | Current |
 | `architecture/design-plan.md` | Current design state + planned additions | Current |
 | `architecture/impact.md` | Impact of the rework and the backlog slices | Current |
 | `architecture/refactor.md` | Executed old→new mapping + outstanding refactors | Current |
-| `architecture/ingress.md` | F-1/M5 — HTTP ingress design (separate executable, FPKG translation, worker pool) | Approved, unbuilt |
+| `architecture/ingress.md` | F-1/M5 — HTTP ingress design (shared CLI folder per ADR-011, FPKG translation, worker pool) | Approved, S4 |
 | `architecture/logging.md` | F-2 — application logging design (`src/log.zig`, levels, JSON) | Approved, unbuilt |
 | `planning/PLAN.md` | Milestone plan — M1–M4 (done) + M5 (next) + slices S1–S6 | Current |
 | `planning/STATUS.yaml` | Epic-level execution ledger (e01–e12) + rework breakdown | Current |

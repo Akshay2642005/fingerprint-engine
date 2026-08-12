@@ -1,7 +1,7 @@
 const std = @import("std");
 const core = @import("core");
 const model = @import("model");
-const build_options = @import("build_options");
+const version_info = @import("version");
 
 const FeatureID = model.FeatureID;
 const FeatureType = model.FeatureType;
@@ -164,7 +164,7 @@ fn buildFingerprint() Fingerprint {
     return .{
         .metadata = .{
             .schema_version = 1,
-            .sdk_version = build_options.version,
+            .sdk_version = version_info.version,
             .collected_at = 0,
         },
         .features = feature_buffer[0..feature_count],

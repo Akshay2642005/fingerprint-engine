@@ -59,8 +59,18 @@ zig build test-integration
 # WebAssembly infra artifact (zig-out/bin/fingerprint.wasm)
 zig build wasm
 
-# Worker executable (zig-out/bin/worker)
+# Worker executable (zig-out/bin/worker) — standalone
 zig build worker --release=safe
+
+# Ingress executable (zig-out/bin/ingress) — standalone
+zig build ingress --release=safe
+
+# Combined binary (zig-out/bin/fingerprint): worker + ingress subcommands
+zig build fingerprint --release=safe
+
+# Docker images (worker/ingress, tagged from build.zig.zon)
+zig build docker:worker
+zig build docker:ingress
 
 # Performance benchmarks
 zig build bench
@@ -130,7 +140,7 @@ if (assertAllowed().blocked) {
 │   ├── engine/               # Operation/Status/Request/Response/process — comptime dispatch, no io — depends on core+serialization
 │   ├── io/                   # Completion-based event loop (linux.zig epoll, windows.zig IOCP, darwin.zig kqueue) + user-space primitives (message, ring buffer, channel, frame, reader, writer, dispatcher) — depends on nothing
 │   ├── adapter/              # Transport implementations: loopback, tcp, AMQP 0-9-1 — depends on io+stdx only
-│   ├── worker/               # Deterministic worker executable — depends on engine+adapter
+│   ├── cmd/                  # CLI layer (ADR-011): main.zig (combined `fingerprint` binary), worker.zig, ingress.zig — each also builds standalone
 │   ├── stdx.zig              # Leaf utilities (copy helpers, bitsets, test PRNG)
 │   ├── wasm.zig              # WebAssembly infra artifact (bench + wasmtime test containers only)
 │   ├── clients/browser/      # hand-written TypeScript SDK: src/ + generated/ + dist/ (via `zig build clients:browser`)
@@ -142,7 +152,7 @@ if (assertAllowed().blocked) {
 │   └── demo.html             # Dev-only SDK demo (configure + collect; never shipped in the npm package)
 ├── tests/
 │   ├── root.zig              # Self-verifying test registry (SNAP_UPDATE=1 regenerates)
-│   ├── model/ core/ serialization/ engine/ io/ adapter/ worker/ build/ browser/
+│   ├── model/ core/ serialization/ engine/ io/ adapter/ cmd/ build/ browser/
 │   ├── clients/browser/      # TS SDK tests (node --test; golden parity, middleware, transport)
 │   ├── fuzz/                 # Fuzz harnesses (decode, normalize, hashing)
 │   ├── data/ fixtures/       # Test vectors, similarity suites, signal-package-v2 golden + manifest

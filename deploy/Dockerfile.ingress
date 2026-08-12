@@ -1,0 +1,66 @@
+# syntax=docker/dockerfile:1
+FROM alpine:3.22 AS builder
+
+ARG ZIG_VERSION=0.14.1
+
+RUN apk add --no-cache \
+    curl \
+    xz \
+    ca-certificates
+
+WORKDIR /app
+
+# Install official Zig 0.14.1 Linux x86_64 release.
+RUN curl -fsSL \
+        "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
+        -o /tmp/zig.tar.xz \
+    && tar -xf /tmp/zig.tar.xz -C /opt \
+    && ln -s "/opt/zig-x86_64-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig \
+    && rm /tmp/zig.tar.xz
+
+RUN zig version
+
+# Copy dependency manifests first.
+COPY build.zig build.zig.zon ./
+
+# Copy source.
+COPY . .
+
+# Build the ingress for Linux.
+#
+# x86_64-linux-musl gives us a binary suitable for Alpine. The standalone
+# `ingress` binary is the only process in this image (ADR-011); the
+# combined `fingerprint` binary is the alternative distribution.
+RUN zig build ingress \
+    -Dtarget=x86_64-linux-musl \
+    --release=safe
+
+
+FROM alpine:3.22 AS runtime
+
+RUN apk add --no-cache tini \
+    && addgroup -S ingress \
+    && adduser -S \
+        -G ingress \
+        -h /nonexistent \
+        -s /sbin/nologin \
+        ingress
+
+COPY --from=builder \
+    --chown=ingress:ingress \
+    /app/zig-out/bin/ingress \
+    /usr/local/bin/ingress
+
+RUN chmod 0555 /usr/local/bin/ingress
+
+USER ingress
+
+EXPOSE 8080
+
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Worker pool seeds come from FPKG_WORKERS (comma-separated) — the runtime
+# fallback when no --worker is given (specs/architecture/ingress.md).
+CMD ["/usr/local/bin/ingress", \
+     "start", \
+     "--listen=0.0.0.0:8080"]
