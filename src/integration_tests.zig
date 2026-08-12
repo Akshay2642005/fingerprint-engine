@@ -353,6 +353,8 @@ test "worker: exits 0 on SIGTERM after draining (H-2)" {
     // exits 0. The idle read deadline (500ms) bounds the drain.
     _ = spawned.child.kill() catch {};
     const term = try spawned.child.wait();
-    try std.testing.expectEqual(std.process.Child.Term.Exited, term);
-    try std.testing.expectEqual(@as(u32, 0), term.Exited);
+    // Compare the union's active tag (0.14.1 rejects coercing the enum to
+    // the union in expectEqual on Linux); then check the exit code.
+    try std.testing.expectEqual(std.process.Child.Term.Exited, std.meta.activeTag(term));
+    try std.testing.expectEqual(@as(u8, 0), term.Exited);
 }

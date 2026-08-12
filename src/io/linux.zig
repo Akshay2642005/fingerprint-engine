@@ -114,6 +114,11 @@ pub const IO = struct {
 
         const wait_ms: i32 = switch (mode) {
             .blocking => timeout_ms orelse blk: {
+                // A completion already in the queue — a first-pass submit
+                // awaiting its first do_operation, a cancelled delivery, or
+                // an expired timeout — is work that needs no kernel wait;
+                // poll and drain it instead of blocking.
+                if (!self.completed.empty()) break :blk 0;
                 // Blocking with nothing to wait on would hang forever.
                 assert(self.io_pending > 0);
                 break :blk -1; // wait indefinitely
