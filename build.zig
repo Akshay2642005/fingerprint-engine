@@ -132,6 +132,16 @@ pub fn build(b: *std.Build) !void {
     version_options.addOption([]const u8, "version", version_string);
     const version_module = version_options.createModule();
 
+    // Shutdown: the shared graceful-shutdown flag and signal handlers (H-2)
+    // used by both the worker and the ingress — the combined `fingerprint`
+    // binary installs one handler that drains both apps (ADR-011). Depends
+    // on nothing.
+    const shutdown = b.createModule(.{
+        .root_source_file = b.path("src/cmd/shutdown.zig"),
+        .target = target,
+        .optimize = mode,
+    });
+
     // Model: runtime data model (feature definitions, registry, fingerprint
     // value types). Depends on nothing.
     const model = b.createModule(.{
@@ -210,7 +220,7 @@ pub fn build(b: *std.Build) !void {
     // on Engine and Adapter; contains no business logic. Root of the
     // standalone `worker` binary and of the unit-test import `worker`.
     const worker = b.createModule(.{
-        .root_source_file = b.path("src/cmd/worker.zig"),
+        .root_source_file = b.path("src/cmd/worker/worker.zig"),
         .target = target,
         .optimize = mode,
         .link_libc = link_libc_on_darwin,
@@ -219,6 +229,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
             .{ .name = "version", .module = version_module },
+            .{ .name = "shutdown", .module = shutdown },
         },
     });
 
@@ -227,7 +238,7 @@ pub fn build(b: *std.Build) !void {
     // module's import map, so the "no engine code in the ingress" rule
     // (design §7, D16) is structurally enforced.
     const ingress = b.createModule(.{
-        .root_source_file = b.path("src/cmd/ingress.zig"),
+        .root_source_file = b.path("src/cmd/ingress/ingress.zig"),
         .target = target,
         .optimize = mode,
         .link_libc = link_libc_on_darwin,
@@ -235,6 +246,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
             .{ .name = "version", .module = version_module },
+            .{ .name = "shutdown", .module = shutdown },
         },
     });
 
@@ -251,6 +263,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
             .{ .name = "version", .module = version_module },
+            .{ .name = "shutdown", .module = shutdown },
         },
     });
 

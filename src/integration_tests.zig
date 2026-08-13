@@ -414,3 +414,355 @@ test "worker: exits 0 on SIGTERM after draining (H-2)" {
     try std.testing.expectEqual(std.process.Child.Term.Exited, std.meta.activeTag(term));
     try std.testing.expectEqual(@as(u8, 0), term.Exited);
 }
+
+// ── Ingress e2e (S4-c/d) ─────────────────────────────────────────────
+
+/// Spawns the ingress binary and reads its `ingress: listening on host:port`
+/// announcement from stderr, returning the bound port.
+fn spawnIngress(args: []const []const u8, alloc: std.mem.Allocator) !struct {
+    child: std.process.Child,
+    port: u16,
+} {
+    var child = std.process.Child.init(args, alloc);
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    try child.spawn();
+
+    const stderr_reader = child.stderr.?.reader();
+    var announce_buf: [256]u8 = undefined;
+    while (true) {
+        const line = (try stderr_reader.readUntilDelimiterOrEof(&announce_buf, '\n')) orelse
+            return error.IngressNeverListened;
+        if (std.mem.indexOf(u8, line, "ingress: listening on ")) |idx| {
+            const rest = line[idx + "ingress: listening on ".len ..];
+            const colon = std.mem.lastIndexOfScalar(u8, rest, ':') orelse
+                return error.MalformedAnnouncement;
+            const port = try std.fmt.parseInt(u16, rest[colon + 1 ..], 10);
+            return .{ .child = child, .port = port };
+        }
+    }
+}
+
+/// Reads the fixture body and returns it plus its `sha256-<hex>` integrity
+/// header value (both caller-freed).
+fn fixtureWithIntegrity(alloc: std.mem.Allocator) !struct { body: []u8, integrity: []u8 } {
+    const fixture = try std.fs.cwd().readFileAlloc(
+        alloc,
+        "tests/fixtures/fingerprints/signal-package-v2.bin",
+        1 << 16,
+    );
+    var digest_buf: [64]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(fixture, digest_buf[0..32], .{});
+    const integrity = try std.fmt.allocPrint(
+        alloc,
+        "sha256-{s}",
+        .{std.fmt.fmtSliceHexLower(digest_buf[0..32])},
+    );
+    return .{ .body = fixture, .integrity = integrity };
+}
+
+/// Asserts the relayed HTTP body is `status ok | digest | 3 features | v2`
+/// (the worker's reply payload, relayed verbatim).
+fn expectHashPayload(payload: []const u8) !void {
+    try std.testing.expectEqual(@as(usize, 1 + 32 + 2 + 2), payload.len);
+    try std.testing.expectEqual(@as(u8, 0), payload[0]); // engine.Status.ok
+    try std.testing.expectEqualSlices(u8, &expected_digest, payload[1..33]);
+    try std.testing.expectEqual(@as(u16, 3), std.mem.readInt(u16, payload[33..35], .little));
+    try std.testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, payload[35..37], .little));
+}
+
+const HttpReply = struct {
+    status: u16,
+    /// Owned by the allocator; caller frees.
+    body: []u8,
+};
+
+/// Minimal raw-TCP HTTP/1.1 client for the e2e tests: sends one request
+/// (headers + optional body) and reads back the status line, the
+/// content-length header, and exactly that many body bytes. Exercises the
+/// wire protocol instead of std.http, matching the hand-rolled FPKG frames
+/// above. `headers` is a flat [name, value, name, value, ...] slice.
+fn httpRequest(
+    alloc: std.mem.Allocator,
+    port: u16,
+    method: []const u8,
+    path: []const u8,
+    headers: []const []const u8,
+    body: []const u8,
+) !HttpReply {
+    var stream = try std.net.tcpConnectToHost(alloc, "127.0.0.1", port);
+    defer stream.close();
+
+    var req = std.ArrayList(u8).init(alloc);
+    defer req.deinit();
+    const w = req.writer();
+    try w.print("{s} {s} HTTP/1.1\r\n", .{ method, path });
+    var i: usize = 0;
+    while (i + 1 < headers.len) : (i += 2) {
+        try w.print("{s}: {s}\r\n", .{ headers[i], headers[i + 1] });
+    }
+    try w.print("content-length: {d}\r\nconnection: close\r\n\r\n", .{body.len});
+    try stream.writeAll(req.items);
+    if (body.len > 0) try stream.writeAll(body);
+
+    // Read the response head (bounded).
+    var head: [4096]u8 = undefined;
+    var head_len: usize = 0;
+    const head_end = blk: {
+        while (head_len < head.len) {
+            const n = try stream.read(head[head_len..]);
+            if (n == 0) return error.TruncatedReply;
+            head_len += n;
+            if (std.mem.indexOf(u8, head[0..head_len], "\r\n\r\n")) |end| break :blk end;
+        }
+        return error.HeadersTooLarge;
+    };
+
+    // Status code from the request line: "HTTP/1.1 200 OK".
+    const status = blk: {
+        const sp1 = std.mem.indexOfScalar(u8, head[0..head_end], ' ') orelse
+            return error.MalformedReply;
+        const sp2 = std.mem.indexOfScalarPos(u8, head[0..head_end], sp1 + 1, ' ') orelse
+            return error.MalformedReply;
+        break :blk std.fmt.parseInt(u16, head[sp1 + 1 .. sp2], 10) catch return error.MalformedReply;
+    };
+
+    // Content-length (0 when absent).
+    const content_length = blk: {
+        var lines = std.mem.splitSequence(u8, head[0..head_end], "\r\n");
+        _ = lines.next(); // status line
+        while (lines.next()) |line| {
+            const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+            const name = std.mem.trim(u8, line[0..colon], " ");
+            const value = std.mem.trim(u8, line[colon + 1 ..], " ");
+            if (std.ascii.eqlIgnoreCase(name, "content-length")) {
+                break :blk std.fmt.parseInt(usize, value, 10) catch return error.MalformedReply;
+            }
+        }
+        break :blk 0;
+    };
+
+    const body_buf = try alloc.alloc(u8, content_length);
+    errdefer alloc.free(body_buf);
+    const body_start = head_end + 4;
+    const buffered = head_len - body_start; // bytes already read past the terminator
+    const from_buf = @min(buffered, body_buf.len);
+    @memcpy(body_buf[0..from_buf], head[body_start .. body_start + from_buf]);
+    var filled = from_buf;
+    while (filled < body_buf.len) {
+        const n = try stream.read(body_buf[filled..]);
+        if (n == 0) return error.TruncatedReply;
+        filled += n;
+    }
+    return .{ .status = status, .body = body_buf };
+}
+
+test "ingress: proxies a signal package over HTTP to a tcp worker (S4 e2e)" {
+    const alloc = std.testing.allocator;
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    defer {
+        _ = spawned.child.kill() catch {};
+        _ = spawned.child.wait() catch {};
+    }
+
+    const worker_arg = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{spawned.port});
+    defer alloc.free(worker_arg);
+    var ingress = try spawnIngress(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        worker_arg,
+    }, alloc);
+    defer {
+        _ = ingress.child.kill() catch {};
+        _ = ingress.child.wait() catch {};
+    }
+
+    const fixture = try fixtureWithIntegrity(alloc);
+    defer alloc.free(fixture.body);
+    defer alloc.free(fixture.integrity);
+    const reply = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+    }, fixture.body);
+    defer alloc.free(reply.body);
+
+    try std.testing.expectEqual(@as(u16, 200), reply.status);
+    try expectHashPayload(reply.body);
+}
+
+test "ingress: retries a dead worker and lands on a live one" {
+    const alloc = std.testing.allocator;
+
+    // Worker A: spawned and killed before any request — a dead seed.
+    var dead = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    _ = dead.child.kill() catch {};
+    _ = dead.child.wait() catch {};
+
+    // Worker B: alive.
+    var live = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    defer {
+        _ = live.child.kill() catch {};
+        _ = live.child.wait() catch {};
+    }
+
+    const dead_arg = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{dead.port});
+    defer alloc.free(dead_arg);
+    const live_arg = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{live.port});
+    defer alloc.free(live_arg);
+    var ingress = try spawnIngress(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        dead_arg, // round-robin hits this first — connect must fail and retry
+        live_arg,
+    }, alloc);
+    defer {
+        _ = ingress.child.kill() catch {};
+        _ = ingress.child.wait() catch {};
+    }
+
+    const fixture = try fixtureWithIntegrity(alloc);
+    defer alloc.free(fixture.body);
+    defer alloc.free(fixture.integrity);
+
+    const reply = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-integrity",      fixture.integrity,
+    }, fixture.body);
+    defer alloc.free(reply.body);
+
+    // Deterministic workers make this a strong assertion: the retry lands on
+    // the live worker with the same digest.
+    try std.testing.expectEqual(@as(u16, 200), reply.status);
+    try expectHashPayload(reply.body);
+}
+
+test "ingress: enforces boundary checks (413/400/415/405/healthz)" {
+    const alloc = std.testing.allocator;
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    defer {
+        _ = spawned.child.kill() catch {};
+        _ = spawned.child.wait() catch {};
+    }
+
+    const worker_arg = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{spawned.port});
+    defer alloc.free(worker_arg);
+    var ingress = try spawnIngress(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        "--max-body=1024",
+        worker_arg,
+    }, alloc);
+    defer {
+        _ = ingress.child.kill() catch {};
+        _ = ingress.child.wait() catch {};
+    }
+
+    const fixture = try fixtureWithIntegrity(alloc);
+    defer alloc.free(fixture.body);
+    defer alloc.free(fixture.integrity);
+
+    // Body over the 1 KiB cap → 413 before proxying.
+    const big = try alloc.alloc(u8, 2048);
+    defer alloc.free(big);
+    @memset(big, 'x');
+    const oversize = try httpRequest(alloc, ingress.port, "POST", "/", &.{}, big);
+    defer alloc.free(oversize.body);
+    try std.testing.expectEqual(@as(u16, 413), oversize.status);
+
+    // Integrity mismatch → 400.
+    const zeros = "0" ** 64;
+    const bad_integrity = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-integrity",      "sha256-" ++ zeros,
+    }, fixture.body);
+    defer alloc.free(bad_integrity.body);
+    try std.testing.expectEqual(@as(u16, 400), bad_integrity.status);
+
+    // Unknown schema → 415.
+    const bad_schema = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "9",
+        "x-fpkg-integrity",      fixture.integrity,
+    }, fixture.body);
+    defer alloc.free(bad_schema.body);
+    try std.testing.expectEqual(@as(u16, 415), bad_schema.status);
+
+    // Unsupported method → 405.
+    const put = try httpRequest(alloc, ingress.port, "PUT", "/", &.{}, fixture.body);
+    defer alloc.free(put.body);
+    try std.testing.expectEqual(@as(u16, 405), put.status);
+
+    // Health endpoint → 200 with the injected version.
+    const health = try httpRequest(alloc, ingress.port, "GET", "/healthz", &.{}, &.{});
+    defer alloc.free(health.body);
+    try std.testing.expectEqual(@as(u16, 200), health.status);
+    try std.testing.expect(std.mem.indexOf(u8, health.body, "ok") != null);
+
+    // Unknown path → 404.
+    const missing = try httpRequest(alloc, ingress.port, "GET", "/nope", &.{}, &.{});
+    defer alloc.free(missing.body);
+    try std.testing.expectEqual(@as(u16, 404), missing.status);
+}
+
+test "ingress: exits 0 on SIGTERM after draining (H-2)" {
+    // Signal handling is POSIX-only today; Windows relies on the console
+    // control handler, which e2e tests cannot send.
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const alloc = std.testing.allocator;
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    defer _ = spawned.child.kill() catch {};
+
+    const worker_arg = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{spawned.port});
+    defer alloc.free(worker_arg);
+    var ingress = try spawnIngress(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        worker_arg,
+    }, alloc);
+    defer _ = ingress.child.kill() catch {};
+
+    // Prove the ingress is serving before the signal.
+    const health = try httpRequest(alloc, ingress.port, "GET", "/healthz", &.{}, &.{});
+    defer alloc.free(health.body);
+    try std.testing.expectEqual(@as(u16, 200), health.status);
+
+    // SIGTERM: the accept loop observes the flag within 250 ms and exits 0.
+    _ = ingress.child.kill() catch {};
+    const term = try ingress.child.wait();
+    try std.testing.expectEqual(std.process.Child.Term.Exited, std.meta.activeTag(term));
+    try std.testing.expectEqual(@as(u8, 0), term.Exited);
+}

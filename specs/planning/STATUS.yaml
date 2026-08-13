@@ -69,7 +69,7 @@ epics:
       - S1: "BUG-001 + H-1 idle timeout + H-2 graceful shutdown"
       - S2: "Version single source of truth (BUG-002/003)"
       - S3: "Application logging (specs/architecture/logging.md)"
-      - S4: "HTTP ingress MVP (specs/architecture/ingress.md; CLI + version single-sourcing done in ADR-011; io.connect + TcpClient in specs/architecture/ingress-io.md; server/pool/e2e/deploy next)"
+      - S4: "HTTP ingress MVP (specs/architecture/ingress.md; CLI + version single-sourcing done in ADR-011; io.connect + TcpClient in specs/architecture/ingress-io.md; server/pool/e2e/deploy done in S4-c/d — specs/architecture/ingress-server.md)"
       - S5: "AMQP consumer + DLQ"
       - S6: "Full-stack compose + ingress release surface"
 
