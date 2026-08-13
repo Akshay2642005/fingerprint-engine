@@ -22,8 +22,8 @@ const os = std.os;
 const posix = std.posix;
 const assert = std.debug.assert;
 
-const common = @import("./common.zig");
-const QueueType = @import("./queue.zig").QueueType;
+const common = @import("common.zig");
+const QueueType = @import("queue.zig").QueueType;
 
 /// ConnectEx — the overlapped outbound connect used by the io layer (S4-a).
 /// Loaded per socket via WSAIoctl(SIO_GET_EXTENSION_FUNCTION_POINTER,

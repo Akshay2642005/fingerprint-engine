@@ -13,8 +13,8 @@
 
 const std = @import("std");
 const version_info = @import("version");
-const worker = @import("worker.zig");
-const ingress = @import("ingress.zig");
+const worker = @import("worker/worker.zig");
+const ingress = @import("ingress/ingress.zig");
 
 /// Product version, injected from build.zig.zon as the `version`
 /// build-options module (ADR-011/BUG-002).
