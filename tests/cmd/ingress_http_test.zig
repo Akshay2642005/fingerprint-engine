@@ -61,7 +61,8 @@ test "ingress http: rejects malformed request lines" {
 }
 
 test "ingress http: rejects unsupported methods and versions" {
-    try testing.expectError(error.UnsupportedMethod, http.parseHead("PUT / HTTP/1.1\r\n"));
+    const parsed1 = try http.parseHead("PUT / HTTP/1.1\r\n");
+    try testing.expectEqual(http.Method.other, parsed1.method);
     try testing.expectError(error.UnsupportedVersion, http.parseHead("POST / HTTP/1.2\r\n"));
 }
 

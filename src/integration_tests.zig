@@ -545,9 +545,10 @@ fn httpRequest(
 
     const body_buf = try alloc.alloc(u8, content_length);
     errdefer alloc.free(body_buf);
-    const buffered = head_len - head_end; // bytes already read past the terminator
+    const body_start = head_end + 4;
+    const buffered = head_len - body_start; // bytes already read past the terminator
     const from_buf = @min(buffered, body_buf.len);
-    @memcpy(body_buf[0..from_buf], head[head_end .. head_end + from_buf]);
+    @memcpy(body_buf[0..from_buf], head[body_start .. body_start + from_buf]);
     var filled = from_buf;
     while (filled < body_buf.len) {
         const n = try stream.read(body_buf[filled..]);
@@ -587,11 +588,10 @@ test "ingress: proxies a signal package over HTTP to a tcp worker (S4 e2e)" {
     const fixture = try fixtureWithIntegrity(alloc);
     defer alloc.free(fixture.body);
     defer alloc.free(fixture.integrity);
-
     const reply = try httpRequest(alloc, ingress.port, "POST", "/", &.{
         "x-fpkg-schema-version", "2",
-        "x-fpkg-package-id",       "8d56529f06040b90df4cb25a3811a10e",
-        "x-fpkg-integrity",        fixture.integrity,
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
     }, fixture.body);
     defer alloc.free(reply.body);
 

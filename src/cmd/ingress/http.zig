@@ -38,7 +38,7 @@ const io_entries = 64;
 
 //HTTP surface
 
-pub const Method = enum { get, post, options };
+pub const Method = enum { get, post, options, other };
 
 pub const ParsedHead = struct {
     method: Method,
@@ -54,7 +54,6 @@ pub const ParsedHead = struct {
 
 pub const ParseError = error{
     MalformedRequestLine,
-    UnsupportedMethod,
     UnsupportedVersion,
     MalformedHeader,
 };
@@ -82,7 +81,9 @@ pub fn parseHead(head: []const u8) ParseError!ParsedHead {
         result.method = .get;
     } else if (std.mem.eql(u8, method_str, "OPTIONS")) {
         result.method = .options;
-    } else return error.UnsupportedMethod;
+    } else {
+        result.method = .other;
+    }
     result.target = target;
 
     while (lines.next()) |line| {
@@ -270,6 +271,32 @@ pub const HttpServer = struct {
         }
     }
 
+    /// Reads exactly `content_length` bytes into `dest`, using whatever was
+    /// already buffered past the head terminator first. Shared by the real
+    /// POST body read and the 405 drain path below — the byte accounting
+    /// (skip the terminator, count what's already buffered) is the one
+    /// place this must be right; duplicating it a second time is how the
+    /// original off-by-4 happened.
+    fn drainBody(
+        self: *HttpServer,
+        client: socket_t,
+        head_buf: []const u8,
+        head_end: usize,
+        head_len: usize,
+        dest: []u8,
+    ) !void {
+        const body_start = head_end + head_terminator_len;
+        const buffered = head_len - body_start;
+        const from_buf = @min(buffered, dest.len);
+        @memcpy(dest[0..from_buf], head_buf[body_start .. body_start + from_buf]);
+        var filled = from_buf;
+        while (filled < dest.len) {
+            const n = try self.recvSome(client, dest[filled..]);
+            if (n == 0) return error.EndOfStream;
+            filled += n;
+        }
+    }
+
     /// Serves one HTTP request on the accepted client: read head, parse,
     /// boundary-check, forward to the pool, relay the reply, close. The
     /// caller closes the client afterwards (or on error).
@@ -291,11 +318,7 @@ pub const HttpServer = struct {
 
         // 2. Parse (errors carry their own status mapping).
         const parsed = parseHead(head_buf[0..head.end]) catch |err| {
-            const status: u16 = switch (err) {
-                error.UnsupportedMethod => 405,
-                else => 400,
-            };
-            try self.replyError(client, status, @errorName(err), null);
+            try self.replyError(client, 400, @errorName(err), null);
             return;
         };
 
@@ -320,6 +343,24 @@ pub const HttpServer = struct {
             return;
         }
 
+        if (parsed.method == .other) {
+            // Unsupported method with a real body (PUT/DELETE/etc): drain
+            // it before closing, bounded by max_body, so a well-formed
+            // client sees a clean 405 instead of a reset. Only drain when
+            // the claimed length is within the cap — an attacker-declared
+            // oversized length here gets the same treatment as a real 413
+            // below: close without reading, don't let a rejected request
+            // force us to read arbitrary attacker-controlled bytes.
+            if (parsed.content_length) |len| {
+                if (len <= self.max_body) {
+                    const scratch = a.alloc(u8, @intCast(len)) catch null;
+                    if (scratch) |buf| self.drainBody(client, &head_buf, head.end, head.len, buf) catch {};
+                }
+            }
+            try self.replyError(client, 405, "method not allowed", parsed.origin);
+            return;
+        }
+
         // POST only beyond this point.
         if (parsed.chunked) {
             try self.replyError(client, 400, "chunked transfer not supported", null);
@@ -335,18 +376,9 @@ pub const HttpServer = struct {
             return;
         }
 
-        // 4. Read the body (bytes past the head terminator first).      ← existing, delete this block
+        // 4. Read the body (bytes past the head terminator first).
         const body = try a.alloc(u8, @intCast(content_length));
-        const body_start = head.end + head_terminator_len;
-        const buffered = head.len - body_start;
-        const from_buf = @min(buffered, body.len);
-        @memcpy(body[0..from_buf], head_buf[body_start .. body_start + from_buf]);
-        var filled = from_buf;
-        while (filled < body.len) {
-            const n = try self.recvSome(client, body[filled..]);
-            if (n == 0) return error.EndOfStream; // peer closed mid-body
-            filled += n;
-        }
+        try self.drainBody(client, &head_buf, head.end, head.len, body);
 
         // 5. Boundary checks.
         if (parsed.integrity) |expected| {
