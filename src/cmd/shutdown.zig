@@ -33,21 +33,28 @@ fn onConsoleEvent(dw_ctrl_type: windows.DWORD) callconv(.C) windows.BOOL {
     return windows.TRUE;
 }
 
-/// Installs the shutdown handlers. Linux covers CI and the container
-/// deployment target (tini forwards SIGTERM); Windows covers local dev
+/// POSIX sigaction install for SIGTERM/SIGINT (the `restorer` field is
+/// Linux-glibc-only, so the literal omits it — it defaults where present).
+fn installPosix() void {
+    var act = std.posix.Sigaction{
+        .handler = .{ .handler = onShutdownSignal },
+        .mask = std.posix.empty_sigset,
+        .flags = 0,
+    };
+    std.posix.sigaction(std.posix.SIG.INT, &act, null);
+    std.posix.sigaction(std.posix.SIG.TERM, &act, null);
+}
+
+/// Installs the shutdown handlers. POSIX platforms (Linux covers CI and the
+/// container deployment target — tini forwards SIGTERM; Darwin covers macOS
+/// runners) install the SIGTERM/SIGINT handlers; Windows covers local dev
 /// Ctrl+C. Other platforms are a no-op for now (worker-resilience.md).
 pub fn install() void {
     switch (native_os) {
         .windows => windows.SetConsoleCtrlHandler(onConsoleEvent, true) catch {},
-        .linux => {
-            var act = std.posix.Sigaction{
-                .handler = .{ .handler = onShutdownSignal },
-                .mask = std.posix.empty_sigset,
-                .flags = 0,
-                .restorer = null,
-            };
-            std.posix.sigaction(std.posix.SIG.INT, &act, null);
-            std.posix.sigaction(std.posix.SIG.TERM, &act, null);
+        .linux, .macos, .ios, .tvos, .watchos, .visionos, .freebsd,
+        .netbsd, .openbsd, .dragonfly, .haiku, .solaris, .aix, .serenity => {
+            installPosix();
         },
         else => {},
     }
