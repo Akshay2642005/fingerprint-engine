@@ -40,6 +40,7 @@ comptime {
     _ = @import("io/message_test.zig");
     _ = @import("io/reader_writer_test.zig");
     _ = @import("io/ring_buffer_test.zig");
+    _ = @import("log/log_test.zig");
     _ = @import("model/api_test.zig");
     _ = @import("model/definitions_test.zig");
     _ = @import("model/feature_binding_test.zig");

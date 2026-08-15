@@ -63,12 +63,12 @@ epics:
     summary: "AMQP 0-9-1 client + result publisher (outbound only); `zig build scripts -- amqp` and `amqp get` inspectors; verified against RabbitMQ 4.3.4"
 
   e12-audit-backlog:
-    status: planned
-    summary: "2026-08-08 audit — bugs registry, hardening, ingress + logging designs; slices S1–S6 sequenced in specs/quality/audits/2026-08-08.md"
+    status: in_progress
+    summary: "2026-08-08 audit — bugs registry, hardening, ingress + logging designs; slices S1–S6 sequenced in specs/quality/audits/2026-08-08.md. S1–S3 delivered."
     slices:
-      - S1: "BUG-001 + H-1 idle timeout + H-2 graceful shutdown"
-      - S2: "Version single source of truth (BUG-002/003)"
-      - S3: "Application logging (specs/architecture/logging.md)"
+      - S1: "BUG-001 + H-1 idle timeout + H-2 graceful shutdown (done)"
+      - S2: "Version single source of truth (BUG-002/003; done)"
+      - S3: "Application logging (specs/architecture/logging.md; done — src/log.zig + executable wiring, 2026-08-15)"
       - S4: "HTTP ingress MVP (specs/architecture/ingress.md; CLI + version single-sourcing done in ADR-011; io.connect + TcpClient in specs/architecture/ingress-io.md; server/pool/e2e/deploy done in S4-c/d — specs/architecture/ingress-server.md)"
       - S5: "AMQP consumer + DLQ"
       - S6: "Full-stack compose + ingress release surface"

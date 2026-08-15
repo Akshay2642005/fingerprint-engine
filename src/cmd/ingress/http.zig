@@ -21,6 +21,7 @@ const io = @import("io");
 const adapter = @import("adapter");
 const version_info = @import("version");
 const worker_pool = @import("pool.zig");
+const log = @import("log");
 
 const IO = io.IO;
 const socket_t = IO.socket_t;
@@ -432,7 +433,7 @@ pub const HttpServer = struct {
             return;
         };
         const worker_reply = self.pool.request(a, frame) catch |err| {
-            std.debug.print("ingress: worker request failed: {s}\n", .{@errorName(err)});
+            log.ingress.warn("ingress: worker request failed: {s}", .{@errorName(err)});
             try self.replyError(client, 502, "worker unavailable", null);
             return;
         };

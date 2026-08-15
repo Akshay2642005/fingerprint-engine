@@ -26,6 +26,16 @@ const std = @import("std");
 const io = @import("io");
 const version_info = @import("version");
 const shutdown = @import("shutdown");
+const log = @import("log");
+
+/// Routes `std.log` (the AMQP client's `std.log.scoped(.amqp)`) through the
+/// application logger (specs/architecture/logging.md, F-2/S3). The comptime
+/// level stays `.debug` — the TigerBeetle pattern — so `--log-level` is the
+/// only filter and debug messages are never compiled out.
+pub const std_options = std.Options{
+    .log_level = .debug,
+    .logFn = log.logFn,
+};
 
 /// S4-c/d: the HTTP server (bounded parser + boundary checks) and the
 /// worker pool. Exposed so the unit tests can exercise the pure parser and
@@ -65,8 +75,10 @@ pub const StartOptions = struct {
     worker_count: usize = 0,
     /// Content-Length cap for POST bodies (413 above it).
     max_body: u64 = default_max_body,
-    log_level: []const u8 = "info",
-    log_format: []const u8 = "text",
+    /// --log-level (err|warn|info|debug); null = FPKG_LOG_LEVEL, then info.
+    log_level: ?log.Level = null,
+    /// --log-format (text|json); null = FPKG_LOG_FORMAT, then text.
+    log_format: ?log.Format = null,
 };
 
 /// Cap on CLI worker seeds. Parse is pure (no allocator); the S4 runtime
@@ -127,9 +139,11 @@ pub fn parse(args: []const []const u8) CliError!Command {
             options.max_body = std.fmt.parseInt(u64, arg["--max-body=".len..], 10) catch
                 return error.InvalidOption;
         } else if (std.mem.startsWith(u8, arg, "--log-level=")) {
-            options.log_level = arg["--log-level=".len..];
+            options.log_level = log.parseLevel(arg["--log-level=".len..]) orelse
+                return error.InvalidOption;
         } else if (std.mem.startsWith(u8, arg, "--log-format=")) {
-            options.log_format = arg["--log-format=".len..];
+            options.log_format = log.parseFormat(arg["--log-format=".len..]) orelse
+                return error.InvalidOption;
         } else return error.UnknownOption;
     }
     if (options.listen == null) return error.MissingListen;
@@ -152,7 +166,7 @@ pub fn run(alloc: std.mem.Allocator, args: []const []const u8) !void {
             error.MissingListen => "start requires --listen=host:port",
             error.TooManyWorkers => "too many --worker seeds",
         };
-        std.io.getStdErr().writer().print("ingress: {s}\n\n{s}", .{ message, usage }) catch {};
+        log.ingress.err("ingress: {s}\n\n{s}", .{ message, usage });
         std.process.exit(1);
     };
     switch (command) {
@@ -184,9 +198,13 @@ fn splitHostPort(listen: []const u8) !struct { []const u8, u16 } {
 /// frame, forward to the pooled workers, relay the reply. Exits 0 on
 /// SIGTERM/SIGINT after draining in-flight requests (H-2).
 fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
+    // Logging config: CLI flags > FPKG_LOG_LEVEL/FPKG_LOG_FORMAT > defaults
+    // (specs/architecture/logging.md). Applied before any message is logged.
+    log.initFromEnv(alloc, options.log_level, options.log_format);
+
     const listen = options.listen orelse unreachable; // parse enforces
     const host, const listen_port = splitHostPort(listen) catch {
-        std.debug.print("ingress: invalid --listen '{s}' (expected host:port)\n", .{listen});
+        log.ingress.err("ingress: invalid --listen '{s}' (expected host:port)", .{listen});
         std.process.exit(1);
     };
 
@@ -212,7 +230,7 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
         } else |_| {}
     }
     if (worker_seeds.len == 0) {
-        std.debug.print("ingress: no workers (pass --worker=host:port or set FPKG_WORKERS)\n", .{});
+        log.ingress.err("ingress: no workers (pass --worker=host:port or set FPKG_WORKERS)", .{});
         std.process.exit(1);
     }
 
@@ -230,8 +248,10 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     defer server.deinit();
 
     // Announce the bound address so supervisors and tests can learn the
-    // ephemeral port (--listen=...:0).
-    std.debug.print("ingress: listening on {s}:{d}\n", .{ host, server.port() });
+    // ephemeral port (--listen=...:0). The `ingress: listening on `
+    // substring is an integration-test contract; --log-level=err suppresses
+    // the line on purpose (specs/architecture/logging.md).
+    log.ingress.info("ingress: listening on {s}:{d}", .{ host, server.port() });
 
     // H-2: acceptWait bounds the accept so the loop observes the shutdown
     // flag while idle. In-flight requests complete synchronously before the
@@ -243,7 +263,7 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
                 // Protocol errors (malformed HTTP, bad magic, ...) are
                 // per-connection: close the client and keep serving. A single
                 // bad client must never take down the ingress.
-                std.debug.print("ingress: client dropped: {s}\n", .{@errorName(err)});
+                log.ingress.warn("ingress: client dropped: {s}", .{@errorName(err)});
             }
         };
         // HTTP/1.1 `connection: close` — the reply is complete; drop the

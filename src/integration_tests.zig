@@ -415,6 +415,91 @@ test "worker: exits 0 on SIGTERM after draining (H-2)" {
     try std.testing.expectEqual(@as(u8, 0), term.Exited);
 }
 
+// ── Worker logging (F-2/S3) ──────────────────────────────────────────
+
+/// Binds an ephemeral loopback port and returns its number after closing it,
+/// so a test can hand the worker an explicit `--listen=host:port` without an
+/// announcement to learn the port from (--log-level=err suppresses it).
+fn reserveEphemeralPort() !u16 {
+    const address = try std.net.Address.parseIp("127.0.0.1", 0);
+    const fd = try std.posix.socket(address.any.family, std.posix.SOCK.STREAM, 0);
+    defer std.posix.close(fd);
+    try std.posix.bind(fd, &address.any, address.getOsSockLen());
+    var bound = std.net.Address{ .any = undefined };
+    var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.storage);
+    try std.posix.getsockname(fd, &bound.any, &len);
+    return bound.getPort();
+}
+
+test "worker: --log-level=err suppresses the listening announcement but still serves" {
+    const alloc = std.testing.allocator;
+
+    const port = try reserveEphemeralPort();
+    const listen = try std.fmt.allocPrint(alloc, "127.0.0.1:{d}", .{port});
+    defer alloc.free(listen);
+
+    var listen_arg_buf: [64]u8 = undefined;
+    const listen_arg = try std.fmt.bufPrint(&listen_arg_buf, "--listen={s}", .{listen});
+
+    var child = std.process.Child.init(
+        &.{ worker_exe, "start", "--transport=tcp", listen_arg, "--log-level=err" },
+        alloc,
+    );
+    child.stdin_behavior = .Ignore;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    try child.spawn();
+    defer _ = child.kill() catch {};
+
+    // No announcement exists to read: poll the reserved port until the
+    // worker accepts connections (the reserved port may already be served by
+    // another process between our close and the worker's bind — retrying the
+    // connect treats that window like "not yet listening").
+    var connected = false;
+    var attempts: u8 = 0;
+    while (attempts < 100) : (attempts += 1) {
+        var probe = std.net.tcpConnectToHost(alloc, "127.0.0.1", port) catch {
+            std.time.sleep(20 * std.time.ns_per_ms);
+            continue;
+        };
+        probe.close();
+        connected = true;
+        break;
+    }
+    if (!connected) return error.WorkerNeverListened;
+
+    // The worker still serves a well-formed frame at the err log level.
+    const fixture = try std.fs.cwd().readFileAlloc(
+        alloc,
+        "tests/fixtures/fingerprints/signal-package-v2.bin",
+        1 << 16,
+    );
+    defer alloc.free(fixture);
+
+    var frame_buf: [header_size + 1 << 16]u8 = undefined;
+    const frame = try buildFrame(signal_package_type, fixture, &frame_buf);
+
+    var stream = try std.net.tcpConnectToHost(alloc, "127.0.0.1", port);
+    defer stream.close();
+    try stream.writeAll(frame);
+
+    var reply_buf: [header_size + 1 << 16]u8 = undefined;
+    try expectHashReply(try readFrame(stream.reader(), &reply_buf));
+
+    // Terminate, then drain stderr fully: the `worker: listening on ` line
+    // must never have been emitted at the err level. Dup the stderr fd
+    // before kill — Child.cleanupStreams closes (and nulls) the stored
+    // handle once the process exits — and read the dup until EOF.
+    const stderr_dup = try std.posix.dup(child.stderr.?.handle);
+    defer std.posix.close(stderr_dup);
+    _ = child.kill() catch {};
+    _ = child.wait() catch {};
+    const stderr_file = std.fs.File{ .handle = stderr_dup };
+    const all_stderr = try stderr_file.readToEndAlloc(alloc, 1 << 16);
+    defer alloc.free(all_stderr);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: listening on ") == null);
+}
+
 // ── Ingress e2e (S4-c/d) ─────────────────────────────────────────────
 
 /// Spawns the ingress binary and reads its `ingress: listening on host:port`

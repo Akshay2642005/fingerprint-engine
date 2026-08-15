@@ -9,6 +9,7 @@ const std = @import("std");
 const testing = std.testing;
 const ingress = @import("ingress");
 const version_info = @import("version");
+const log = @import("log");
 
 test "ingress: version matches the injected build version (BUG-002)" {
     // The CLI must advertise the same version the build injected; a drift
@@ -25,8 +26,8 @@ test "ingress: parse start requires --listen" {
             try testing.expectEqualStrings("127.0.0.1:8080", options.listen.?);
             try testing.expectEqual(ingress.default_max_body, options.max_body);
             try testing.expectEqual(@as(usize, 0), options.worker_count);
-            try testing.expectEqualStrings("info", options.log_level);
-            try testing.expectEqualStrings("text", options.log_format);
+            try testing.expect(options.log_level == null);
+            try testing.expect(options.log_format == null);
         },
         else => unreachable,
     }
@@ -80,8 +81,8 @@ test "ingress: parse overrides body cap and logging" {
     switch (command) {
         .start => |options| {
             try testing.expectEqual(@as(u64, 524288), options.max_body);
-            try testing.expectEqualStrings("debug", options.log_level);
-            try testing.expectEqualStrings("json", options.log_format);
+            try testing.expectEqual(log.Level.debug, options.log_level.?);
+            try testing.expectEqual(log.Format.json, options.log_format.?);
         },
         else => unreachable,
     }
@@ -93,5 +94,13 @@ test "ingress: parse rejects unknown subcommands, options, and bad values" {
     try testing.expectError(
         error.InvalidOption,
         ingress.parse(&.{ "ingress", "start", "--listen=127.0.0.1:8080", "--max-body=soon" }),
+    );
+    try testing.expectError(
+        error.InvalidOption,
+        ingress.parse(&.{ "ingress", "start", "--listen=127.0.0.1:8080", "--log-level=loud" }),
+    );
+    try testing.expectError(
+        error.InvalidOption,
+        ingress.parse(&.{ "ingress", "start", "--listen=127.0.0.1:8080", "--log-format=xml" }),
     );
 }
