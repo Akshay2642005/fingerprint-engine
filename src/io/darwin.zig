@@ -17,12 +17,13 @@
 //! without it); build.zig links libc for darwin targets only. It is
 //! compile-checked via `zig build worker -Dtarget=x86_64-macos`; runtime
 //! coverage needs a Mac runner.
+
 const std = @import("std");
 const posix = std.posix;
 const assert = std.debug.assert;
 
-const common = @import("./common.zig");
-const QueueType = @import("./queue.zig").QueueType;
+const common = @import("common.zig");
+const QueueType = @import("queue.zig").QueueType;
 
 pub const IO = struct {
     pub const TCPOptions = common.TCPOptions;
@@ -89,9 +90,17 @@ pub const IO = struct {
                 ctx.timed_out = true;
             }
         };
+
         var state = TimedOut{};
         var completion: Completion = undefined;
-        self.timeout(*TimedOut, &state, TimedOut.on_timeout, &completion, nanoseconds);
+
+        self.timeout(
+            *TimedOut,
+            &state,
+            TimedOut.on_timeout,
+            &completion,
+            nanoseconds,
+        );
 
         while (!state.timed_out) {
             try self.flush(.blocking);
@@ -114,19 +123,31 @@ pub const IO = struct {
         if (change_events > 0 or self.completed.empty()) {
             // Zero timeouts for kevent() implies a non-blocking poll.
             var ts = std.mem.zeroes(posix.timespec);
+            var timeout_ptr: ?*const posix.timespec = &ts;
 
             // We need to wait (not poll) on kevent if there's nothing to
-            // submit or complete. We should never wait indefinitely given
-            // run() is non-blocking and run_for_ns() always submits a
-            // timeout.
+            // submit or complete. run() is non-blocking and run_for_ns()
+            // always submits a timeout, so the only blocking wait without a
+            // queued deadline is a bare wait for inflight kernel work — wait
+            // indefinitely (kevent with a NULL timeout). macOS rejects
+            // timeouts above 2^31 seconds with EINVAL, so a far-future
+            // deadline is clamped to that bound; the caller's flush loop
+            // re-waits if the clamped timeout fires.
             if (change_events == 0 and self.completed.empty()) {
                 if (mode == .blocking) {
-                    const timeout_ns = next_timeout orelse blk: {
+                    if (next_timeout) |timeout_ns| {
+                        const secs = timeout_ns / std.time.ns_per_s;
+                        if (secs > std.math.maxInt(i32)) {
+                            ts.sec = std.math.maxInt(i32) - 1;
+                            ts.nsec = std.time.ns_per_s - 1;
+                        } else {
+                            ts.nsec = @intCast(timeout_ns % std.time.ns_per_s);
+                            ts.sec = @intCast(secs);
+                        }
+                    } else {
                         assert(self.io_inflight > 0);
-                        break :blk @as(u64, std.math.maxInt(i64));
-                    };
-                    ts.nsec = @intCast(timeout_ns % std.time.ns_per_s);
-                    ts.sec = @intCast(timeout_ns / std.time.ns_per_s);
+                        timeout_ptr = null;
+                    }
                 } else if (self.io_inflight == 0) {
                     return;
                 }
@@ -136,7 +157,7 @@ pub const IO = struct {
                 self.kq,
                 events[0..change_events],
                 events[0..events.len],
-                &ts,
+                timeout_ptr,
             );
 
             // Mark the io events submitted only after kevent() successfully
@@ -147,6 +168,7 @@ pub const IO = struct {
             for (events[0..new_events]) |event| {
                 const completion: *Completion = @ptrFromInt(event.udata);
                 assert(completion.link.next == null);
+
                 // The ONESHOT filter was consumed by this delivery.
                 completion.registered = false;
                 self.completed.push(completion);
@@ -170,26 +192,33 @@ pub const IO = struct {
             const filter: i16 = switch (completion.operation) {
                 .accept => posix.system.EVFILT.READ,
                 .recv => posix.system.EVFILT.READ,
-                .send, .connect => posix.system.EVFILT.WRITE,
+                .send => posix.system.EVFILT.WRITE,
+                .connect => posix.system.EVFILT.WRITE,
                 else => @panic("invalid completion operation queued for io"),
             };
+
             const ident: usize = switch (completion.operation) {
                 .accept => |op| @intCast(op.socket),
                 .recv => |op| @intCast(op.socket),
-                .send, .connect => |op| @intCast(op.socket),
+                .send => |op| @intCast(op.socket),
+                .connect => |op| @intCast(op.socket),
                 else => unreachable,
             };
 
             event.* = .{
                 .ident = ident,
                 .filter = filter,
-                .flags = posix.system.EV.ADD | posix.system.EV.ENABLE | posix.system.EV.ONESHOT,
+                .flags = posix.system.EV.ADD |
+                    posix.system.EV.ENABLE |
+                    posix.system.EV.ONESHOT,
                 .fflags = 0,
                 .data = 0,
                 .udata = @intFromPtr(completion),
             };
+
             completion.registered = true;
         }
+
         return events.len;
     }
 
@@ -210,12 +239,14 @@ pub const IO = struct {
             }
 
             const expires = deadline - current;
+
             if (min_expires) |current_min| {
                 min_expires = @min(expires, current_min);
             } else {
                 min_expires = expires;
             }
         }
+
         return min_expires;
     }
 
@@ -225,10 +256,12 @@ pub const IO = struct {
         context: ?*anyopaque,
         callback: *const fn (Context) void,
         operation: Operation,
+
         /// Set by `cancel`; the next drain short-circuits to
         /// `error.Canceled` instead of running `do_operation`, so a cancelled
         /// completion always completes exactly once.
         cancelled: bool = false,
+
         /// Whether this completion's EV.ONESHOT filter has been submitted to
         /// the kernel (flush_io) and not yet harvested. cancel uses this to
         /// EV_DELETE the registration instead of waiting for a readiness
@@ -242,7 +275,11 @@ pub const IO = struct {
             return .{
                 .context = null,
                 .callback = undefined,
-                .operation = .{ .timeout = .{ .deadline = 0 } },
+                .operation = .{
+                    .timeout = .{
+                        .deadline = 0,
+                    },
+                },
             };
         }
 
@@ -266,6 +303,7 @@ pub const IO = struct {
             connect: struct {
                 socket: socket_t,
                 address: std.net.Address,
+
                 /// Set after pass 1 parks with EINPROGRESS; pass 2 harvests
                 /// the result via getsockoptError instead of re-connecting.
                 pending: bool = false,
@@ -298,7 +336,11 @@ pub const IO = struct {
                     return;
                 }
 
-                const data = &@field(ctx.completion.operation, @tagName(op_tag));
+                const data = &@field(
+                    ctx.completion.operation,
+                    @tagName(op_tag),
+                );
+
                 const result = OperationImpl.do_operation(ctx, data);
 
                 // Requeue onto io_pending if error.WouldBlock.
@@ -329,7 +371,11 @@ pub const IO = struct {
             .link = .{},
             .context = @ptrCast(context),
             .callback = Callback.onComplete,
-            .operation = @unionInit(Completion.Operation, @tagName(op_tag), op_data),
+            .operation = @unionInit(
+                Completion.Operation,
+                @tagName(op_tag),
+                op_data,
+            ),
         };
 
         switch (op_tag) {
@@ -359,7 +405,10 @@ pub const IO = struct {
             .accept,
             .{ .socket = socket },
             struct {
-                fn do_operation(_: Completion.Context, op: anytype) AcceptError!socket_t {
+                fn do_operation(
+                    _: Completion.Context,
+                    op: anytype,
+                ) AcceptError!socket_t {
                     const fd = try posix.accept(
                         op.socket,
                         null,
@@ -369,7 +418,12 @@ pub const IO = struct {
 
                     // Darwin doesn't support MSG_NOSIGNAL; the SO_NOSIGPIPE
                     // socket option does the same for all send()s.
-                    common.setsockopt(fd, posix.SOL.SOCKET, posix.SO.NOSIGPIPE, 1) catch {};
+                    common.setsockopt(
+                        fd,
+                        posix.SOL.SOCKET,
+                        posix.SO.NOSIGPIPE,
+                        1,
+                    ) catch {};
 
                     return fd;
                 }
@@ -397,9 +451,15 @@ pub const IO = struct {
             callback,
             completion,
             .recv,
-            .{ .socket = socket, .buf = buffer },
+            .{
+                .socket = socket,
+                .buf = buffer,
+            },
             struct {
-                fn do_operation(_: Completion.Context, op: anytype) RecvError!usize {
+                fn do_operation(
+                    _: Completion.Context,
+                    op: anytype,
+                ) RecvError!usize {
                     return posix.recv(op.socket, op.buf, 0);
                 }
             },
@@ -426,9 +486,15 @@ pub const IO = struct {
             callback,
             completion,
             .send,
-            .{ .socket = socket, .buf = buffer },
+            .{
+                .socket = socket,
+                .buf = buffer,
+            },
             struct {
-                fn do_operation(_: Completion.Context, op: anytype) SendError!usize {
+                fn do_operation(
+                    _: Completion.Context,
+                    op: anytype,
+                ) SendError!usize {
                     return posix.send(op.socket, op.buf, 0);
                 }
             },
@@ -460,19 +526,32 @@ pub const IO = struct {
             callback,
             completion,
             .connect,
-            .{ .socket = socket, .address = address, .pending = false },
+            .{
+                .socket = socket,
+                .address = address,
+                .pending = false,
+            },
             struct {
-                fn do_operation(_: Completion.Context, op: anytype) ConnectError!void {
+                fn do_operation(
+                    _: Completion.Context,
+                    op: anytype,
+                ) ConnectError!void {
                     if (!op.pending) {
-                        posix.connect(op.socket, &op.address.any, op.address.getOsSockLen()) catch |err| switch (err) {
+                        posix.connect(
+                            op.socket,
+                            &op.address.any,
+                            op.address.getOsSockLen(),
+                        ) catch |err| switch (err) {
                             error.WouldBlock => {
                                 op.pending = true;
                                 return error.WouldBlock;
                             },
                             else => return err,
                         };
+
                         return; // completed synchronously (e.g. loopback)
                     }
+
                     return posix.getsockoptError(op.socket);
                 }
             },
@@ -500,9 +579,14 @@ pub const IO = struct {
             callback,
             completion,
             .timeout,
-            .{ .deadline = self.time.monotonic() + nanoseconds },
+            .{
+                .deadline = self.time.monotonic() + nanoseconds,
+            },
             struct {
-                fn do_operation(_: Completion.Context, _: anytype) TimeoutError!void {
+                fn do_operation(
+                    _: Completion.Context,
+                    _: anytype,
+                ) TimeoutError!void {
                     return; // Timeouts don't have errors for now.
                 }
             },
@@ -516,12 +600,33 @@ pub const IO = struct {
     /// never left waiting on a readiness event that may not arrive. The user
     /// callback runs exactly once.
     pub fn cancel(self: *IO, completion: *Completion) void {
-        const was_queued = self.timeouts.contains(completion) or
+        // Timeouts have no kernel state and their callbacks never expect
+        // error.Canceled (they `catch unreachable`), so unlinking is all
+        // cancel does — exactly like the epoll backend. The deadline race
+        // only cancels a timeout because the operation itself won first.
+        if (std.meta.activeTag(completion.operation) == .timeout) {
+            if (self.timeouts.contains(completion)) {
+                self.timeouts.remove(completion);
+            }
+            return;
+        }
+
+        const was_queued =
+            self.timeouts.contains(completion) or
             self.completed.contains(completion) or
             self.io_pending.contains(completion);
-        if (self.timeouts.contains(completion)) self.timeouts.remove(completion);
-        if (self.completed.contains(completion)) self.completed.remove(completion);
-        if (self.io_pending.contains(completion)) self.io_pending.remove(completion);
+
+        if (self.timeouts.contains(completion)) {
+            self.timeouts.remove(completion);
+        }
+
+        if (self.completed.contains(completion)) {
+            self.completed.remove(completion);
+        }
+
+        if (self.io_pending.contains(completion)) {
+            self.io_pending.remove(completion);
+        }
 
         if (completion.registered) {
             // The EV.ONESHOT event only delivers when the fd becomes ready —
@@ -549,15 +654,19 @@ pub const IO = struct {
         const filter: i16 = switch (completion.operation) {
             .accept => posix.system.EVFILT.READ,
             .recv => posix.system.EVFILT.READ,
-            .send, .connect => posix.system.EVFILT.WRITE,
+            .send => posix.system.EVFILT.WRITE,
+            .connect => posix.system.EVFILT.WRITE,
             else => unreachable,
         };
+
         const ident: usize = switch (completion.operation) {
             .accept => |op| @intCast(op.socket),
             .recv => |op| @intCast(op.socket),
-            .send, .connect => |op| @intCast(op.socket),
+            .send => |op| @intCast(op.socket),
+            .connect => |op| @intCast(op.socket),
             else => unreachable,
         };
+
         var change = [_]posix.Kevent{.{
             .ident = ident,
             .filter = filter,
@@ -566,8 +675,15 @@ pub const IO = struct {
             .data = 0,
             .udata = 0,
         }};
+
         var eventlist: [0]posix.Kevent = undefined;
-        _ = posix.kevent(self.kq, &change, &eventlist, &std.mem.zeroes(posix.timespec)) catch {};
+
+        _ = posix.kevent(
+            self.kq,
+            &change,
+            &eventlist,
+            &std.mem.zeroes(posix.timespec),
+        ) catch {};
     }
 
     pub const socket_t = posix.socket_t;
@@ -580,16 +696,24 @@ pub const IO = struct {
         options: TCPOptions,
     ) !socket_t {
         _ = self;
+
         const fd = try posix.socket(
             family,
             posix.SOCK.STREAM | posix.SOCK.NONBLOCK,
             posix.IPPROTO.TCP,
         );
+
         errdefer posix.close(fd);
 
         // Darwin doesn't support SOCK_CLOEXEC.
-        _ = try posix.fcntl(fd, posix.F.SETFD, posix.FD_CLOEXEC);
+        _ = try posix.fcntl(
+            fd,
+            posix.F.SETFD,
+            posix.FD_CLOEXEC,
+        );
+
         try common.tcp_options(fd, options);
+
         return fd;
     }
 
@@ -610,7 +734,11 @@ pub const IO = struct {
         return common.listen(fd, address, options);
     }
 
-    pub fn shutdown(_: *IO, socket: socket_t, how: posix.ShutdownHow) posix.ShutdownError!void {
+    pub fn shutdown(
+        _: *IO,
+        socket: socket_t,
+        how: posix.ShutdownHow,
+    ) posix.ShutdownError!void {
         return posix.shutdown(socket, how);
     }
 };
