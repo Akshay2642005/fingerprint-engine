@@ -1,8 +1,9 @@
 # Bug registry — Fingerprint Engine
 #
 # Confirmed defects found during the 2026-08-08 repository audit
-# (specs/quality/audits/2026-08-08.md). Each entry records the symptom, root cause,
-# affected files, and the planned fix. Status: open | in_progress | fixed.
+# (specs/quality/audits/2026-08-08.md) and in macOS bring-up testing on
+# 2026-08-14. Each entry records the symptom, root cause, affected files,
+# and the planned fix. Status: open | in_progress | fixed.
 #
 # Severity: critical | high | medium | low
 
@@ -115,3 +116,125 @@ bugs:
       (the suite grew 383 -> 385 with the two BUG-002 regression tests).
       Historical references in PHASES.yaml, PLAN.md, STATUS.yaml, and the
       v0.2.2 snapshot describe the shipped state and were left unchanged.
+
+  - id: BUG-004
+    title: "darwin flush() passes a far-future timespec that macOS kevent rejects with EINVAL"
+    severity: high
+    status: fixed
+    found: "2026-08-14"
+    areas: [io, darwin]
+    files:
+      - src/io/darwin.zig
+    symptom: |
+      `flush()` with no queued deadline expressed a wait-forever wait as a
+      `timespec` of maxInt(i64) nanoseconds (~292 years). macOS rejects any
+      kevent timeout above 2^31 seconds with EINVAL, so the wait returned
+      errno 22 and `posix.zig`'s `.INVAL => unreachable` branch panicked in
+      the worker/ingress event loop (darwin.zig flush).
+    root_cause: |
+      Wait-forever was modelled as a huge finite timeout instead of a NULL
+      kevent timeout. The macOS boundary is exactly 2^31 seconds: verified
+      empirically that `sec=i32max` is accepted while `sec=3e9` returns
+      EINVAL.
+    fix: |
+      Pass `timeout_ptr = null` (kevent waits indefinitely) when blocking
+      with no pending deadline, and clamp far-future deadlines to
+      `maxInt(i32)-1` seconds so they cannot exceed the accepted bound. The
+      caller's flush loop re-waits if a clamped timeout fires.
+    tests:
+      - Full `zig build test` suite (previously panicked on macOS).
+      - Standalone kevent repro (kqtest/main.zig) pins the 2^31s boundary.
+    resolution: |
+      Fixed 2026-08-14 on develop. `flush()` now waits with a NULL timeout
+      for indefinite waits and clamps deadlines above 2^31s to
+      `maxInt(i32)-1` seconds. All 432 tests pass on macOS.
+
+  - id: BUG-005
+    title: "darwin cancel() delivers error.Canceled to timeout completions"
+    severity: high
+    status: fixed
+    found: "2026-08-14"
+    areas: [io, darwin]
+    files:
+      - src/io/darwin.zig
+    symptom: |
+      Panic "attempt to unwrap error: Canceled" in the timeout callback
+      (`client.zig:284`, `on_timeout` `_ = result catch unreachable`) when
+      a deadline race was cancelled.
+    root_cause: |
+      `cancel()` unlinked the completion but still delivered
+      `error.Canceled`; the epoll backend unlinks timeout completions
+      without delivering an error (they `catch unreachable`). A first fix
+      attempt removed the completion unguarded, panicking in queue.zig:96
+      "to_remove is not in the queue".
+    fix: |
+      `cancel()` early-returns for `.timeout` completions, removing them
+      from the timeouts queue guarded by `contains()`, delivering no error
+      — matching the epoll backend exactly. A deadline race only cancels a
+      timeout because the operation itself won first.
+    tests:
+      - Full `zig build test` suite.
+    resolution: |
+      Fixed 2026-08-14 on develop. Timeout completions are unlinked without
+      an error, mirroring epoll; the whole suite passes on macOS.
+
+  - id: BUG-006
+    title: "shutdown install() only handled SIGTERM/SIGINT on Windows and Linux"
+    severity: medium
+    status: fixed
+    found: "2026-08-14"
+    areas: [shutdown, darwin]
+    files:
+      - src/cmd/shutdown.zig
+    symptom: |
+      On macOS, `install()` was a no-op, so worker/ingress died by signal
+      instead of exiting 0 after draining — the H-2 graceful-shutdown
+      integration tests failed on macOS runners.
+    root_cause: |
+      The SIGTERM/SIGINT handler switch covered `.windows` and `.linux`
+      only; every other POSIX target had no branch. The `restorer` field in
+      the Linux Sigaction literal is Linux-glibc-only and does not exist on
+      Darwin's struct, so the Linux branch could not be shared verbatim.
+    fix: |
+      Route all POSIX tags (.linux, .macos, .ios, .tvos, .watchos,
+      .visionos, .freebsd, .netbsd, .openbsd, .dragonfly, .haiku, .solaris,
+      .aix, .serenity) through a new `installPosix()` helper whose Sigaction
+      literal omits `restorer`.
+    tests:
+      - H-2 "exits 0 on SIGTERM after draining" integration tests on macOS.
+    resolution: |
+      Fixed 2026-08-14 on develop. Both H-2 shutdown tests pass on macOS.
+
+  - id: BUG-007
+    title: "ingress 413 close-without-drain resets the connection (ConnectionResetByPeer)"
+    severity: high
+    status: fixed
+    found: "2026-08-14"
+    areas: [ingress]
+    files:
+      - src/cmd/ingress/http.zig
+      - src/integration_tests.zig
+    symptom: |
+      `integration_tests.test.ingress: enforces boundary checks
+      (413/400/415/405/healthz)` failed on macOS with
+      `ConnectionResetByPeer` at integration_tests.zig:554 while reading the
+      413 body for an oversized POST (2048 bytes > --max-body 1024).
+    root_cause: |
+      The 413 path rejected `Content-Length > max_body` before reading the
+      body and closed the socket with unread received data; macOS races and
+      sends RST (reproduced empirically: 1 of 3 runs reset without draining,
+      0 of 3 with draining). Closing a TCP socket with pending received
+      bytes resets the connection.
+    fix: |
+      Drain the declared Content-Length (buffered head bytes first, then the
+      socket in 512-byte chunks) before replying 413 via a new
+      `discardBody()`. Every recv still races the H-1 read deadline, so a
+      client that stalls mid-body is dropped instead of wedging the accept
+      loop. The 405-path comment was updated to keep its oversized-no-drain
+      policy accurate.
+    tests:
+      - Full `zig build test` suite; 5/5 consecutive runs green.
+    resolution: |
+      Fixed 2026-08-14 on develop. The 413 path drains the declared body
+      before replying, so a well-formed client sees a clean 413. All 432
+      tests pass on macOS across repeated runs.
