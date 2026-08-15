@@ -142,6 +142,17 @@ pub fn build(b: *std.Build) !void {
         .optimize = mode,
     });
 
+    // Log: leaf application logger (specs/architecture/logging.md, F-2/S3).
+    // Imports std only, so every executable module (worker, ingress, cmd,
+    // scripts) can use it without creating cycles. Executables route their
+    // `std_options.logFn` through it (the TigerBeetle pattern); core
+    // algorithms never log.
+    const log_module = b.createModule(.{
+        .root_source_file = b.path("src/log.zig"),
+        .target = target,
+        .optimize = mode,
+    });
+
     // Model: runtime data model (feature definitions, registry, fingerprint
     // value types). Depends on nothing.
     const model = b.createModule(.{
@@ -230,6 +241,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "io", .module = io },
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
+            .{ .name = "log", .module = log_module },
         },
     });
 
@@ -247,6 +259,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "io", .module = io },
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
+            .{ .name = "log", .module = log_module },
         },
     });
 
@@ -264,6 +277,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "io", .module = io },
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
+            .{ .name = "log", .module = log_module },
         },
     });
 
@@ -333,6 +347,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "browser_package", .module = browser_package },
             .{ .name = "dist_surface", .module = dist_surface },
             .{ .name = "version", .module = version_module },
+            .{ .name = "log", .module = log_module },
         },
     });
 
@@ -404,6 +419,7 @@ pub fn build(b: *std.Build) !void {
         .adapter = adapter,
         .stdx = stdx,
         .version = version_module,
+        .log = log_module,
     });
 
     // zig build docker:worker, zig build docker:ingress
@@ -599,6 +615,7 @@ fn build_scripts(b: *std.Build, steps: struct {
     adapter: *std.Build.Module,
     stdx: *std.Build.Module,
     version: *std.Build.Module,
+    log: *std.Build.Module,
 }) *std.Build.Step.Compile {
     // Darwin needs libc for std.posix.system (see build()); scripts transitively
     // import io through the adapter.
@@ -621,6 +638,7 @@ fn build_scripts(b: *std.Build, steps: struct {
                 .{ .name = "adapter", .module = options.adapter },
                 .{ .name = "stdx", .module = options.stdx },
                 .{ .name = "version", .module = options.version },
+                .{ .name = "log", .module = options.log },
             },
         }),
     });

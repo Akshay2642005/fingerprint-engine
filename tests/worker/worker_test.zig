@@ -7,6 +7,7 @@ const adapter = @import("adapter");
 const io = @import("io");
 const worker = @import("worker");
 const version_info = @import("version");
+const log = @import("log");
 
 const test_package_id = [16]u8{
     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
@@ -82,6 +83,33 @@ test "worker: parse rejects unknown subcommands and options" {
     try testing.expectError(error.UnknownOption, worker.parse(&.{ "worker", "start", "--bogus=1" }));
     try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--transport=carrier-pigeon" }));
     try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--publish=carrier-pigeon" }));
+}
+
+test "worker: parse logging flags default to null (env or default applies)" {
+    const command = try worker.parse(&.{ "worker", "start" });
+    switch (command) {
+        .start => |options| {
+            try testing.expect(options.log_level == null);
+            try testing.expect(options.log_format == null);
+        },
+        else => unreachable,
+    }
+}
+
+test "worker: parse --log-level and --log-format override" {
+    const command = try worker.parse(&.{ "worker", "start", "--log-level=debug", "--log-format=json" });
+    switch (command) {
+        .start => |options| {
+            try testing.expectEqual(log.Level.debug, options.log_level.?);
+            try testing.expectEqual(log.Format.json, options.log_format.?);
+        },
+        else => unreachable,
+    }
+}
+
+test "worker: parse rejects invalid log level and format values" {
+    try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--log-level=loud" }));
+    try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--log-format=xml" }));
 }
 
 test "worker: parse amqp options default to the local broker" {

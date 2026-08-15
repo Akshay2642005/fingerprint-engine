@@ -54,9 +54,9 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 385
-  unit_tests: 378
-  integration_tests: 7
+  total_tests: 445
+  unit_tests: 425
+  integration_tests: 20
   status: all_green
   fuzz_targets: 3
   benchmarks: 12
@@ -95,13 +95,19 @@ modules:
     - amqp (client, protocol, types, result publisher)
   worker:
     - cli (start --transport=loopback|tcp --publish=none|amqp)
+    - logging (--log-level= --log-format=, FPKG_LOG_LEVEL/FPKG_LOG_FORMAT, F-2/S3)
   scripts:
     - worker request (FPKG round-trip against a running worker)
     - amqp get (live broker inspector — throwaway queue bound to all 9 result routing keys)
+    - amqp get --quiet (suppress the info(amqp) connection dump)
     - generate fixture signal-package-v2
     - docker build-worker/run helpers
   ingress:
-    - planned (M5/S4 — specs/architecture/ingress.md)
+    - delivered (M5/S4 — specs/architecture/ingress.md; worker pool + HTTP server)
+    - logging (--log-level= --log-format=, F-2/S3)
+  logging:
+    - src/log.zig leaf module (Level/Scope/Format, text/json, UTC timestamps)
+    - std_options.logFn routing (TigerBeetle pattern) in worker/ingress/fingerprint/scripts
   browser:
     - sdk (hand-written TS: index, types, package, transport, middleware, collectors)
     - generated (tables.ts, config.ts from the Zig model)
@@ -115,8 +121,9 @@ ci_cd:
 handoff:
   next_skill: "elaborate-spec"
   note: |
-    v0.2.2 released. Backlog captured in specs/quality/audits/2026-08-08.md (bugs
-    BUGS.yaml, architecture/ingress.md, architecture/logging.md). Next slices:
-    S1 BUG-001 SDK reply field swap + TCP idle timeouts + graceful shutdown;
-    S2 version SSoT; S3 logging; S4 ingress MVP + Dockerfile + GHCR;
-    S5 AMQP consumer + DLQ; S6 compose + release surface.
+    S1 (BUG-001 + H-1/H-2), S2 (version SSoT), S3 (application logging — src/log.zig,
+    worker/ingress/fingerprint/scripts wiring, --log-level/--log-format + env,
+    amqp get --quiet) delivered; 445 tests green (425 unit + 20 integration).
+    Next slices: S4 ingress was delivered in S4-c/d; S5 AMQP consumer + DLQ;
+    S6 compose + ingress release surface. Backlog in specs/quality/audits/2026-08-08.md
+    (BUGS.yaml, architecture/ingress.md, architecture/logging.md).

@@ -25,6 +25,16 @@ const adapter = @import("adapter");
 const io = @import("io");
 const version_info = @import("version");
 const shutdown = @import("shutdown");
+const log = @import("log");
+
+/// Routes `std.log` (the AMQP client's `std.log.scoped(.amqp)`) through the
+/// application logger (specs/architecture/logging.md, F-2/S3). The comptime
+/// level stays `.debug` — the TigerBeetle pattern — so `--log-level` is the
+/// only filter and debug messages are never compiled out.
+pub const std_options = std.Options{
+    .log_level = .debug,
+    .logFn = log.logFn,
+};
 
 /// Product version, injected from build.zig.zon as the `version`
 /// build-options module (ADR-011/BUG-002).
@@ -72,6 +82,10 @@ pub const StartOptions = struct {
     amqp_user: []const u8 = "guest",
     amqp_password: []const u8 = "guest",
     amqp_vhost: []const u8 = "/",
+    /// --log-level (err|warn|info|debug); null = FPKG_LOG_LEVEL, then info.
+    log_level: ?log.Level = null,
+    /// --log-format (text|json); null = FPKG_LOG_FORMAT, then text.
+    log_format: ?log.Format = null,
 };
 
 pub const Command = union(enum) {
@@ -90,6 +104,7 @@ pub const usage =
     \\               [--idle-timeout-ms=ms]
     \\               [--amqp-address=host:port] [--amqp-user=user]
     \\               [--amqp-password=pass] [--amqp-vhost=vhost]
+    \\               [--log-level=level] [--log-format=text|json]
     \\
     \\  worker version
     \\  worker help
@@ -115,6 +130,10 @@ pub const usage =
     \\  --amqp-user     broker user name (default guest)
     \\  --amqp-password  broker password (default guest)
     \\  --amqp-vhost     broker virtual host (default /)
+    \\  --log-level   log verbosity: debug|info|warn|err (default info;
+    \\                FPKG_LOG_LEVEL overrides the default, the flag wins)
+    \\  --log-format  log encoding: text|json (default text;
+    \\                FPKG_LOG_FORMAT overrides the default, the flag wins)
     \\
 ;
 
@@ -152,6 +171,12 @@ pub fn parse(args: []const []const u8) CliError!Command {
             options.amqp_password = arg["--amqp-password=".len..];
         } else if (std.mem.startsWith(u8, arg, "--amqp-vhost=")) {
             options.amqp_vhost = arg["--amqp-vhost=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--log-level=")) {
+            options.log_level = log.parseLevel(arg["--log-level=".len..]) orelse
+                return error.InvalidOption;
+        } else if (std.mem.startsWith(u8, arg, "--log-format=")) {
+            options.log_format = log.parseFormat(arg["--log-format=".len..]) orelse
+                return error.InvalidOption;
         } else return error.UnknownOption;
     }
     if (options.transport == .tcp and options.listen == null) return error.MissingListen;
@@ -324,7 +349,7 @@ fn serve(
         const reply = processFrame(frame, &buf, a) catch |err| {
             // Poison frame (bad magic, integrity violation, ...): drop and
             // ack; v1 has no dead-letter queue.
-            std.debug.print("worker: frame dropped: {s}\n", .{@errorName(err)});
+            log.worker.warn("worker: frame dropped: {s}", .{@errorName(err)});
             t.ack(frame);
             _ = arena.reset(.retain_capacity);
             continue;
@@ -334,7 +359,7 @@ fn serve(
         try t.publish(reply); // transport-level outbound hook (no-op in v1)
         if (publisher) |p| {
             p.publish_reply(reply) catch |err| {
-                std.debug.print("worker: publish dropped: {s}\n", .{@errorName(err)});
+                log.worker.warn("worker: publish dropped: {s}", .{@errorName(err)});
             };
         }
         t.ack(frame);
@@ -343,14 +368,18 @@ fn serve(
 }
 
 fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
+    // Logging config: CLI flags > FPKG_LOG_LEVEL/FPKG_LOG_FORMAT > defaults
+    // (specs/architecture/logging.md). Applied before any message is logged.
+    log.initFromEnv(alloc, options.log_level, options.log_format);
+
     var publisher: ?adapter.amqp_publisher.Publisher = null;
     if (options.publish == .amqp) {
         const host, const port = splitHostPort(options.amqp_address) catch {
-            std.debug.print("worker: invalid --amqp-address '{s}' (expected host:port)\n", .{options.amqp_address});
+            log.worker.err("worker: invalid --amqp-address '{s}' (expected host:port)", .{options.amqp_address});
             std.process.exit(1);
         };
         const address = std.net.Address.parseIp(host, port) catch {
-            std.debug.print("worker: invalid --amqp-address '{s}' (expected host:port)\n", .{options.amqp_address});
+            log.worker.err("worker: invalid --amqp-address '{s}' (expected host:port)", .{options.amqp_address});
             std.process.exit(1);
         };
         const p = adapter.amqp_publisher.Publisher.init(alloc, .{
@@ -361,12 +390,12 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             // The worker caps every reply at header + status + max_result.
             .message_size_max = @intCast(io.frame.header_size + 1 + max_result),
         }) catch |err| {
-            std.debug.print("worker: amqp publisher failed: {s}\n", .{@errorName(err)});
+            log.worker.err("worker: amqp publisher failed: {s}", .{@errorName(err)});
             std.process.exit(1);
         };
         publisher = p;
-        std.debug.print(
-            "worker: amqp publisher ready at {s}:{d} (exchange '{s}')\n",
+        log.worker.info(
+            "worker: amqp publisher ready at {s}:{d} (exchange '{s}')",
             .{ host, port, adapter.amqp_publisher.exchange_name },
         );
     }
@@ -384,7 +413,7 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
         .tcp => {
             const listen = options.listen orelse unreachable; // parse enforces
             const host, const port = splitHostPort(listen) catch {
-                std.debug.print("worker: invalid --listen '{s}' (expected host:port)\n", .{listen});
+                log.worker.err("worker: invalid --listen '{s}' (expected host:port)", .{listen});
                 std.process.exit(1);
             };
             var t = try adapter.Tcp.init(
@@ -397,8 +426,10 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             );
             defer t.deinit();
             // Announce the bound address so supervisors and tests can learn
-            // the ephemeral port (--listen=...:0).
-            std.debug.print("worker: listening on {s}:{d}\n", .{ host, t.port() });
+            // the ephemeral port (--listen=...:0). The `worker: listening on `
+            // substring is an integration-test contract; --log-level=err
+            // suppresses the line on purpose (specs/architecture/logging.md).
+            log.worker.info("worker: listening on {s}:{d}", .{ host, t.port() });
             // H-2: acceptWait bounds the accept so the loop observes the
             // shutdown flag while idle; accept() applies the per-client idle
             // deadline (H-1). On exit the current client is closed by deinit.
@@ -454,7 +485,7 @@ pub fn run(alloc: std.mem.Allocator, args: []const []const u8) !void {
             error.InvalidOption => "invalid option",
             error.MissingListen => "--transport=tcp requires --listen=host:port",
         };
-        std.io.getStdErr().writer().print("worker: {s}\n\n{s}", .{ message, usage }) catch {};
+        log.worker.err("worker: {s}\n\n{s}", .{ message, usage });
         std.process.exit(1);
     };
     switch (command) {
