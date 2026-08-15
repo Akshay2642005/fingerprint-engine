@@ -297,6 +297,31 @@ pub const HttpServer = struct {
         }
     }
 
+    /// Reads and discards up to `count` body bytes (buffered head bytes
+    /// first, then the socket, in bounded chunks). Used to reject a request
+    /// while still draining the declared body so a well-formed client sees
+    /// the error response instead of an RST from closing with unread data
+    /// (macOS/Linux reset a socket closed with pending received bytes).
+    /// Every recv races the H-1 deadline, so a client that stalls mid-body
+    /// is dropped instead of wedging the accept loop.
+    fn discardBody(
+        self: *HttpServer,
+        client: socket_t,
+        head_end: usize,
+        head_len: usize,
+        count: usize,
+    ) void {
+        const body_start = head_end + head_terminator_len;
+        const buffered = head_len - body_start;
+        var remaining = count - @min(buffered, count);
+        var scratch: [512]u8 = undefined;
+        while (remaining > 0) {
+            const n = self.recvSome(client, scratch[0..@min(scratch.len, remaining)]) catch break;
+            if (n == 0) break;
+            remaining -= n;
+        }
+    }
+
     /// Serves one HTTP request on the accepted client: read head, parse,
     /// boundary-check, forward to the pool, relay the reply, close. The
     /// caller closes the client afterwards (or on error).
@@ -346,11 +371,12 @@ pub const HttpServer = struct {
         if (parsed.method == .other) {
             // Unsupported method with a real body (PUT/DELETE/etc): drain
             // it before closing, bounded by max_body, so a well-formed
-            // client sees a clean 405 instead of a reset. Only drain when
-            // the claimed length is within the cap — an attacker-declared
-            // oversized length here gets the same treatment as a real 413
-            // below: close without reading, don't let a rejected request
-            // force us to read arbitrary attacker-controlled bytes.
+            // client sees a clean 405 instead of a reset. Drain within the
+            // cap only; an attacker-declared oversized length here closes
+            // without reading so a rejected request cannot force us to read
+            // arbitrary attacker-controlled bytes (the POST 413 path drains
+            // its declared body — see below — because a browser SDK client
+            // reliably sends it).
             if (parsed.content_length) |len| {
                 if (len <= self.max_body) {
                     const scratch = a.alloc(u8, @intCast(len)) catch null;
@@ -372,6 +398,11 @@ pub const HttpServer = struct {
         };
         // Boundary: reject before reading the body.
         if (content_length > self.max_body) {
+            // Drain the declared body so a well-formed client sees a clean
+            // 413 instead of an RST from closing with unread data. The
+            // per-recv H-1 deadline bounds a client that stalls mid-body;
+            // a client that streams is bounded by the bytes it sends.
+            self.discardBody(client, head.end, head.len, @intCast(content_length));
             try self.replyError(client, 413, "request body too large", parsed.origin);
             return;
         }
