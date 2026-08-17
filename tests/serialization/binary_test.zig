@@ -459,3 +459,40 @@ test "decode rejects unsupported schema version" {
     var r = fbs.reader();
     try testing.expectError(error.UnsupportedVersion, serialization.decode(&r, allocator));
 }
+
+// ── BUG-009: invalid enum tag rejection ──
+
+test "decode rejects invalid FeatureType tag" {
+    const allocator = testing.allocator;
+    // FNGR magic | v1 | feature_count=1 | id=0 (UserAgent) | type=0xFF (invalid) | len=0
+    const invalid_type = [_]u8{
+        'F', 'N', 'G', 'R', // magic
+        1, 0, // schema_version = 1
+        1, 0, // feature_count = 1
+        0, 0, // feature_id = 0 (UserAgent)
+        0xFF, // type_tag = 255 (invalid FeatureType)
+        0, 0, 0, 0, // payload_len = 0
+    };
+
+    var fbs = std.io.fixedBufferStream(&invalid_type);
+    var r = fbs.reader();
+    try testing.expectError(error.InvalidPayload, serialization.decode(&r, allocator));
+}
+
+test "decode rejects invalid FeatureID tag" {
+    const allocator = testing.allocator;
+    // FNGR magic | v1 | feature_count=1 | id=9999 (invalid) | type=0 (Boolean) | len=1 | value
+    const invalid_id = [_]u8{
+        'F', 'N', 'G', 'R', // magic
+        1, 0, // schema_version = 1
+        1, 0, // feature_count = 1
+        0x27, 0x27, // feature_id = 9999 (invalid FeatureID)
+        0, // type_tag = 0 (Boolean)
+        1, 0, 0, 0, // payload_len = 1
+        1, // payload: true
+    };
+
+    var fbs = std.io.fixedBufferStream(&invalid_id);
+    var r = fbs.reader();
+    try testing.expectError(error.InvalidPayload, serialization.decode(&r, allocator));
+}

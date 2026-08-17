@@ -13,10 +13,10 @@ export type { CanvasOptions } from "./canvas.js";
 export { collectWebGLInfo, collectWebGL2Info } from "./webgl.js";
 export type { WebGLInfo } from "./webgl.js";
 
-export { collectAudioFingerprint, collectAudioFingerprintSync } from "./audio.js";
+export { collectAudioFingerprint } from "./audio.js";
 export type { AudioFingerprintOptions } from "./audio.js";
 
-export { collectFonts, getFontFingerprint } from "./fonts.js";
+export { collectFonts, collectFontHash, getFontFingerprint } from "./fonts.js";
 
 export { collectBattery } from "./battery.js";
 export type { BatteryInfo } from "./battery.js";
