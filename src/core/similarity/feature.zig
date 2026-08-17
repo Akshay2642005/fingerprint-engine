@@ -23,8 +23,15 @@ pub fn featureScore(a: FeatureValue, b: FeatureValue) f64 {
 
 fn integerScore(a: i64, b: i64) f64 {
     if (a == b) return 1.0;
-    const diff = @abs(a - b);
-    return 1.0 - @min(@as(f64, @floatFromInt(diff)) / INT_MAX_RANGE, 1.0);
+    // Safe absolute difference (BUG-011): use saturating subtraction to
+    // avoid overflow when a − b underflows (e.g. i64.min − 1). The saturated
+    // result for i64.min − 0 or i64.min − i64.max is maxInt(i64), which
+    // produces a score of 0.0 — the correct result for the maximum possible
+    // distance.
+    const d = std.math.sub(i64, a, b) catch std.math.maxInt(i64);
+    // @abs(i64.min) itself overflows, so handle that single value explicitly.
+    const abs_d: u64 = if (d == std.math.minInt(i64)) std.math.maxInt(u64) else @intCast(@abs(d));
+    return 1.0 - @min(@as(f64, @floatFromInt(abs_d)) / INT_MAX_RANGE, 1.0);
 }
 
 fn floatScore(a: f64, b: f64) f64 {
