@@ -324,11 +324,12 @@ bugs:
   - id: BUG-011
     title: "integerScore can overflow/panic on i64 extremes"
     severity: medium
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [core, similarity]
     files:
       - src/core/similarity/feature.zig
+      - tests/core/feature_sim_test.zig
     symptom: |
       feature.zig:26 `@abs(a - b)` overflows when a=i64.min, b>0 (panic in
       Debug/ReleaseSafe, wraps in ReleaseFast); @abs(i64.min) is UB. Inputs are
@@ -336,10 +337,17 @@ bugs:
     root_cause: |
       Signed subtraction before absolute value without clamping.
     fix: |
-      Cast to u64 before subtraction or clamp inputs; add boundary tests at
-      i64.min/i64.max.
+      Use std.math.sub (saturating) to compute the signed difference, catching
+      overflow to maxInt(i64); handle the remaining @abs(i64.min) edge case
+      by checking d == minInt before taking the absolute value.
     tests: |
-      Negative-space similarity tests for extreme i64 values.
+      Three boundary tests added (i64.min vs i64.max, i64.min vs 0, i64.min vs
+      i64.min). Suite: 451 tests green.
+    resolution: |
+      Fixed 2026-08-15 on fix/bug-011-integer-overflow. Saturating arithmetic
+      replaces @abs(a - b) with overflow-safe branches; boundary tests pin
+      i64.min/i64.max paths. 451 tests green (425 unit + 23 integration + 3
+      new similarity boundary tests).
 
   - id: BUG-012
     title: "Jaccard array similarity can exceed 1.0 with duplicate elements"

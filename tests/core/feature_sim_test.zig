@@ -102,3 +102,26 @@ test "StringArray partly overlapping is between 0 and 1" {
     const score = similarity.featureScore(a, b);
     try testing.expect(score > 0.0 and score < 1.0);
 }
+
+// ── BUG-011: i64 boundary tests ──
+
+test "Integer i64.min vs i64.max does not panic" {
+    const a = FV{ .Integer = std.math.minInt(i64) };
+    const b = FV{ .Integer = std.math.maxInt(i64) };
+    const score = similarity.featureScore(a, b);
+    try testing.expectEqual(@as(f64, 0.0), score);
+}
+
+test "Integer i64.min vs 0" {
+    const a = FV{ .Integer = std.math.minInt(i64) };
+    const b = FV{ .Integer = 0 };
+    const score = similarity.featureScore(a, b);
+    try testing.expect(score >= 0.0 and score <= 1.0);
+}
+
+test "Integer i64.min vs i64.min is 1.0" {
+    const a = FV{ .Integer = std.math.minInt(i64) };
+    const b = FV{ .Integer = std.math.minInt(i64) };
+    const score = similarity.featureScore(a, b);
+    try testing.expectEqual(@as(f64, 1.0), score);
+}

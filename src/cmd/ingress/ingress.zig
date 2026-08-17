@@ -266,6 +266,7 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
                 log.ingress.warn("ingress: client dropped: {s}", .{@errorName(err)});
             }
         };
+        log.ingress.debug("ingress: connection closed", .{});
         // HTTP/1.1 `connection: close` — the reply is complete; drop the
         // client now instead of waiting for the next accept.
         server.closeClient();
