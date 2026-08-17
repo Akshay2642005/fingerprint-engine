@@ -220,3 +220,33 @@ jobs:
       - name: Smoke test image entrypoint
         run: |
           docker run --rm --entrypoint /usr/local/bin/worker ${{ steps.tag.outputs.tag }} version
+
+  docker-ingress:
+    name: Docker Ingress Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build ingress Docker image
+        run: zig build docker:ingress
+
+      - name: Resolve image tag from build.zig.zon
+        id: tag
+        run: |
+          VERSION=$(grep -oP '(?<=\.version = ")[^"]+' build.zig.zon)
+          echo "tag=fingerprint-ingress:$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify image exists
+        run: |
+          docker image inspect ${{ steps.tag.outputs.tag }} > /dev/null
+          echo "✅ image ${{ steps.tag.outputs.tag }} built"
+
+      - name: Smoke test image entrypoint
+        run: |
+          docker run --rm --entrypoint /usr/local/bin/ingress ${{ steps.tag.outputs.tag }} version
