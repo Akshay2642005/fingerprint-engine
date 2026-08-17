@@ -352,7 +352,7 @@ bugs:
   - id: BUG-012
     title: "Jaccard array similarity can exceed 1.0 with duplicate elements"
     severity: medium
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [core, similarity]
     files:
@@ -363,14 +363,20 @@ bugs:
     root_cause: |
       Set semantics approximated over multisets without dedup.
     fix: |
-      Deduplicate inputs (or clamp the score); add duplicate-array tests.
+      Clamp Jaccard ratio to 1.0 via @min on all four array helpers; add
+      duplicate-element boundary tests.
     tests: |
-      Duplicate-element boundary tests for all four array Jaccard helpers.
+      Duplicate-element tests for StringArray and IntegerArray (BUG-012);
+      454 tests green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-012-013-jaccard-json-escapes. @min(..., 1.0)
+      applied to jaccardStrings, jaccardIntegers, jaccardFloats, jaccardByteSlices.
+      454 tests green.
 
   - id: BUG-013
     title: "jsonEncode emits invalid JSON (\\xNN escapes)"
     severity: medium
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [serialization, json]
     files:
@@ -381,10 +387,12 @@ bugs:
     root_cause: |
       Non-standard escape encoding for byte strings.
     fix: |
-      Encode Bytes as \u00XX (or base64) or emit a valid JSON string.
+      Encode Bytes as \\u00XX (valid JSON Unicode escape) instead of \\xXX.
     tests: |
-      JSON round-trip test including Bytes features; parse with a conforming
-      parser.
+      JSON encode test asserting \\u00XX format and absence of \\x; 454 tests green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-012-013-jaccard-json-escapes. Both Bytes and
+      BytesArray branches updated. 454 tests green.
 
   - id: BUG-014
     title: "JSON codec advertised at the dispatch boundary but unusable"

@@ -88,7 +88,8 @@ fn jaccardStrings(a: []const []const u8, b: []const []const u8) f64 {
     }
     const union_size = a.len + b.len - intersection;
     if (union_size == 0) return 1.0;
-    return @as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size));
+    // BUG-012: clamp to 1.0 — duplicates in a can make intersection > union_size
+    return @min(@as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size)), 1.0);
 }
 
 fn jaccardIntegers(a: []const i64, b: []const i64) f64 {
@@ -104,7 +105,7 @@ fn jaccardIntegers(a: []const i64, b: []const i64) f64 {
     }
     const union_size = a.len + b.len - intersection;
     if (union_size == 0) return 1.0;
-    return @as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size));
+    return @min(@as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size)), 1.0);
 }
 
 fn jaccardFloats(a: []const f64, b: []const f64) f64 {
@@ -120,7 +121,7 @@ fn jaccardFloats(a: []const f64, b: []const f64) f64 {
     }
     const union_size = a.len + b.len - intersection;
     if (union_size == 0) return 1.0;
-    return @as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size));
+    return @min(@as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size)), 1.0);
 }
 
 fn jaccardByteSlices(a: []const []const u8, b: []const []const u8) f64 {
@@ -136,7 +137,7 @@ fn jaccardByteSlices(a: []const []const u8, b: []const []const u8) f64 {
     }
     const union_size = a.len + b.len - intersection;
     if (union_size == 0) return 1.0;
-    return @as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size));
+    return @min(@as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size)), 1.0);
 }
 
 // ── Levenshtein distance ──

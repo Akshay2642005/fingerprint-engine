@@ -125,3 +125,21 @@ test "Integer i64.min vs i64.min is 1.0" {
     const score = similarity.featureScore(a, b);
     try testing.expectEqual(@as(f64, 1.0), score);
 }
+
+// ── BUG-012: Jaccard duplicate-element tests ──
+
+test "StringArray duplicates do not exceed 1.0" {
+    const a = FV{ .StringArray = &[_][]const u8{ "x", "x" } };
+    const b = FV{ .StringArray = &[_][]const u8{ "x" } };
+    const score = similarity.featureScore(a, b);
+    try testing.expect(score <= 1.0);
+    try testing.expect(score > 0.0);
+}
+
+test "IntegerArray duplicates do not exceed 1.0" {
+    const a = FV{ .IntegerArray = &[_]i64{ 5, 5, 5 } };
+    const b = FV{ .IntegerArray = &[_]i64{5} };
+    const score = similarity.featureScore(a, b);
+    try testing.expect(score <= 1.0);
+    try testing.expect(score > 0.0);
+}

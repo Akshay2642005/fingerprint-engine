@@ -101,3 +101,34 @@ test "json encode v1 omits package id" {
     const json = fbs.getWritten();
     try testing.expect(std.mem.indexOf(u8, json, "package_id") == null);
 }
+
+// ── BUG-013: Bytes JSON encoding uses valid \\u00XX escapes ──
+
+test "json encode Bytes uses \\u00xx escapes (valid JSON)" {
+    const meta = fingerprint.FingerprintMetadata{
+        .schema_version = 1,
+        .sdk_version = "0.1.0",
+        .collected_at = 0,
+    };
+    const fp = fingerprint.Fingerprint{
+        .metadata = meta,
+        .features = &.{
+            fingerprint.Feature{
+                .id = features.FeatureID.CanvasHash,
+                .value = fingerprint.FeatureValue{ .Bytes = &[_]u8{ 0xDE, 0xAD, 0xFF } },
+            },
+        },
+    };
+
+    var buf: [512]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    var w = fbs.writer();
+    try serialization.jsonEncode(&w, fp);
+
+    const json = fbs.getWritten();
+    // Must contain \u00XX, NOT \xXX
+    try testing.expect(std.mem.containsAtLeast(u8, json, 1, "\\u00de"));
+    try testing.expect(std.mem.containsAtLeast(u8, json, 1, "\\u00ad"));
+    try testing.expect(std.mem.containsAtLeast(u8, json, 1, "\\u00ff"));
+    try testing.expect(!std.mem.containsAtLeast(u8, json, 1, "\\x"));
+}
