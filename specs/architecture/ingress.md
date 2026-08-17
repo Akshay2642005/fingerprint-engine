@@ -29,7 +29,7 @@ components.
 | ----------------------- | -------------------------- | -------------------------------------------------------------------- |
 | `content-type`          | `application/octet-stream` | raw SignalPackage v2 body                                            |
 | `x-fpkg-schema-version` | `2`                        | body schema version                                                  |
-| `x-fpkg-sdk-version`    | `0.2.2`                    | SDK version (informational)                                          |
+| `x-fpkg-sdk-version`    | `0.3.0`                    | SDK version (informational)                                          |
 | `x-fpkg-package-id`     | 32 hex chars               | replay identity                                                      |
 | `x-fpkg-integrity`      | `sha256-<64 hex>`          | SHA-256 of the body (best-effort; the ingress enforces when present) |
 | `origin`                | `https://example.com`      | CORS origin (optional)                                               |

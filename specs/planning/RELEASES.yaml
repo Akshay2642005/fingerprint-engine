@@ -1,7 +1,19 @@
 # Release Plan — Fingerprint Engine
-target_version: 0.2.2
+target_version: 0.3.0
 
 releases:
+  v0.3.0:
+    status: released
+    date: "2026-08-17"
+    epics:
+      - rework/distributed-engine
+    summary: |
+      Audit hardening pass (R-1 through R-8, C-1/C-2/C-5/C-7, D-1 through D-5):
+      comptime exhaustiveness checks, buffer overflow guards, IPv6 support,
+      WASM scratch aliasing guard, assertion density sweep, function splits,
+      CI matrix expansion (macOS + TS SDK tests), dead code removal.
+      All BUGs BUG-001 through BUG-016 resolved. Version bump to 0.3.0.
+
   v0.2.2:
     status: released
     date: "2026-08-08"

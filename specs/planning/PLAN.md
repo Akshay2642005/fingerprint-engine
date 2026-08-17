@@ -1,6 +1,6 @@
 # Fingerprint Engine — Plan
 
-Current: **v0.2.2** (2026-08-08), distributed rework shipped. This file
+Current: **v0.3.0** (2026-08-17), audit hardening shipped. This file
 replaces the pre-rework M1–M4 integration/quality plan (see
 `specs/archive/` for the superseded items).
 

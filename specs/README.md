@@ -2,7 +2,7 @@
 
 Master index for all planning documentation. Everything is written before
 code (per `CONVENTIONS.md`), and status files are refreshed after every
-release. Current release: **v0.2.2** (2026-08-08), Zig **0.14.1**.
+release. Current release: **v0.3.0** (2026-08-17), Zig **0.14.1**.
 
 ## Document map
 
@@ -27,7 +27,7 @@ specs/
 | `product/VISION.md` | Initiative direction and non-targets | Current |
 | `product/SCOPE.md` | What the product does — targets, milestones, out-of-scope | Current |
 | `product/GLOSSARY.yaml` | Domain terms (wire, engine, platform) | Current |
-| `product/snapshots/` | "What exists today" per release (`v0.2.2.md`) | Current |
+| `product/snapshots/` | "What exists today" per release (`v0.3.0.md`) | Current |
 | `decisions/` | ADR-0001…0011 — architectural decision records | Adopted |
 | `decisions/rework/` | Locked D1–D20 rework series: ANALYSIS, DECISIONS, DESIGN, MIGRATION | Complete |
 | `architecture/tech-stack.md` | Toolchain, module inventory, formats, build targets | Current |
@@ -39,7 +39,7 @@ specs/
 | `planning/PLAN.md` | Milestone plan — M1–M4 (done) + M5 (next) + slices S1–S6 | Current |
 | `planning/STATUS.yaml` | Epic-level execution ledger (e01–e12) + rework breakdown | Current |
 | `planning/PHASES.yaml` | Discover → design → plan → build → verify → release phases | Current |
-| `planning/RELEASES.yaml` | Per-release records (v0.1.0 → v0.2.2) and superseded plans | Current |
+| `planning/RELEASES.yaml` | Per-release records (v0.1.0 → v0.3.0) and superseded plans | Current |
 | `planning/SESSION.yaml` | Session state — active flow, git, modules, CI, handoff | Current |
 | `quality/TEST_PLAN.md` | Test layers, pinned goldens, planned additions | Current |
 | `quality/BUGS.yaml` | Confirmed bug tracker (BUG-001 … BUG-003) | Open |

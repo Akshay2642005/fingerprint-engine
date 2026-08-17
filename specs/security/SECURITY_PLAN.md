@@ -2,7 +2,7 @@
 
 Refreshed 2026-08-08 from the audit (H-1…H-5 in `specs/quality/audits/2026-08-08.md`).
 
-## Threat model (current, v0.2.2)
+## Threat model (current, v0.3.0)
 
 The shipped attack surface today is small: the worker's TCP transport
 (`--transport=tcp`) and the AMQP client. The planned ingress becomes the only

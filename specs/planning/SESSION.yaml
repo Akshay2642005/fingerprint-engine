@@ -11,9 +11,17 @@ git:
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
-  latest_tag: v0.2.2
+  latest_tag: v0.3.0
 
 releases:
+  v0.3.0:
+    date: "2026-08-17"
+    status: released
+    artifacts:
+      - GitHub Release (WASM infra artifact)
+      - npm package (@akshay2642005/fingerprint-sdk v0.3.0)
+      - GHCR image (ghcr.io/akshay2642005/fingerprint-engine/fingerprint-worker)
+
   v0.2.2:
     date: "2026-08-08"
     status: released
