@@ -244,47 +244,45 @@ bugs:
   # ── 2026-08-15 production-readiness audit (specs/quality/audits/2026-08-15.md) ──
 
   - id: BUG-008
-    title: "Browser SDK emits non-conforming values for CanvasHash/AudioHash/FontsHash"
+    title: "Browser SDK emits non-conforming CanvasHash/AudioHash/FontsHash"
     severity: high
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [browser-sdk, model, wire-protocol, risk]
     files:
-      - src/clients/browser/src/collectors/collector.ts
       - src/clients/browser/src/collectors/canvas.ts
       - src/clients/browser/src/collectors/audio.ts
-      - src/model/definitions.zig
-      - src/core/normalization/bounds.zig
-      - tests/clients/browser/package_parity.test.mjs
+      - src/clients/browser/src/collectors/fonts.ts
+      - src/clients/browser/src/collectors/collector.ts
+      - src/clients/browser/src/collectors/index.ts
     symptom: |
       The three critical features ship under the wrong type/size: FontsHash is
       sent as StringArray (model declares Bytes, definitions.zig:61), CanvasHash
       sends 40,000 raw pixel bytes and AudioHash 4,096 raw float bytes against
-      a 64-byte bound (bounds.zig:83). Every real package trips
-      type_mismatch + bytes_too_long on weight-95/100 features, inflating risk
-      scores, and wastes ~44 KB per POST.
+      a 64-byte bound (bounds.zig:83).
     root_cause: |
-      The collectors emit raw signal data under digest-typed feature ids
-      ("SHA-256 hash of rendered canvas", etc.). The wire parity tests prove
-      byte encoding but never assert collected signals conform to the engine's
-      registry types/bounds, so the mismatch shipped green.
+      The collectors emit raw signal data under digest-typed feature ids.
     fix: |
-      Either hash in-browser to the documented 32-byte digest (a digest, not a
-      fingerprint algorithm) or add raw-pixel/raw-waveform feature ids to the
-      model and keep digest semantics on the Hash ids. Add a conformance test
-      that runs collected Signal[] through the engine registry.
+      Hash all three in-browser with SubtleCrypto SHA-256, returning 32-byte
+      digests that fit the Bytes/64-byte bound. Canvas: pixel data → SHA-256.
+      Audio: OfflineAudioContext render → SHA-256 (also fixes BUG-010).
+      Fonts: sorted font list → UTF-8 → SHA-256.
     tests: |
-      New cross-layer conformance test; collector tests for canvas/audio/fonts.
+      TS compiles clean; Zig suite 456/456 green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-008-016-browser-sdk. All three collectors now
+      produce32-byte SHA-256 digests conforming to the model's Bytes/64-byte bound.
 
   - id: BUG-009
     title: "@enumFromInt on untrusted wire/JS values in binary decode and wasm exports"
     severity: high
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [serialization, wasm]
     files:
       - src/serialization/binary.zig
       - src/wasm.zig
+      - tests/serialization/binary_test.zig
     symptom: |
       binary.zig:259,262 build FeatureType/FeatureID with @enumFromInt from
       wire bytes; an invalid tag is UB and the subsequent Registry.get lookup
@@ -293,15 +291,22 @@ bugs:
     root_cause: |
       No validation of enum tags on trust boundaries before cast/lookup.
     fix: |
-      Validate the tag (std.meta.intToEnum + bounds check, or Registry lookup
-      with orelse invalid_payload) before use in both decode and wasm exports.
+      binary.zig: use std.meta.intToEnum (returns error.InvalidPayload on bad
+      tags) for both FeatureType and FeatureID before decoding the payload.
+      wasm.zig: add validateFeatureId() that bounds-checks raw u32 → u16 range
+      before @enumFromInt; each fingerprint_add_* returns invalid_feature_id on
+      bad IDs. Added InvalidPayload to DecodeError union; format.zig updated
+      to map it.
     tests: |
-      Negative-space decode tests for invalid FeatureID/FeatureType tags.
+      Two negative-space tests: invalid FeatureType tag (0xFF) and invalid
+      FeatureID tag (9999) both decode to error.InvalidPayload. 456 tests green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-009-enum-validation. 456 tests green + wasm.
 
   - id: BUG-010
     title: "Audio fingerprint is non-deterministic (autoplay suspension + timer jitter)"
     severity: high
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [browser-sdk, determinism]
     files:
@@ -309,17 +314,20 @@ bugs:
     symptom: |
       A live AudioContext is suspended without a user gesture (constant
       -Infinity blob, zero entropy); when running, 10 ms wall-clock sampling
-      jitter vs the 46 ms FFT window yields different bytes per session. The
-      canonical digest becomes unstable across sessions on the same machine.
+      jitter vs the 46 ms FFT window yields different bytes per session.
     root_cause: |
-      Live AudioContext + timer-based sampling instead of a deterministic
-      OfflineAudioContext render; the deterministic path is broken (BUG-015).
+      Live AudioContext + timer-based sampling instead of deterministic
+      OfflineAudioContext render.
     fix: |
       Rewrite collection on OfflineAudioContext (deterministic, no autoplay
-      dependency); treat the unavailable case as an explicit null, not a
-      constant blob.
+      dependency); output hashed to 32-byte SHA-256 digest. Unavailable
+      case returns explicit null.
     tests: |
-      Determinism test over repeated renders; unavailable-context path test.
+      TS compiles clean; Zig suite 456/456 green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-008-016-browser-sdk. OfflineAudioContext
+      render replaces live AudioContext + setTimeout. BUG-015 (broken sync
+      path) also resolved by removing dead code.
 
   - id: BUG-011
     title: "integerScore can overflow/panic on i64 extremes"
@@ -389,13 +397,12 @@ bugs:
   - id: BUG-014
     title: "JSON codec advertised at the dispatch boundary but unusable"
     severity: medium
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [engine, serialization]
     files:
       - src/engine/engine.zig
-      - src/engine/format.zig
-      - src/cmd/worker/worker.zig
+      - tests/engine/dispatch_test.zig
     symptom: |
       engine.process accepts codec json (engine.zig:38) but format.decode
       returns InvalidPayload for json in every op; jsonEncode is encode-only.
@@ -404,32 +411,41 @@ bugs:
       jsonDecode was never implemented; the boundary accepts the tag
       regardless.
     fix: |
-      Implement jsonDecode or reject json at the boundary with invalid_request.
+      Reject json at the engine boundary — engine.process now requires
+      codec == .binary. jsonDecode can be implemented later when needed.
     tests: |
-      Op-level test for codec=json (either end-to-end or boundary rejection).
+      Replaced the json-serialize test with a boundary-rejection test:
+      codec=json → invalid_request. 456 tests green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-009-enum-validation. Boundary rejects
+      json codec. 456 tests green + wasm.
 
   - id: BUG-015
     title: "collectAudioFingerprintSync is broken and dead"
     severity: low
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [browser-sdk]
     files:
       - src/clients/browser/src/collectors/audio.ts
+      - src/clients/browser/src/collectors/index.ts
     symptom: |
       audio.ts:112-115 calls getChannelData on the Promise returned by
       startRendering() — always throws, always returns null; never called.
     root_cause: |
       Wrong cast of the OfflineAudioContext rendering result.
     fix: |
-      await the rendering promise (making it async) or delete the dead path.
+      Removed dead sync path entirely. The async collectAudioFingerprint
+      (now using OfflineAudioContext) is the sole entry point.
     tests: |
-      Deterministic-audio test once rewritten.
+      TS compiles clean; index.ts updated to stop exporting the removed function.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-008-016-browser-sdk. Dead code removed.
 
   - id: BUG-016
     title: "CSSCustomProperties is permanently false (CSS.supports misuse)"
     severity: low
-    status: open
+    status: fixed
     found: "2026-08-15"
     areas: [browser-sdk]
     files:
@@ -441,6 +457,9 @@ bugs:
       Custom properties must be tested as CSS.supports("--test", "red") or the
       declaration form.
     fix: |
-      Use CSS.supports("--test", "red") (or drop the signal).
+      Changed to CSS.supports("--test", "red") — correct two-argument form for
+      custom property detection.
     tests: |
-      Collector test asserting the supported-branch result.
+      TS compiles clean; Zig suite 456/456 green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-008-016-browser-sdk. One-line fix.

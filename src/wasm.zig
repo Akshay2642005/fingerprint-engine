@@ -54,6 +54,12 @@ fn addFeature(id: FeatureID, value: FeatureValue) u32 {
     return @intFromEnum(ErrorCode.success);
 }
 
+/// BUG-009: validate a raw u32 feature_id against the FeatureID enum.
+fn validateFeatureId(raw_id: u32) ?FeatureID {
+    if (raw_id > std.math.maxInt(u16)) return null;
+    return std.meta.intToEnum(FeatureID, @as(u16, @intCast(raw_id))) catch null;
+}
+
 // ── Core API ──
 
 export fn fingerprint_init() u32 {
@@ -81,25 +87,30 @@ export fn fingerprint_get_error() u32 {
 // ── Generic add functions ──
 
 export fn fingerprint_add_boolean(feature_id: u32, value: u32) u32 {
-    return addFeature(@enumFromInt(feature_id), .{ .Boolean = value != 0 });
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
+    return addFeature(id, .{ .Boolean = value != 0 });
 }
 
 export fn fingerprint_add_integer(feature_id: u32, value: i64) u32 {
-    return addFeature(@enumFromInt(feature_id), .{ .Integer = value });
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
+    return addFeature(id, .{ .Integer = value });
 }
 
 export fn fingerprint_add_float(feature_id: u32, value: f64) u32 {
-    return addFeature(@enumFromInt(feature_id), .{ .Float = value });
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
+    return addFeature(id, .{ .Float = value });
 }
 
 export fn fingerprint_add_string(feature_id: u32, ptr: u32, len: u32) u32 {
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
     const data = @as([*]const u8, @ptrFromInt(@as(usize, @intCast(ptr))));
-    return addFeature(@enumFromInt(feature_id), .{ .String = data[0..len] });
+    return addFeature(id, .{ .String = data[0..len] });
 }
 
 export fn fingerprint_add_bytes(feature_id: u32, ptr: u32, len: u32) u32 {
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
     const data = @as([*]const u8, @ptrFromInt(@as(usize, @intCast(ptr))));
-    return addFeature(@enumFromInt(feature_id), .{ .Bytes = data[0..len] });
+    return addFeature(id, .{ .Bytes = data[0..len] });
 }
 
 // ── Compute ──

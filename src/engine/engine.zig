@@ -44,7 +44,9 @@ pub fn process(req: *const Request, res: *Response, scratch: std.mem.Allocator) 
     res.status = .ok;
     res.payload_len = 0;
 
-    if (req.codec != .binary and req.codec != .json) {
+    // BUG-014: JSON codec was advertised but jsonDecode was never implemented.
+    // Reject anything that isn't binary to avoid silent failures downstream.
+    if (req.codec != .binary) {
         res.status = .invalid_request;
         return;
     }

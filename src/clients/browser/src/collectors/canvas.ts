@@ -1,7 +1,10 @@
 /**
  * Canvas fingerprinting collector.
- * Renders text and shapes to a canvas, then extracts the pixel data as a hash.
- * This is one of the most common browser fingerprinting techniques.
+ * Renders text and shapes to a canvas, extracts pixel data, and returns a
+ * 32-byte SHA-256 digest that conforms to the model's Bytes/64-byte bound.
+ *
+ * BUG-008: previous version returned raw pixel data (40 KB), tripping
+ * bytes_too_long on every real package. This version hashes in-browser.
  */
 
 export interface CanvasOptions {
@@ -16,12 +19,13 @@ export interface CanvasOptions {
 }
 
 /**
- * Collect canvas fingerprint by rendering text and extracting pixel data.
- * Returns the raw pixel data as Uint8Array which can be hashed by the WASM engine.
+ * Collect canvas fingerprint by rendering text, extracting pixel data, and
+ * returning a 32-byte SHA-256 digest. Returns null if canvas or SubtleCrypto
+ * is unavailable.
  */
-export function collectCanvasFingerprint(
+export async function collectCanvasFingerprint(
 	options: CanvasOptions = {},
-): Uint8Array | null {
+): Promise<Uint8Array | null> {
 	const {
 		text = "fingerprint引擎 🎨",
 		fontSize = 14,
@@ -59,11 +63,12 @@ export function collectCanvasFingerprint(
 		ctx.fillStyle = gradient;
 		ctx.fillRect(0, 40, width, 10);
 
-		// Extract pixel data
+		// Extract pixel data and hash to 32-byte SHA-256 digest
 		const imageData = ctx.getImageData(0, 0, width, height);
-		return new Uint8Array(imageData.data.buffer);
+		const pixelBytes = new Uint8Array(imageData.data.buffer);
+		return new Uint8Array(await crypto.subtle.digest("SHA-256", pixelBytes));
 	} catch {
-		// Canvas not supported or blocked
+		// Canvas not supported or SubtleCrypto unavailable
 		return null;
 	}
 }

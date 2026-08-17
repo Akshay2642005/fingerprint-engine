@@ -8,6 +8,7 @@ const Fingerprint = fingerprint.Fingerprint;
 const FingerprintMetadata = fingerprint.FingerprintMetadata;
 
 const FeatureType = @import("model").FeatureType;
+const FeatureID = @import("model").FeatureID;
 
 /// Binary format magic bytes: "FNGR"
 const MAGIC = [_]u8{ 'F', 'N', 'G', 'R' };
@@ -136,6 +137,7 @@ fn writeValuePayload(w: anytype, value: FeatureValue) !void {
 
 pub const DecodeError = error{
     InvalidMagic,
+    InvalidPayload,
     UnsupportedVersion,
     Truncated,
     OutOfMemory,
@@ -254,12 +256,17 @@ fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!Feature {
     defer allocator.free(payload);
     try readExact(r, payload);
 
+    // BUG-009: validate enum tags from untrusted wire data before use.
+    const feature_type = std.meta.intToEnum(FeatureType, type_tag) catch return error.InvalidPayload;
+
     var pfbs = std.io.fixedBufferStream(payload);
     var pr = pfbs.reader();
-    const value = try readValuePayload(&pr, allocator, @enumFromInt(type_tag));
+    const value = try readValuePayload(&pr, allocator, feature_type);
+
+    const feature_id = std.meta.intToEnum(FeatureID, id_int) catch return error.InvalidPayload;
 
     return Feature{
-        .id = @enumFromInt(id_int),
+        .id = feature_id,
         .value = value,
     };
 }
