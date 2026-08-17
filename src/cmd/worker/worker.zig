@@ -40,8 +40,10 @@ pub const std_options = std.Options{
 /// build-options module (ADR-011/BUG-002).
 pub const version = version_info.version;
 
-/// Upper bound on an operation's result payload. The engine folds oversized
-/// results into `status.buffer_overflow`, so this is a cap, not a contract.
+/// R-6: Upper bound on an operation's result payload (64 KiB). The engine
+/// folds oversized results into `status.buffer_overflow`, so this is a cap,
+/// not a contract. Callers (e.g. WASM, TCP) must not rely on payloads
+/// exceeding this limit — the worker will reject them at the reply stage.
 pub const max_result: usize = 64 * 1024;
 
 // ── Graceful shutdown (H-2) ──────────────────────────────────────────
@@ -79,6 +81,8 @@ pub const StartOptions = struct {
     idle_timeout_ms: u64 = 30_000,
     /// Broker host:port for --publish=amqp.
     amqp_address: []const u8 = "127.0.0.1:5672",
+    // D-5: guest/guest is the standard RabbitMQ development default.
+    // Production deployments MUST override via CLI flags or env vars.
     amqp_user: []const u8 = "guest",
     amqp_password: []const u8 = "guest",
     amqp_vhost: []const u8 = "/",
@@ -503,6 +507,14 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
 }
 
 fn splitHostPort(listen: []const u8) !struct { []const u8, u16 } {
+    // R-7: support IPv6 bracket notation "[::1]:8080" in addition to IPv4 "0.0.0.0:8080".
+    if (listen.len > 0 and listen[0] == '[') {
+        const close = std.mem.indexOfScalar(u8, listen, ']') orelse return error.InvalidListen;
+        if (close + 1 >= listen.len or listen[close + 1] != ':') return error.InvalidListen;
+        const host = listen[1..close];
+        const port = try std.fmt.parseInt(u16, listen[close + 2 ..], 10);
+        return .{ host, port };
+    }
     const idx = std.mem.lastIndexOfScalar(u8, listen, ':') orelse return error.InvalidListen;
     const host = listen[0..idx];
     const port = try std.fmt.parseInt(u16, listen[idx + 1 ..], 10);

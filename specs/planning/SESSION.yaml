@@ -10,10 +10,7 @@ git:
   branch: develop
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
-    from develop after full gate); develop is the integration branch; all
-    feature branches branch off develop. Session specs+amqp-get work landed
-    as the first develop commit. fix/s1-bugs in flight: BUG-001/002/003
-    resolved, verifying before merge to develop."
+    from develop after full gate); develop is the integration branch."
   latest_tag: v0.2.2
 
 releases:
@@ -54,8 +51,8 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 448
-  unit_tests: 425
+  total_tests: 456
+  unit_tests: 433
   integration_tests: 23
   status: all_green
   fuzz_targets: 3
@@ -121,11 +118,7 @@ ci_cd:
 handoff:
   next_skill: "elaborate-spec"
   note: |
-    S1 (BUG-001 + H-1/H-2), S2 (version SSoT), S3 (application logging — src/log.zig,
-    worker/ingress/fingerprint/scripts wiring, --log-level/--log-format + env,
-    amqp get --quiet), S3b (flow logging — worker/ingress/pool flow + worker_id,
-    flow lines at info per UAT feedback, specs/planning/S3b-flow-logging.md)
-    delivered; 448 tests green (425 unit + 23 integration).
-    Next slices: S4 ingress was delivered in S4-c/d; S5 AMQP consumer + DLQ;
-    S6 compose + ingress release surface. Backlog in specs/quality/audits/2026-08-08.md
-    (BUGS.yaml, architecture/ingress.md, architecture/logging.md).
+    All bugs BUG-001 through BUG-016 fixed. S3/S3b logging delivered.
+    S4 ingress delivered. 456 tests green (433 unit + 23 integration).
+    Audit compliance/hardening/ops items (C-1 through C-8, R-1 through R-8,
+    D-1 through D-6) in progress. Next: v0.3.0 release.

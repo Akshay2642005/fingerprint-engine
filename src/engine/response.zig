@@ -1,3 +1,4 @@
+const std = @import("std");
 const Operation = @import("operation.zig").Operation;
 const Status = @import("status.zig").Status;
 
@@ -21,6 +22,7 @@ pub const Response = struct {
 
     /// Bytes written by the engine, without the unused tail of the buffer.
     pub fn slice(self: *const Response) []const u8 {
+        std.debug.assert(self.payload_len <= self.payload.len);
         return self.payload[0..self.payload_len];
     }
 };

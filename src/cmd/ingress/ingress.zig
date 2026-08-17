@@ -188,6 +188,14 @@ fn peerGone(err: anyerror) bool {
 }
 
 fn splitHostPort(listen: []const u8) !struct { []const u8, u16 } {
+    // R-7: support IPv6 bracket notation "[::1]:8080" in addition to IPv4 "0.0.0.0:8080".
+    if (listen.len > 0 and listen[0] == '[') {
+        const close = std.mem.indexOfScalar(u8, listen, ']') orelse return error.InvalidListen;
+        if (close + 1 >= listen.len or listen[close + 1] != ':') return error.InvalidListen;
+        const host = listen[1..close];
+        const port = try std.fmt.parseInt(u16, listen[close + 2 ..], 10);
+        return .{ host, port };
+    }
     const idx = std.mem.lastIndexOfScalar(u8, listen, ':') orelse return error.InvalidListen;
     const host = listen[0..idx];
     const port = try std.fmt.parseInt(u16, listen[idx + 1 ..], 10);

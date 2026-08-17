@@ -116,6 +116,14 @@ const Slot = struct {
 };
 
 fn splitHostPort(seed: []const u8) !struct { []const u8, u16 } {
+    // R-7: support IPv6 bracket notation "[::1]:8080" in addition to IPv4 "0.0.0.0:8080".
+    if (seed.len > 0 and seed[0] == '[') {
+        const close = std.mem.indexOfScalar(u8, seed, ']') orelse return error.InvalidWorker;
+        if (close + 1 >= seed.len or seed[close + 1] != ':') return error.InvalidWorker;
+        const host = seed[1..close];
+        const port = try std.fmt.parseInt(u16, seed[close + 2 ..], 10);
+        return .{ host, port };
+    }
     const idx = std.mem.lastIndexOfScalar(u8, seed, ':') orelse return error.InvalidWorker;
     const host = seed[0..idx];
     const port = try std.fmt.parseInt(u16, seed[idx + 1 ..], 10);

@@ -27,6 +27,7 @@ pub fn normalize(fp: Fingerprint, allocator: std.mem.Allocator) ![]Normalization
     const type_warnings = try validateTypes(fp, allocator);
     defer allocator.free(type_warnings);
     for (type_warnings) |tw| {
+        std.debug.assert(@intFromEnum(tw.feature_id) < @typeInfo(@import("model").FeatureID).@"enum".fields.len);
         try warnings.append(allocator, NormalizationWarning{ .type_mismatch = tw });
     }
 

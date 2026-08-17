@@ -5,7 +5,7 @@ Read CONVENTIONS.md before any GitHub or git operation.
 ## Project
 
 High-performance, enterprise-grade browser fingerprinting SDK written in Zig.
-Stack: Zig 0.16.0
+Stack: Zig 0.14.1
 
 ## Commands
 

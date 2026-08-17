@@ -9,6 +9,15 @@ const Fingerprint = fingerprint.Fingerprint;
 const FeatureID = features.FeatureID;
 const Registry = features.Registry;
 
+// C-5: named thresholds for risk scoring.
+const MISSING_PENALTY_PER: f64 = 0.15;
+const MISSING_CAP: f64 = 0.4;
+const NORM_PENALTY_PER: f64 = 0.05;
+const NORM_CAP: f64 = 0.2;
+const LOW_COVERAGE_THRESHOLD: f64 = 0.5;
+const LOW_ENTROPY_THRESHOLD: f64 = 4.0;
+const LOW_ENTROPY_PENALTY_PER: f64 = 0.05;
+
 /// Flags indicating specific risk factors detected.
 pub const RiskFlag = enum {
     missing_required_feature,
@@ -102,30 +111,33 @@ pub fn computeRisk(fp: Fingerprint, allocator: std.mem.Allocator) !RiskAssessmen
     var score: f64 = 0.0;
 
     // Missing required: severe penalty (up to 0.4)
-    score += @min(@as(f64, @floatFromInt(missing.len)) * 0.15, 0.4);
+    score += @min(@as(f64, @floatFromInt(missing.len)) * MISSING_PENALTY_PER, MISSING_CAP);
 
     // Normalization violations: moderate penalty (up to 0.2)
-    score += @min(@as(f64, @floatFromInt(norm_warnings.len)) * 0.05, 0.2);
+    score += @min(@as(f64, @floatFromInt(norm_warnings.len)) * NORM_PENALTY_PER, NORM_CAP);
 
     // Low coverage: penalize inverse of coverage (up to 0.2)
-    if (coverage_ratio < 0.5) {
-        score += (0.5 - coverage_ratio) * 0.4;
+    if (coverage_ratio < LOW_COVERAGE_THRESHOLD) {
+        score += (LOW_COVERAGE_THRESHOLD - coverage_ratio) * 0.4;
     }
 
     // Low entropy: penalize entropy deficit (up to 0.2)
-    if (fp_entropy < 4.0) {
-        score += (4.0 - fp_entropy) * 0.05;
+    if (fp_entropy < LOW_ENTROPY_THRESHOLD) {
+        score += (LOW_ENTROPY_THRESHOLD - fp_entropy) * LOW_ENTROPY_PENALTY_PER;
     }
 
     score = @min(score, 1.0);
+    std.debug.assert(score >= 0.0 and score <= 1.0);
 
     const label = if (score > 0.7) "high" else if (score > 0.3) "medium" else "low";
 
-    return RiskAssessment{
+    const result = RiskAssessment{
         .score = score,
         .label = label,
         .flags = try flags.toOwnedSlice(allocator),
         .feature_count = feature_count,
         .total_defined = total,
     };
+    std.debug.assert(result.flags.len > 0 or score <= 0.5);
+    return result;
 }

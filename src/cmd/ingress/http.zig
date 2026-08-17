@@ -381,50 +381,58 @@ pub const HttpServer = struct {
 
         // 3. Route.
         if (parsed.method == .get) {
-            if (std.mem.eql(u8, parsed.target, "/healthz")) {
-                var body_buf: [128]u8 = undefined;
-                const body = std.fmt.bufPrint(
-                    &body_buf,
-                    "{{\"status\":\"ok\",\"version\":\"{s}\"}}",
-                    .{version_info.version},
-                ) catch unreachable;
-                // Attribute the probe to the client's real remote address:
-                // monitoring/load-balancer probes send no Origin header, so
-                // the peer address is the meaningful source; a browser probe's
-                // Origin header (CORS) is appended when present.
-                if (parsed.origin) |origin| {
-                    log.ingress.info("ingress: healthz probe from {s} (origin {s})", .{ peer, origin });
-                } else {
-                    log.ingress.info("ingress: healthz probe from {s}", .{peer});
-                }
-                try self.reply(client, 200, "application/json", body, null, parsed.origin);
-            } else {
-                try self.replyError(client, 404, "not found", null);
-            }
+            try self.handleGet(client, &parsed, peer);
             return;
         }
 
         if (parsed.method == .other) {
-            // Unsupported method with a real body (PUT/DELETE/etc): drain
-            // it before closing, bounded by max_body, so a well-formed
-            // client sees a clean 405 instead of a reset. Drain within the
-            // cap only; an attacker-declared oversized length here closes
-            // without reading so a rejected request cannot force us to read
-            // arbitrary attacker-controlled bytes (the POST 413 path drains
-            // its declared body — see below — because a browser SDK client
-            // reliably sends it).
-            if (parsed.content_length) |len| {
-                if (len <= self.max_body) {
-                    const scratch = a.alloc(u8, @intCast(len)) catch null;
-                    if (scratch) |buf| self.drainBody(client, &head_buf, head.end, head.len, buf) catch {};
-                }
-            }
-            log.ingress.warn("ingress: unsupported method {s} from {s}", .{ @tagName(parsed.method), parsed.origin orelse "unknown" });
-            try self.replyError(client, 405, "method not allowed", parsed.origin);
+            try self.handleUnsupported(client, &parsed, head.end, head.len);
             return;
         }
 
         // POST only beyond this point.
+        try self.handlePost(client, allocator, a, &parsed, &head_buf, head.end, head.len);
+    }
+
+    fn handleGet(self: *HttpServer, client: socket_t, parsed: *const ParsedHead, peer: []const u8) !void {
+        if (std.mem.eql(u8, parsed.target, "/healthz")) {
+            var body_buf: [128]u8 = undefined;
+            const body = std.fmt.bufPrint(
+                &body_buf,
+                "{{\"status\":\"ok\",\"version\":\"{s}\"}}",
+                .{version_info.version},
+            ) catch unreachable;
+            if (parsed.origin) |origin| {
+                log.ingress.info("ingress: healthz probe from {s} (origin {s})", .{ peer, origin });
+            } else {
+                log.ingress.info("ingress: healthz probe from {s}", .{peer});
+            }
+            try self.reply(client, 200, "application/json", body, null, parsed.origin);
+        } else {
+            try self.replyError(client, 404, "not found", null);
+        }
+    }
+
+    fn handleUnsupported(self: *HttpServer, client: socket_t, parsed: *const ParsedHead, head_end: usize, head_len: usize) !void {
+        if (parsed.content_length) |len| {
+            if (len <= self.max_body) {
+                self.discardBody(client, head_end, head_len, @intCast(len));
+            }
+        }
+        log.ingress.warn("ingress: unsupported method {s} from {s}", .{ @tagName(parsed.method), parsed.origin orelse "unknown" });
+        try self.replyError(client, 405, "method not allowed", parsed.origin);
+    }
+
+    fn handlePost(
+        self: *HttpServer,
+        client: socket_t,
+        allocator: std.mem.Allocator,
+        a: std.mem.Allocator,
+        parsed: *const ParsedHead,
+        head_buf: *[max_header_bytes]u8,
+        head_end: usize,
+        head_len: usize,
+    ) !void {
         if (parsed.chunked) {
             log.ingress.warn("ingress: chunked transfer from {s}", .{parsed.origin orelse "unknown"});
             try self.replyError(client, 400, "chunked transfer not supported", null);
@@ -435,23 +443,17 @@ pub const HttpServer = struct {
             try self.replyError(client, 411, "content-length required", null);
             return;
         };
-        // Boundary: reject before reading the body.
         if (content_length > self.max_body) {
-            // Drain the declared body so a well-formed client sees a clean
-            // 413 instead of an RST from closing with unread data. The
-            // per-recv H-1 deadline bounds a client that stalls mid-body;
-            // a client that streams is bounded by the bytes it sends.
-            self.discardBody(client, head.end, head.len, @intCast(content_length));
+            self.discardBody(client, head_end, head_len, @intCast(content_length));
             log.ingress.warn("ingress: request body {d} exceeds max {d} from {s}", .{ content_length, self.max_body, parsed.origin orelse "unknown" });
             try self.replyError(client, 413, "request body too large", parsed.origin);
             return;
         }
+        _ = allocator;
 
-        // 4. Read the body (bytes past the head terminator first).
         const body = try a.alloc(u8, @intCast(content_length));
-        try self.drainBody(client, &head_buf, head.end, head.len, body);
+        try self.drainBody(client, head_buf, head_end, head_len, body);
 
-        // 5. Boundary checks.
         if (parsed.integrity) |expected| {
             if (!integrityMatches(expected, body)) {
                 log.ingress.warn("ingress: integrity mismatch from {s}", .{parsed.origin orelse "unknown"});
@@ -467,7 +469,6 @@ pub const HttpServer = struct {
             }
         }
 
-        // 6. Wrap in an FPKG frame and forward to the pool.
         const frame_buf = try a.alloc(u8, io.frame.header_size + body.len);
         const frame = adapter.buildFrame(.signal_package, .binary, body, frame_buf) catch {
             try self.replyError(client, 400, "invalid body", null);
@@ -481,7 +482,6 @@ pub const HttpServer = struct {
             return;
         };
 
-        // 7. Relay the payload verbatim with the mapped status.
         const payload = worker_reply[io.frame.header_size..];
         if (payload.len < 1) {
             try self.replyError(client, 502, "malformed worker reply", null);
@@ -596,7 +596,9 @@ pub const HttpServer = struct {
 
     fn writeCorsHeaders(writer: anytype, origin: ?[]const u8) !void {
         if (origin) |o| {
-            try writer.print("access-control-allow-origin: {s}\r\nvary: origin\r\n", .{o});
+            // R-2: cap Origin to prevent head buffer overflow on oversized headers.
+            const capped = if (o.len > 256) o[0..256] else o;
+            try writer.print("access-control-allow-origin: {s}\r\nvary: origin\r\n", .{capped});
         } else {
             try writer.writeAll("access-control-allow-origin: *\r\n");
         }
