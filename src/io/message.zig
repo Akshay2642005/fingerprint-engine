@@ -59,11 +59,13 @@ pub const MessagePool = struct {
 
     /// Creates a message that copies `bytes`.
     pub fn make(self: *MessagePool, bytes: []const u8) !Message {
+        std.debug.assert(bytes.len > 0);
         return .{ .data = try self.duplicate(bytes), .pool = self };
     }
 
     /// Creates a message with an uninitialized payload of `len` bytes.
     pub fn makeEmpty(self: *MessagePool, len: usize) !Message {
+        std.debug.assert(len > 0);
         return .{ .data = try self.alloc(len), .pool = self };
     }
 };

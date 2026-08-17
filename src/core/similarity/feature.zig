@@ -8,17 +8,19 @@ const FLOAT_MAX_RANGE: f64 = 10000.0;
 
 /// Computes the similarity score between two FeatureValues (0.0 — completely different, 1.0 — identical).
 pub fn featureScore(a: FeatureValue, b: FeatureValue) f64 {
-    switch (a) {
-        .Boolean => return if (a.Boolean == b.Boolean) 1.0 else 0.0,
-        .Integer => return integerScore(a.Integer, b.Integer),
-        .Float => return floatScore(a.Float, b.Float),
-        .String => return stringScore(a.String, b.String),
-        .Bytes => return bytesScore(a.Bytes, b.Bytes),
-        .StringArray => return stringArrayScore(a.StringArray, b.StringArray),
-        .IntegerArray => return integerArrayScore(a.IntegerArray, b.IntegerArray),
-        .FloatArray => return floatArrayScore(a.FloatArray, b.FloatArray),
-        .BytesArray => return bytesArrayScore(a.BytesArray, b.BytesArray),
-    }
+    const score: f64 = switch (a) {
+        .Boolean => |a_v| if (a_v == b.Boolean) @as(f64, 1.0) else @as(f64, 0.0),
+        .Integer => integerScore(a.Integer, b.Integer),
+        .Float => floatScore(a.Float, b.Float),
+        .String => stringScore(a.String, b.String),
+        .Bytes => bytesScore(a.Bytes, b.Bytes),
+        .StringArray => stringArrayScore(a.StringArray, b.StringArray),
+        .IntegerArray => integerArrayScore(a.IntegerArray, b.IntegerArray),
+        .FloatArray => floatArrayScore(a.FloatArray, b.FloatArray),
+        .BytesArray => bytesArrayScore(a.BytesArray, b.BytesArray),
+    };
+    std.debug.assert(score >= 0.0 and score <= 1.0);
+    return score;
 }
 
 fn integerScore(a: i64, b: i64) f64 {

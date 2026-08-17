@@ -14,6 +14,7 @@ const MAX_FEATURES = @typeInfo(FeatureID).@"enum".fields.len;
 /// Unlike hashFingerprint, this does NOT include metadata — it only hashes features.
 /// The features MUST be sorted by FeatureID for deterministic output.
 pub fn hashFingerprintBuffer(feat_list: []const Feature, out: *[32]u8) void {
+    std.debug.assert(feat_list.len <= MAX_FEATURES);
     var ctx = Sha256.init(.{});
 
     for (feat_list) |feat| {

@@ -41,6 +41,46 @@ jobs:
       - name: Run unit tests
         run: zig build test --summary all
 
+  test-macos:
+    name: Test (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Run unit tests
+        run: zig build test --summary all
+
+  test-ts-sdk:
+    name: TS SDK Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install TS SDK dependencies
+        run: npm install
+        working-directory: src/clients/browser
+
+      - name: Run TS SDK tests
+        run: npm test
+        working-directory: src/clients/browser
+
   wasm-build:
     name: WASM Build
     runs-on: ubuntu-latest

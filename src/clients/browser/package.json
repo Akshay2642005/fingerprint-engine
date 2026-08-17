@@ -1,6 +1,6 @@
 {
 	"name": "@akshay2642005/fingerprint-sdk",
-	"version": "0.2.2",
+	"version": "0.3.0",
 	"description": "Browser signal collection SDK — gathers browser signals, packages them into a versioned SignalPackage, and ships them to the fingerprint ingress. No fingerprint computation in the browser.",
 	"type": "module",
 	"main": "./dist/index.js",

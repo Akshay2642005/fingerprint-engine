@@ -38,6 +38,7 @@ pub fn validateTypes(fp: Fingerprint, allocator: std.mem.Allocator) ![]TypeWarni
         const def = Registry.get(feat.id);
         const actual_type = feat.value.valueType();
         if (actual_type != def.value_type) {
+            std.debug.assert(idx < mismatch_count);
             result[idx] = TypeWarning{
                 .feature_id = feat.id,
                 .expected = def.value_type,
@@ -47,6 +48,7 @@ pub fn validateTypes(fp: Fingerprint, allocator: std.mem.Allocator) ![]TypeWarni
             idx += 1;
         }
     }
+    std.debug.assert(idx == mismatch_count);
 
     return result;
 }

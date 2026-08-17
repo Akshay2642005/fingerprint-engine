@@ -104,12 +104,33 @@ export fn fingerprint_add_float(feature_id: u32, value: f64) u32 {
 export fn fingerprint_add_string(feature_id: u32, ptr: u32, len: u32) u32 {
     const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
     const data = @as([*]const u8, @ptrFromInt(@as(usize, @intCast(ptr))));
+    // R-8: if the pointer falls inside scratch, copy immediately to avoid
+    // aliasing — JS may overwrite scratch before compute reads the value.
+    const scratch_start = @intFromPtr(&scratch_buffer);
+    const scratch_end = scratch_start + SCRATCH_SIZE;
+    const data_ptr = @as(usize, @intCast(ptr));
+    if (data_ptr >= scratch_start and data_ptr + len <= scratch_end) {
+        const alloc = std.heap.wasm_allocator;
+        const buf = alloc.alloc(u8, len) catch return @intFromEnum(ErrorCode.buffer_full);
+        @memcpy(buf, data[0..len]);
+        return addFeature(id, .{ .String = buf });
+    }
     return addFeature(id, .{ .String = data[0..len] });
 }
 
 export fn fingerprint_add_bytes(feature_id: u32, ptr: u32, len: u32) u32 {
     const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
     const data = @as([*]const u8, @ptrFromInt(@as(usize, @intCast(ptr))));
+    // R-8: same scratch aliasing guard as add_string.
+    const scratch_start = @intFromPtr(&scratch_buffer);
+    const scratch_end = scratch_start + SCRATCH_SIZE;
+    const data_ptr = @as(usize, @intCast(ptr));
+    if (data_ptr >= scratch_start and data_ptr + len <= scratch_end) {
+        const alloc = std.heap.wasm_allocator;
+        const buf = alloc.alloc(u8, len) catch return @intFromEnum(ErrorCode.buffer_full);
+        @memcpy(buf, data[0..len]);
+        return addFeature(id, .{ .Bytes = buf });
+    }
     return addFeature(id, .{ .Bytes = data[0..len] });
 }
 

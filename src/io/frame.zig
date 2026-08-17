@@ -41,6 +41,8 @@ pub const FrameHeader = struct {
     /// Writes the fixed 48-byte header through `writer` (io.Writer or any
     /// structurally compatible fixed-buffer writer).
     pub fn encode(self: FrameHeader, writer: anytype) !void {
+        std.debug.assert(self.payload_len <= std.math.maxInt(u32));
+        std.debug.assert(self.version == current_version);
         try writer.writeBytes(&magic);
         try writer.writeInt(u16, self.version);
         try writer.writeInt(u8, @intFromEnum(self.message_type));
@@ -64,6 +66,10 @@ pub const FrameHeader = struct {
         const codec = try reader.readInt(u8);
         const payload_len = try reader.readInt(u32);
         const reserved = try reader.readInt(u32);
+        // R-5: reserved must be zero — future versions will use this field
+        // for flags; non-zero values from older peers are protocol errors.
+        if (reserved != 0) return error.InvalidReserved;
+
         var integrity: [32]u8 = undefined;
         try reader.readSlice(&integrity);
 
