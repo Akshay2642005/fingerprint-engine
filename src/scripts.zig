@@ -18,6 +18,18 @@ const engine = @import("engine");
 const io = @import("io");
 const adapter = @import("adapter");
 const stdx = @import("stdx");
+const version_info = @import("version");
+const log = @import("log");
+
+/// Routes `std.log` (the AMQP client's `std.log.scoped(.amqp)`) through the
+/// application logger (specs/architecture/logging.md, F-2/S3), so
+/// `amqp get --quiet` can silence the connection dump. The comptime level
+/// stays `.debug` — the TigerBeetle pattern — so the runtime filter in
+/// `log.shouldLog` is the only gate.
+pub const std_options = std.Options{
+    .log_level = .debug,
+    .logFn = log.logFn,
+};
 
 const usage =
     \\Usage:
@@ -33,7 +45,7 @@ const usage =
     \\
     \\  zig build scripts -- docker build-worker [--tag=name]
     \\    Build the worker container image (deploy/Dockerfile.worker);
-    \\    defaults to the fingerprint-worker:0.2.2 tag.
+    \\    defaults to the fingerprint-worker:<version> tag.
     \\
     \\  zig build scripts -- docker run [--tag=name]
     \\    Run the worker image in the foreground, publishing port 8080.
@@ -95,6 +107,10 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
+    // Logging config from FPKG_LOG_LEVEL/FPKG_LOG_FORMAT (no CLI flags at
+    // this level; `amqp get --quiet` raises the floor later).
+    log.initFromEnv(alloc, null, null);
+
     const args = try std.process.argsAlloc(alloc);
     defer std.process.argsFree(alloc, args);
 
@@ -127,12 +143,13 @@ pub fn main() !void {
         return;
     }
 
-    std.debug.print("unknown subcommand '{s}'\n\n{s}", .{ subcommand, usage });
+    log.scripts.err("unknown subcommand '{s}'\n\n{s}", .{ subcommand, usage });
     std.process.exit(1);
 }
 
-/// Default image tag, matching `zig build docker:worker`.
-const default_tag = "fingerprint-worker:0.2.2";
+/// Default image tag, derived from the package version (ADR-011) so it
+/// matches `zig build docker:worker`.
+const default_tag = "fingerprint-worker:" ++ version_info.version;
 
 /// docker build-worker [--tag=name] / docker run [--tag=name]. Child stdio
 /// is inherited so docker's own progress and interactive output flow through.
@@ -144,7 +161,7 @@ fn dockerCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
             if (std.mem.startsWith(u8, arg, "--tag=")) {
                 tag = arg["--tag=".len..];
             } else {
-                std.debug.print("docker: unknown option '{s}'\n\n{s}", .{ arg, usage });
+                log.scripts.err("docker: unknown option '{s}'\n\n{s}", .{ arg, usage });
                 std.process.exit(1);
             }
         }
@@ -156,7 +173,7 @@ fn dockerCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
     } else if (std.mem.eql(u8, sub, "run")) {
         try runChild(alloc, &.{ "docker", "run", "--rm", "-p", "8080:8080", tag });
     } else {
-        std.debug.print("docker: expected build-worker or run\n\n{s}", .{usage});
+        log.scripts.err("docker: expected build-worker or run\n\n{s}", .{usage});
         std.process.exit(1);
     }
 }
@@ -165,7 +182,7 @@ fn dockerCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
 fn runChild(alloc: std.mem.Allocator, argv: []const []const u8) !void {
     var child = std.process.Child.init(argv, alloc);
     child.spawn() catch {
-        std.debug.print("docker: failed to launch docker (is it installed and running?)\n", .{});
+        log.scripts.err("docker: failed to launch docker (is it installed and running?)", .{});
         std.process.exit(1);
     };
     const term = try child.wait();
@@ -182,7 +199,7 @@ fn runChild(alloc: std.mem.Allocator, argv: []const []const u8) !void {
 fn workerCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
     const sub = if (args.len > 2) args[2] else "";
     if (!std.mem.eql(u8, sub, "request")) {
-        std.debug.print("worker: expected 'request'\n\n{s}", .{usage});
+        log.scripts.err("worker: expected 'request'\n\n{s}", .{usage});
         std.process.exit(1);
     }
     var listen: []const u8 = "127.0.0.1:8080";
@@ -191,18 +208,18 @@ fn workerCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
             if (std.mem.startsWith(u8, arg, "--listen=")) {
                 listen = arg["--listen=".len..];
             } else {
-                std.debug.print("worker: unknown option '{s}'\n\n{s}", .{ arg, usage });
+                log.scripts.err("worker: unknown option '{s}'\n\n{s}", .{ arg, usage });
                 std.process.exit(1);
             }
         }
     }
     const colon = std.mem.lastIndexOfScalar(u8, listen, ':') orelse {
-        std.debug.print("worker: invalid --listen '{s}' (expected host:port)\n", .{listen});
+        log.scripts.err("worker: invalid --listen '{s}' (expected host:port)", .{listen});
         std.process.exit(1);
     };
     const host = listen[0..colon];
     const port = std.fmt.parseInt(u16, listen[colon + 1 ..], 10) catch {
-        std.debug.print("worker: invalid port in --listen '{s}'\n", .{listen});
+        log.scripts.err("worker: invalid port in --listen '{s}'", .{listen});
         std.process.exit(1);
     };
 
@@ -214,7 +231,7 @@ fn workerCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
     const frame = try buildRequestFrame(payload, &frame_buf);
 
     var stream = std.net.tcpConnectToHost(alloc, host, port) catch {
-        std.debug.print("worker: could not connect to {s} (is the worker running?)\n", .{listen});
+        log.scripts.err("worker: could not connect to {s} (is the worker running?)", .{listen});
         std.process.exit(1);
     };
     defer stream.close();
@@ -310,22 +327,22 @@ fn amqpCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
             if (std.mem.startsWith(u8, arg, "--address=")) {
                 address = arg["--address=".len..];
             } else {
-                std.debug.print("amqp: unknown option '{s}'\n\n{s}", .{ arg, usage });
+                log.scripts.err("amqp: unknown option '{s}'\n\n{s}", .{ arg, usage });
                 std.process.exit(1);
             }
         }
     }
     const colon = std.mem.lastIndexOfScalar(u8, address, ':') orelse {
-        std.debug.print("amqp: invalid --address '{s}' (expected host:port)\n", .{address});
+        log.scripts.err("amqp: invalid --address '{s}' (expected host:port)", .{address});
         std.process.exit(1);
     };
     const host = address[0..colon];
     const port = std.fmt.parseInt(u16, address[colon + 1 ..], 10) catch {
-        std.debug.print("amqp: invalid port in --address '{s}'\n", .{address});
+        log.scripts.err("amqp: invalid port in --address '{s}'", .{address});
         std.process.exit(1);
     };
     const parsed = std.net.Address.parseIp(host, port) catch {
-        std.debug.print("amqp: invalid --address '{s}' (expected host:port)\n", .{address});
+        log.scripts.err("amqp: invalid --address '{s}' (expected host:port)", .{address});
         std.process.exit(1);
     };
 
@@ -339,7 +356,7 @@ fn amqpCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
         .virtual_host = "/",
         .message_size_max = io.frame.header_size + (1 << 16),
     }) catch |err| {
-        std.debug.print("amqp: connect failed: {s} (is RabbitMQ running at {s}?)\n", .{ @errorName(err), address });
+        log.scripts.err("amqp: connect failed: {s} (is RabbitMQ running at {s}?)", .{ @errorName(err), address });
         std.process.exit(1);
     };
     defer publisher.deinit(alloc);
@@ -375,7 +392,7 @@ fn amqpCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
     // Read it back and compare byte-for-byte.
     const message = try publisher.client.get_message(.{ .queue = queue_name, .no_ack = false });
     const message_info = message orelse {
-        std.debug.print("amqp: FAIL — queue empty after publish\n", .{});
+        log.scripts.err("amqp: FAIL — queue empty after publish", .{});
         std.process.exit(1);
     };
     const body = try publisher.client.get_message_body();
@@ -386,7 +403,7 @@ fn amqpCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
     }) catch {};
 
     if (!std.mem.eql(u8, body, frame)) {
-        std.debug.print("amqp: FAIL — body mismatch ({d} != {d} bytes)\n", .{ body.len, frame.len });
+        log.scripts.err("amqp: FAIL — body mismatch ({d} != {d} bytes)", .{ body.len, frame.len });
         std.process.exit(1);
     }
     try stdout.print("amqp: PASS — {d} bytes round-tripped identically\n", .{body.len});
@@ -396,7 +413,7 @@ const amqp_get_usage =
     \\Usage:
     \\
     \\  zig build scripts -- amqp get [--address=host:port] [--count=N]
-    \\    [--timeout-ms=N]
+    \\    [--timeout-ms=N] [--quiet]
     \\
     \\Subscribe to live traffic on the fingerprint exchange. A throwaway
     \\queue is bound to every result routing key, then basic.get polls the
@@ -409,6 +426,7 @@ const amqp_get_usage =
     \\  --count=N            stop after N messages (default: until timeout)
     \\  --timeout-ms=N       stop after N ms of polling (default 10000;
     \\                       0 = poll forever until interrupted)
+    \\  --quiet              suppress connection diagnostics (log level err)
     \\
 ;
 
@@ -417,40 +435,48 @@ fn amqpGetCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
     var address: []const u8 = "127.0.0.1:5672";
     var count: usize = 0;
     var timeout_ms: u64 = 10_000;
+    var quiet = false;
 
     for (args[1..]) |arg| {
         if (std.mem.startsWith(u8, arg, "--address=")) {
             address = arg["--address=".len..];
         } else if (std.mem.startsWith(u8, arg, "--count=")) {
             count = std.fmt.parseInt(usize, arg["--count=".len..], 10) catch {
-                std.debug.print("amqp get: invalid --count '{s}'\n", .{arg});
+                log.scripts.err("amqp get: invalid --count '{s}'", .{arg});
                 std.process.exit(1);
             };
         } else if (std.mem.startsWith(u8, arg, "--timeout-ms=")) {
             timeout_ms = std.fmt.parseInt(u64, arg["--timeout-ms=".len..], 10) catch {
-                std.debug.print("amqp get: invalid --timeout-ms '{s}'\n", .{arg});
+                log.scripts.err("amqp get: invalid --timeout-ms '{s}'", .{arg});
                 std.process.exit(1);
             };
+        } else if (std.mem.eql(u8, arg, "--quiet")) {
+            quiet = true;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
             try std.io.getStdOut().writer().writeAll(amqp_get_usage);
             return;
         } else {
-            std.debug.print("amqp get: unknown option '{s}'\n\n{s}", .{ arg, amqp_get_usage });
+            log.scripts.err("amqp get: unknown option '{s}'\n\n{s}", .{ arg, amqp_get_usage });
             std.process.exit(1);
         }
     }
 
+    // --quiet raises the log floor to err before the broker connection, so
+    // the AMQP client's connection chatter is suppressed (data still prints
+    // to stdout). CLI beats FPKG_LOG_LEVEL, per specs/architecture/logging.md.
+    if (quiet) log.level = .err;
+
     const colon = std.mem.lastIndexOfScalar(u8, address, ':') orelse {
-        std.debug.print("amqp get: invalid --address '{s}' (expected host:port)\n", .{address});
+        log.scripts.err("amqp get: invalid --address '{s}' (expected host:port)", .{address});
         std.process.exit(1);
     };
     const host = address[0..colon];
     const port = std.fmt.parseInt(u16, address[colon + 1 ..], 10) catch {
-        std.debug.print("amqp get: invalid port in --address '{s}'\n", .{address});
+        log.scripts.err("amqp get: invalid port in --address '{s}'", .{address});
         std.process.exit(1);
     };
     const parsed = std.net.Address.parseIp(host, port) catch {
-        std.debug.print("amqp get: invalid --address '{s}' (expected host:port)\n", .{address});
+        log.scripts.err("amqp get: invalid --address '{s}' (expected host:port)", .{address});
         std.process.exit(1);
     };
 
@@ -465,7 +491,7 @@ fn amqpGetCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
         .virtual_host = "/",
         .message_size_max = io.frame.header_size + (1 << 16),
     }) catch |err| {
-        std.debug.print("amqp get: connect failed: {s} (is RabbitMQ running at {s}?)\n", .{ @errorName(err), address });
+        log.scripts.err("amqp get: connect failed: {s} (is RabbitMQ running at {s}?)", .{ @errorName(err), address });
         std.process.exit(1);
     };
     defer publisher.deinit(alloc);
@@ -507,7 +533,7 @@ fn amqpGetCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
         if (timeout_ms != 0 and @as(u64, @intCast(std.time.milliTimestamp())) >= deadline) break;
 
         const message = publisher.client.get_message(.{ .queue = queue_name, .no_ack = false }) catch |err| {
-            std.debug.print("amqp get: get_message failed: {s}\n", .{@errorName(err)});
+            log.scripts.err("amqp get: get_message failed: {s}", .{@errorName(err)});
             std.process.exit(1);
         };
         const message_info = message orelse {
@@ -576,14 +602,14 @@ fn printFpkgMessage(w: anytype, body: []const u8) !void {
 fn generate(alloc: std.mem.Allocator, args: []const []const u8) !void {
     const name = if (args.len > 2) args[2] else "";
     if (!std.mem.eql(u8, name, "fixture") or args.len < 4) {
-        std.debug.print("usage: zig build scripts -- generate fixture <name>\n", .{});
+        log.scripts.err("usage: zig build scripts -- generate fixture <name>", .{});
         std.process.exit(1);
     }
     const fixture_name = args[3];
     if (std.mem.eql(u8, fixture_name, fixtures.signal_package_v2.name)) {
         return generateSignalPackageV2(alloc);
     }
-    std.debug.print("unknown fixture '{s}'\n\n{s}", .{ fixture_name, usage });
+    log.scripts.err("unknown fixture '{s}'\n\n{s}", .{ fixture_name, usage });
     std.process.exit(1);
 }
 

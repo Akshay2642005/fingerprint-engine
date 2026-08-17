@@ -6,11 +6,19 @@ const engine = @import("engine");
 const adapter = @import("adapter");
 const io = @import("io");
 const worker = @import("worker");
+const version_info = @import("version");
+const log = @import("log");
 
 const test_package_id = [16]u8{
     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 };
+
+test "worker: version matches the injected build version (BUG-002)" {
+    // The CLI must advertise the same version the build injected; a drift
+    // here means the version single-source-of-truth was bypassed.
+    try testing.expectEqualStrings(version_info.version, worker.version);
+}
 
 test "worker: parse defaults to start with loopback transport" {
     const command = try worker.parse(&.{ "worker", "start" });
@@ -44,11 +52,64 @@ test "worker: parse version and help commands" {
     try testing.expect(try worker.parse(&.{ "worker", "-h" }) == .help);
 }
 
+test "worker: parse idle-timeout-ms defaults to 30000" {
+    const command = try worker.parse(&.{ "worker", "start" });
+    switch (command) {
+        .start => |options| try testing.expectEqual(@as(u64, 30_000), options.idle_timeout_ms),
+        else => unreachable,
+    }
+}
+
+test "worker: parse idle-timeout-ms overrides and zero disables" {
+    const command = try worker.parse(&.{ "worker", "start", "--idle-timeout-ms=500" });
+    switch (command) {
+        .start => |options| try testing.expectEqual(@as(u64, 500), options.idle_timeout_ms),
+        else => unreachable,
+    }
+
+    const disabled = try worker.parse(&.{ "worker", "start", "--idle-timeout-ms=0" });
+    switch (disabled) {
+        .start => |options| try testing.expectEqual(@as(u64, 0), options.idle_timeout_ms),
+        else => unreachable,
+    }
+}
+
+test "worker: parse rejects a non-numeric idle-timeout-ms" {
+    try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--idle-timeout-ms=soon" }));
+}
+
 test "worker: parse rejects unknown subcommands and options" {
     try testing.expectError(error.UnknownSubcommand, worker.parse(&.{ "worker", "bogus" }));
     try testing.expectError(error.UnknownOption, worker.parse(&.{ "worker", "start", "--bogus=1" }));
     try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--transport=carrier-pigeon" }));
     try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--publish=carrier-pigeon" }));
+}
+
+test "worker: parse logging flags default to null (env or default applies)" {
+    const command = try worker.parse(&.{ "worker", "start" });
+    switch (command) {
+        .start => |options| {
+            try testing.expect(options.log_level == null);
+            try testing.expect(options.log_format == null);
+        },
+        else => unreachable,
+    }
+}
+
+test "worker: parse --log-level and --log-format override" {
+    const command = try worker.parse(&.{ "worker", "start", "--log-level=debug", "--log-format=json" });
+    switch (command) {
+        .start => |options| {
+            try testing.expectEqual(log.Level.debug, options.log_level.?);
+            try testing.expectEqual(log.Format.json, options.log_format.?);
+        },
+        else => unreachable,
+    }
+}
+
+test "worker: parse rejects invalid log level and format values" {
+    try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--log-level=loud" }));
+    try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--log-format=xml" }));
 }
 
 test "worker: parse amqp options default to the local broker" {

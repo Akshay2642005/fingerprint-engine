@@ -25,6 +25,7 @@ pub fn shannonEntropy(data: []const u8) f64 {
         }
     }
 
+    std.debug.assert(entropy >= 0.0 and entropy <= 8.0);
     return entropy;
 }
 

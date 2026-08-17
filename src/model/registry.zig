@@ -12,7 +12,9 @@ const lookup = buildLookupTable();
 
 pub const Registry = struct {
     pub inline fn get(id: FeatureID) *const FeatureDefinition {
-        return lookup[@intFromEnum(id)].?;
+        const def = lookup[@intFromEnum(id)].?;
+        std.debug.assert(def.name.len > 0);
+        return def;
     }
     pub inline fn all() []const FeatureDefinition {
         return &defs.definitions;

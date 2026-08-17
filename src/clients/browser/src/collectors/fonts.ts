@@ -145,3 +145,17 @@ export function collectFonts(): string[] {
 export function getFontFingerprint(): string {
 	return collectFonts().join(",");
 }
+
+/**
+ * BUG-008: Hash the sorted font list to a 32-byte SHA-256 digest.
+ * The model declares FontsHash as Bytes/64-byte max, so raw string arrays
+ * (which could be large) must be hashed in-browser before transmission.
+ */
+export async function collectFontHash(): Promise<Uint8Array | null> {
+	const fonts = collectFonts();
+	if (fonts.length === 0) return null;
+
+	const encoder = new TextEncoder();
+	const fontBytes = encoder.encode(fonts.join(","));
+	return new Uint8Array(await crypto.subtle.digest("SHA-256", fontBytes));
+}

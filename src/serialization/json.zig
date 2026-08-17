@@ -49,7 +49,7 @@ fn writeJsonValue(w: anytype, value: FeatureValue) !void {
         .String => |v| try writeJsonString(w, v),
         .Bytes => {
             try w.writeAll("\"");
-            for (value.Bytes) |byte| try w.print("\\x{x:0>2}", .{byte});
+            for (value.Bytes) |byte| try w.print("\\u00{x:0>2}", .{byte});
             try w.writeAll("\"");
         },
         .StringArray => |v| {
@@ -81,7 +81,7 @@ fn writeJsonValue(w: anytype, value: FeatureValue) !void {
             for (v, 0..) |item, i| {
                 if (i > 0) try w.writeAll(", ");
                 try w.writeAll("\"");
-                for (item) |byte| try w.print("\\x{x:0>2}", .{byte});
+                for (item) |byte| try w.print("\\u00{x:0>2}", .{byte});
                 try w.writeAll("\"");
             }
             try w.writeAll("]");

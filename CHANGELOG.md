@@ -7,19 +7,124 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-17
+
 ### Added
 
+- **Shared CLI folder `src/cmd/` (ADR-011)**: the worker and ingress apps
+  live side by side — `main.zig` (combined `fingerprint` binary,
+  `worker|ingress` subcommands plus top-level `version`/`help`),
+  `worker.zig`, `ingress.zig` (S4 CLI scaffold: `start`/`version`/`help`,
+  parse fully implemented and unit-tested; the HTTP server is the next
+  backlog slice). Three build targets ship three executables:
+  `zig build fingerprint` (combined), `zig build worker`,
+  `zig build ingress` (standalone). Distribution works both ways: Docker
+  images (`deploy/Dockerfile.worker`, `deploy/Dockerfile.ingress`,
+  `zig build docker:worker` / `docker:ingress`) run the component binary;
+  binary releases can ship the single `fingerprint` artifact or the
+  individual components. `worker start ...` stays byte-compatible.
+- **Version single source of truth (ADR-011)**: `build.zig` parses
+  `.version` from `build.zig.zon` at comptime and injects it as the
+  `version` build-options module (TigerBeetle pattern); the "0.0.0-dev"
+  `build_options` fallback stubs are gone. The CLI, AMQP properties, wasm
+  metadata, and image tags all derive from the one `.version` in the
+  manifest — a drift is impossible by construction.
+- CI `cmd-build` job: builds the combined `fingerprint` and standalone
+  `ingress` binaries, smoke-tests `fingerprint version`,
+  `fingerprint worker version`, `ingress version`, and uploads artifacts.
+- **Completion-based async IO layer** (`src/io/linux.zig` epoll,
+  `src/io/windows.zig` IOCP, `src/io/darwin.zig` kqueue;
+  `src/io/common.zig`, `src/io/queue.zig`): a TigerBeetle-style event
+  loop with `Completion`/`submit`/`flush`, deadline races, and `cancel`.
+- **Worker TCP transport rebuilt on the io layer (S1)**: sockets are
+  always non-blocking, reads race a deadline completion and fail
+  `error.ConnectionTimedOut` on every platform (H-1), and `acceptWait`
+  races accept against a wait deadline so graceful shutdown stays
+  responsive (H-2).
 - `zig build scripts -- amqp get [--address=host:port] [--count=N]
-  [--timeout-ms=N]` — live broker inspector: binds a throwaway queue to all
-  nine result routing keys (comptime loop over `io.frame.MessageType`),
-  polls `basic.get`, decodes each FPKG frame (message type, integrity
-  verdict, status, digest, features, schema), and nacks after reading.
-  Verified end-to-end against RabbitMQ 4.3.4 (publisher confirms `basic_ack`
-  delivery tags observed).
-- Specs populated for the current status and backlog: index (`specs/README.md`),
-  ADRs (`specs/decisions/` ADR-001…010), product vision/glossary/snapshot,
-  architecture plans, verification checklists, epic archive, refreshed
-  `plan.md` and status files. See `specs/README.md`.
+  [--timeout-ms=N]` — live broker inspector: binds a throwaway queue to
+  all nine result routing keys, polls `basic.get`, decodes each FPKG
+  frame, and nacks after reading.
+- **Application logging** (`src/log.zig`): Level/Scope/Format enum,
+  text/json output, UTC timestamps. Worker, ingress, scripts, and
+  fingerprint commands wire `--log-level=`/`--log-format=` flags with
+  `FPKG_LOG_LEVEL`/`FPKG_LOG_FORMAT` env fallbacks (S3).
+- **Flow logging** (S3b): worker/ingress/pool lifecycle lines at info,
+  frame detail and access lines at debug. Worker ID propagated per
+  connection. `amqp get --quiet` suppresses connection dump.
+- **HTTP ingress server** (`src/cmd/ingress/http.zig`): bounded head
+  read, body boundary checks, integrity/schema validation, FPKG framing,
+  pooled worker forwarding, CORS, healthz probe, connection: close
+  semantics (S4).
+- **Worker pool** (`src/cmd/ingress/pool.zig`): pre-connects to N worker
+  TCP endpoints, round-robin dispatch, per-seed error isolation.
+- CI `test-macos` job: runs `zig build test` on macOS-15 to catch
+  platform-specific regressions (D-4).
+- CI `test-ts-sdk` job: builds the TS SDK dist and runs `node --test`
+  against the browser SDK test suite (D-4).
+
+### Changed
+
+- **Git Flow adopted**: `master` is locked (protected) and only receives
+  merges from `develop` after the full gate. `develop` is the integration
+  branch. CI runs on pushes to and PRs targeting both branches.
+- **IPv6 support**: `splitHostPort` in worker, ingress, and pool now
+  accepts bracket notation `[::1]:8080` in addition to IPv4
+  `0.0.0.0:8080` (R-7).
+- **Binary encode buffer** raised from 1024 to 4096 bytes per feature
+  (R-3).
+- **Risk scoring thresholds** extracted to named constants
+  (`MISSING_PENALTY_PER`, `MISSING_CAP`, etc.) in `core/risk/risk.zig`
+  (C-5).
+- **Assertion density** increased from 183 to 204 across hashing, risk,
+  entropy, similarity, normalization, serialization, engine, frame,
+  message, and registry (C-1).
+- **handleConnection** split from 119 to 53 lines via `handleGet`,
+  `handleUnsupported`, `handlePost` (C-2).
+- **Version bumped** from 0.2.2 to 0.3.0 across `build.zig.zon` and
+  `package.json`.
+- AMQP default credentials (`guest`/`guest`) documented as dev-only (D-5).
+- Specs and docs version references updated from v0.2.2 to v0.3.0.
+
+### Fixed
+
+- Browser SDK `parseWorkerReply()` no longer swaps `schema_version` and
+  `feature_count` (BUG-001).
+- Version single source of truth (BUG-002).
+- **BUG-008**: Browser SDK CanvasHash/AudioHash/FontsHash now hash raw
+  data to 32-byte SHA-256 digests via SubtleCrypto, conforming to the
+  engine's registry types and bounds.
+- **BUG-009**: `@enumFromInt` on untrusted wire/JS values replaced with
+  `std.meta.intToEnum` + `validateFeatureId()` bounds check.
+- **BUG-010**: Audio fingerprint rewritten to use `OfflineAudioContext`
+  for deterministic rendering.
+- **BUG-011**: `integerScore` i64 overflow fixed with saturating
+  arithmetic.
+- **BUG-012**: Jaccard array similarity clamped to 1.0 on all four
+  helpers.
+- **BUG-013**: `jsonEncode` invalid `\xNN` escapes changed to `\u00XX`.
+- **BUG-014**: `engine.process` now rejects `codec=json` with
+  `invalid_request`.
+- **BUG-015**: Dead `collectAudioFingerprintSync` removed from browser
+  SDK.
+- **BUG-016**: `CSSCustomProperties` permanently false fixed —
+  `CSS.supports("color", "--test: red")` changed to
+  `CSS.supports("--test", "red")`.
+- **R-1**: Comptime exhaustiveness check on `dispatch_table` — adding a
+  new Operation without a handler row is now a compile error.
+- **R-2**: Origin header buffer overflow guard — reflected Origin capped
+  to 256 bytes in CORS headers.
+- **R-4**: Boolean decode rejects non-canonical wire values (values other
+  than 0 or 1).
+- **R-5**: Frame reserved field must be zero on decode; non-zero values
+  return `error.InvalidReserved`.
+- **R-8**: WASM scratch aliasing guard — `add_string`/`add_bytes` copy
+  data if the pointer falls inside the scratch buffer.
+- Dead `Codec` struct and export removed from serialization (C-7).
+- CI: macOS runner pinned to `macos-15` (Zig 0.14.1 incompatible with
+  macOS 26 on `macos-latest`).
+- CI: TS SDK tests now build the SDK dist before running (tests import
+  from `dist/` which is not in git).
 
 ## [0.2.2] - 2026-08-08
 

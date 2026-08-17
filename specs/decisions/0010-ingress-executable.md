@@ -1,6 +1,10 @@
 # ADR-010 — HTTP ingress as a separate executable
 
-- **Status:** Adopted (planned, unbuilt — M5/F-1)
+- **Status:** Superseded by ADR-011 (shared CLI folder) — the runtime
+  topology below is unchanged, but the source layout is now
+  `src/cmd/{main,worker,ingress}.zig` and the binary can be distributed as
+  the combined `fingerprint` executable or as individual `worker`/`ingress`
+  executables (ADR-011).
 - **Source:** `specs/architecture/ingress.md`
 
 ## Context
@@ -13,11 +17,13 @@ reply back to HTTP — with **no engine code** inside it.
 
 ## Decision
 
-- **Separate executable `src/ingress/main.zig`** (imports `io` + `adapter`
-  framing helpers only — never `engine`). Rejected a combined
-  `fingerprint-edge` binary for now: the ingress scales differently (few
+- **Separate process for the ingress** — the ingress scales differently (few
   replicas, long-lived connections) and owns concerns the worker must never
-  see (HTTP, TLS, rate limiting, body-size policy, worker selection).
+  see (HTTP, TLS, rate limiting, body-size policy, worker selection). Under
+  ADR-011 this is now a separate *process* built from the shared
+  `src/cmd/ingress.zig` (imports `io` + `adapter` framing helpers only —
+  never `engine`), shipped standalone as `ingress` and as the
+  `fingerprint ingress` subcommand.
 - Contract is already fixed by the SDK: POST `/` with `content-type:
   application/octet-stream`, `x-fpkg-schema-version`, `x-fpkg-sdk-version`,
   `x-fpkg-package-id`, `x-fpkg-integrity: sha256-<hex>`.

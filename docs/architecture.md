@@ -97,14 +97,18 @@ src/adapter/           # Transport implementations (depend on io only)
 ├── tcp.zig            # FPKG request/response server
 └── amqp/              # AMQP 0-9-1 client, protocol, types, result publisher
 
-src/worker/            # Deterministic worker executable
-└── main.zig           # CLI: start --transport=loopback|tcp, --publish=none|amqp
+src/cmd/                # CLI layer (ADR-011) — shared worker + ingress apps
+├── main.zig            # Combined `fingerprint` binary: worker|ingress subcommands
+├── worker.zig          # Worker app: start --transport=loopback|tcp, --publish=none|amqp
+└── ingress.zig         # Ingress app: start --listen=host:port --worker=host:port (S4)
 ```
 
-The worker is a thin shell: receive FPKG frame → deserialize → `engine.process()`
+Each app builds standalone (`zig build worker`, `zig build ingress`) and is
+also dispatched by the combined binary (`zig build fingerprint`). The worker
+is a thin shell: receive FPKG frame → deserialize → `engine.process()`
 → serialize → reply (and optionally publish result events to AMQP). It ships
-as a Docker container (`deploy/Dockerfile.worker`); there is **no native SDK
-and no C ABI**.
+as a Docker container (`deploy/Dockerfile.worker`); the ingress ships as
+`deploy/Dockerfile.ingress`. There is **no native SDK and no C ABI**.
 
 ## Layer 5: Browser SDK (`src/clients/browser/`)
 

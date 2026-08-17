@@ -9,6 +9,19 @@ const stdx = @import("stdx");
 const io = @import("io");
 const adapter = @import("adapter");
 const amqp = adapter.amqp;
+const version_info = @import("version");
+
+test "amqp: connection properties carry the injected product version (BUG-002)" {
+    // The AMQP handshake advertises the product version; it must match the
+    // build's single source of truth, never a hardcoded constant.
+    const options = amqp.ConnectOptions{
+        .host = try std.net.Address.parseIp("127.0.0.1", 5672),
+        .user_name = "guest",
+        .password = "guest",
+        .vhost = "/",
+    };
+    try std.testing.expectEqualStrings(version_info.version, options.properties.version);
+}
 
 test "amqp: connect to a closed port fails cleanly" {
     // Bind an ephemeral listener, note the port, then close it so the port

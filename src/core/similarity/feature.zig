@@ -8,23 +8,32 @@ const FLOAT_MAX_RANGE: f64 = 10000.0;
 
 /// Computes the similarity score between two FeatureValues (0.0 — completely different, 1.0 — identical).
 pub fn featureScore(a: FeatureValue, b: FeatureValue) f64 {
-    switch (a) {
-        .Boolean => return if (a.Boolean == b.Boolean) 1.0 else 0.0,
-        .Integer => return integerScore(a.Integer, b.Integer),
-        .Float => return floatScore(a.Float, b.Float),
-        .String => return stringScore(a.String, b.String),
-        .Bytes => return bytesScore(a.Bytes, b.Bytes),
-        .StringArray => return stringArrayScore(a.StringArray, b.StringArray),
-        .IntegerArray => return integerArrayScore(a.IntegerArray, b.IntegerArray),
-        .FloatArray => return floatArrayScore(a.FloatArray, b.FloatArray),
-        .BytesArray => return bytesArrayScore(a.BytesArray, b.BytesArray),
-    }
+    const score: f64 = switch (a) {
+        .Boolean => |a_v| if (a_v == b.Boolean) @as(f64, 1.0) else @as(f64, 0.0),
+        .Integer => integerScore(a.Integer, b.Integer),
+        .Float => floatScore(a.Float, b.Float),
+        .String => stringScore(a.String, b.String),
+        .Bytes => bytesScore(a.Bytes, b.Bytes),
+        .StringArray => stringArrayScore(a.StringArray, b.StringArray),
+        .IntegerArray => integerArrayScore(a.IntegerArray, b.IntegerArray),
+        .FloatArray => floatArrayScore(a.FloatArray, b.FloatArray),
+        .BytesArray => bytesArrayScore(a.BytesArray, b.BytesArray),
+    };
+    std.debug.assert(score >= 0.0 and score <= 1.0);
+    return score;
 }
 
 fn integerScore(a: i64, b: i64) f64 {
     if (a == b) return 1.0;
-    const diff = @abs(a - b);
-    return 1.0 - @min(@as(f64, @floatFromInt(diff)) / INT_MAX_RANGE, 1.0);
+    // Safe absolute difference (BUG-011): use saturating subtraction to
+    // avoid overflow when a − b underflows (e.g. i64.min − 1). The saturated
+    // result for i64.min − 0 or i64.min − i64.max is maxInt(i64), which
+    // produces a score of 0.0 — the correct result for the maximum possible
+    // distance.
+    const d = std.math.sub(i64, a, b) catch std.math.maxInt(i64);
+    // @abs(i64.min) itself overflows, so handle that single value explicitly.
+    const abs_d: u64 = if (d == std.math.minInt(i64)) std.math.maxInt(u64) else @intCast(@abs(d));
+    return 1.0 - @min(@as(f64, @floatFromInt(abs_d)) / INT_MAX_RANGE, 1.0);
 }
 
 fn floatScore(a: f64, b: f64) f64 {
@@ -81,7 +90,8 @@ fn jaccardStrings(a: []const []const u8, b: []const []const u8) f64 {
     }
     const union_size = a.len + b.len - intersection;
     if (union_size == 0) return 1.0;
-    return @as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size));
+    // BUG-012: clamp to 1.0 — duplicates in a can make intersection > union_size
+    return @min(@as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size)), 1.0);
 }
 
 fn jaccardIntegers(a: []const i64, b: []const i64) f64 {
@@ -97,7 +107,7 @@ fn jaccardIntegers(a: []const i64, b: []const i64) f64 {
     }
     const union_size = a.len + b.len - intersection;
     if (union_size == 0) return 1.0;
-    return @as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size));
+    return @min(@as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size)), 1.0);
 }
 
 fn jaccardFloats(a: []const f64, b: []const f64) f64 {
@@ -113,7 +123,7 @@ fn jaccardFloats(a: []const f64, b: []const f64) f64 {
     }
     const union_size = a.len + b.len - intersection;
     if (union_size == 0) return 1.0;
-    return @as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size));
+    return @min(@as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size)), 1.0);
 }
 
 fn jaccardByteSlices(a: []const []const u8, b: []const []const u8) f64 {
@@ -129,7 +139,7 @@ fn jaccardByteSlices(a: []const []const u8, b: []const []const u8) f64 {
     }
     const union_size = a.len + b.len - intersection;
     if (union_size == 0) return 1.0;
-    return @as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size));
+    return @min(@as(f64, @floatFromInt(intersection)) / @as(f64, @floatFromInt(union_size)), 1.0);
 }
 
 // ── Levenshtein distance ──

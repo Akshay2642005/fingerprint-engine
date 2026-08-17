@@ -7,12 +7,21 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: master
-  status: dirty
-  note: "Uncommitted session work: `zig build scripts -- amqp get` inspector (src/scripts.zig, src/adapter/tcp.zig, src/worker/main.zig, src/integration_tests.zig) + specs/ audit, ingress, logging, and this docs pass. Batching with the S1 code slice per user instruction."
-  latest_tag: v0.2.2
+  branch: develop
+  status: clean
+  note: "Git Flow adopted: master is locked (branch protection, merges only
+    from develop after full gate); develop is the integration branch."
+  latest_tag: v0.3.0
 
 releases:
+  v0.3.0:
+    date: "2026-08-17"
+    status: released
+    artifacts:
+      - GitHub Release (WASM infra artifact)
+      - npm package (@akshay2642005/fingerprint-sdk v0.3.0)
+      - GHCR image (ghcr.io/akshay2642005/fingerprint-engine/fingerprint-worker)
+
   v0.2.2:
     date: "2026-08-08"
     status: released
@@ -50,9 +59,9 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 383
-  unit_tests: 376
-  integration_tests: 7
+  total_tests: 456
+  unit_tests: 433
+  integration_tests: 23
   status: all_green
   fuzz_targets: 3
   benchmarks: 12
@@ -91,13 +100,19 @@ modules:
     - amqp (client, protocol, types, result publisher)
   worker:
     - cli (start --transport=loopback|tcp --publish=none|amqp)
+    - logging (--log-level= --log-format=, FPKG_LOG_LEVEL/FPKG_LOG_FORMAT, F-2/S3)
   scripts:
     - worker request (FPKG round-trip against a running worker)
     - amqp get (live broker inspector — throwaway queue bound to all 9 result routing keys)
+    - amqp get --quiet (suppress the info(amqp) connection dump)
     - generate fixture signal-package-v2
     - docker build-worker/run helpers
   ingress:
-    - planned (M5/S4 — specs/architecture/ingress.md)
+    - delivered (M5/S4 — specs/architecture/ingress.md; worker pool + HTTP server)
+    - logging (--log-level= --log-format=, F-2/S3)
+  logging:
+    - src/log.zig leaf module (Level/Scope/Format, text/json, UTC timestamps)
+    - std_options.logFn routing (TigerBeetle pattern) in worker/ingress/fingerprint/scripts
   browser:
     - sdk (hand-written TS: index, types, package, transport, middleware, collectors)
     - generated (tables.ts, config.ts from the Zig model)
@@ -111,8 +126,7 @@ ci_cd:
 handoff:
   next_skill: "elaborate-spec"
   note: |
-    v0.2.2 released. Backlog captured in specs/quality/audits/2026-08-08.md (bugs
-    BUGS.yaml, architecture/ingress.md, architecture/logging.md). Next slices:
-    S1 BUG-001 SDK reply field swap + TCP idle timeouts + graceful shutdown;
-    S2 version SSoT; S3 logging; S4 ingress MVP + Dockerfile + GHCR;
-    S5 AMQP consumer + DLQ; S6 compose + release surface.
+    All bugs BUG-001 through BUG-016 fixed. S3/S3b logging delivered.
+    S4 ingress delivered. 456 tests green (433 unit + 23 integration).
+    Audit compliance/hardening/ops items (C-1 through C-8, R-1 through R-8,
+    D-1 through D-6) in progress. Next: v0.3.0 release.

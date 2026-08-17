@@ -30,7 +30,7 @@ still outstanding is listed at the end.
 - **F-2:** replace `std.debug.print` in worker/scripts with `src/log.zig`
   (S3).
 - **F-1:** add `src/ingress/` (S4) — the remaining planned module.
-- **Docs:** `docs/` user docs are current for v0.2.2; refresh after S1–S6 as
+- **Docs:** `docs/` user docs are current for v0.3.0; refresh after S1–S6 as
   features land.
 
 ## Guardrails for future refactors

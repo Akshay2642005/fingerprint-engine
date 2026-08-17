@@ -6,28 +6,33 @@ forwards it to a pooled worker over the existing `--transport=tcp` path,
 and translates the FPKG reply back to HTTP. It contains **no engine code**:
 `engine.process()` stays exclusively in the workers (design §7, D16).
 
-## Why a separate executable
+## Why a shared CLI folder with separate processes
 
 The ingress scales differently from the workers (few replicas, long-lived
 connections) and owns concerns the worker must never see: HTTP, TLS, rate
-limiting, body-size policy, and worker selection. Keeping `ingress` and
-`worker` as separate binaries preserves process separation while both ship
-as containers. A combined `fingerprint-edge` binary with subcommands was
-considered and rejected for now — revisit only if ops overhead proves
-real.
+limiting, body-size policy, and worker selection. It therefore stays a
+separate _process_ from the worker, but both apps now live in one CLI folder
+(`src/cmd/`) per ADR-011: `main.zig` (combined `fingerprint` binary),
+`worker.zig`, and `ingress.zig` each with their own `pub fn main`. This keeps
+process separation (both ship as containers with a single entrypoint) while
+sharing the CLI conventions, shutdown handling, and build plumbing. The
+combined `fingerprint` binary is the single-artifact distribution;
+`zig build worker` and `zig build ingress` produce the individual
+components.
 
 ## The contract it serves (already fixed by the SDK)
 
 `src/clients/browser/src/transport.ts` POSTs to `config.ingressUrl`
 (default `http://127.0.0.1:8080`):
 
-| Header | Example | Meaning |
-|--------|---------|---------|
-| `content-type` | `application/octet-stream` | raw SignalPackage v2 body |
-| `x-fpkg-schema-version` | `2` | body schema version |
-| `x-fpkg-sdk-version` | `0.2.2` | SDK version (informational) |
-| `x-fpkg-package-id` | 32 hex chars | replay identity |
-| `x-fpkg-integrity` | `sha256-<64 hex>` | SHA-256 of the body (best-effort; the ingress enforces when present) |
+| Header                  | Example                    | Meaning                                                              |
+| ----------------------- | -------------------------- | -------------------------------------------------------------------- |
+| `content-type`          | `application/octet-stream` | raw SignalPackage v2 body                                            |
+| `x-fpkg-schema-version` | `2`                        | body schema version                                                  |
+| `x-fpkg-sdk-version`    | `0.3.0`                    | SDK version (informational)                                          |
+| `x-fpkg-package-id`     | 32 hex chars               | replay identity                                                      |
+| `x-fpkg-integrity`      | `sha256-<64 hex>`          | SHA-256 of the body (best-effort; the ingress enforces when present) |
+| `origin`                | `https://example.com`      | CORS origin (optional)                                               |
 
 The reply body is the worker's raw payload `u8 status | engine result`
 (`fingerprint_result`: `[32]digest | u16 feature_count | u16 schema_version`
@@ -53,6 +58,7 @@ sequenceDiagram
 ## Ingress responsibilities
 
 1. **Boundary checks** (before proxying):
+
    - Reject `Content-Length > max_body` with 413 (H-5). Configurable cap,
      default 1 MiB — far below the 16 MiB FPKG cap, comfortably above a real
      package (canvas/audio bytes are tens of KB).
@@ -61,8 +67,11 @@ sequenceDiagram
      ingress computes anyway (same digest, zero extra work).
    - `x-fpkg-schema-version` must be a known schema (2; v1 tolerated per the
      engine's compatibility path, or rejected with 415 — decide in review).
+   - `cross-origin` / CORS headers are optional; the ingress does not enforce them
+     (the SDK does). checks the preflight `OPTIONS` request and responds with the appropriate CORS headers if needed.
+
 2. **Frame translation**: reuse `adapter.buildFrame(.signal_package, .binary,
-   body, ...)` — the exact helper the worker already trusts.
+body, ...)` — the exact helper the worker already trusts.
 3. **Worker pool**:
    - `--worker=host:port` (repeatable) seeds the pool; default from
      `FPKG_WORKERS` env (comma-separated) for containerized deploys.
@@ -97,16 +106,27 @@ sequenceDiagram
 ## CLI (mirrors the worker)
 
 ```
+# Standalone binary (zig build ingress -> zig-out/bin/ingress)
 ingress start --listen=host:port --worker=host:port [--worker=...]
               [--max-body=bytes] [--log-level=level] [--log-format=text|json]
 ingress version
 ingress help
+
+# Combined binary (zig build fingerprint -> zig-out/bin/fingerprint)
+fingerprint ingress start --listen=host:port --worker=host:port [--worker=...]
+fingerprint ingress version
+fingerprint ingress help
 ```
+
+Both invocations share the same parser (`ingress.parse`, ADR-011 argv
+contract).
 
 ## Build, deploy, CI
 
-- `src/ingress/main.zig` (imports `io` + `adapter` framing helpers only —
-  never `engine`), built by `zig build ingress`.
+- `src/cmd/ingress.zig` (imports `io` + `adapter` framing helpers only —
+  never `engine`), built by `zig build ingress` → `zig-out/bin/ingress`;
+  also shipped inside the combined `fingerprint` binary
+  (`zig build fingerprint` → `zig-out/bin/fingerprint`, ADR-011).
 - `deploy/Dockerfile.ingress` — same multi-stage alpine pattern as
   `deploy/Dockerfile.worker` (host-built binary, tini, non-root, EXPOSE
   8080/8443).

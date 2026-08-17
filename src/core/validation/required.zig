@@ -24,6 +24,7 @@ pub fn checkRequired(fp: Fingerprint, allocator: std.mem.Allocator) ![]RequiredW
     var present: std.StaticBitSet(@typeInfo(FeatureID).@"enum".fields.len) = .initEmpty();
 
     for (fp.features) |feat| {
+        std.debug.assert(@intFromEnum(feat.id) < @typeInfo(FeatureID).@"enum".fields.len);
         present.set(@intFromEnum(feat.id));
     }
 

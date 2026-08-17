@@ -4,7 +4,7 @@ Refreshed 2026-08-08. The definitive architecture documents are
 `specs/decisions/rework/DESIGN.md` (rework) and `docs/architecture.md` (user-facing);
 this file summarizes the current design state and points at the details.
 
-## Current architecture (shipped, v0.2.2)
+## Current architecture (shipped, v0.3.0)
 
 1. **Deterministic engine** — `engine.process()` over versioned
    `Operation`/`Status`, immutable `Request`, caller-owned `Response`,

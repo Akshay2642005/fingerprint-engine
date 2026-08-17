@@ -12,7 +12,7 @@ import { FeatureID, FeatureType } from "../generated/tables.js";
 import { collectCanvasFingerprint } from "./canvas.js";
 import { collectWebGLInfo } from "./webgl.js";
 import { collectAudioFingerprint } from "./audio.js";
-import { collectFonts } from "./fonts.js";
+import { collectFonts, collectFontHash } from "./fonts.js";
 import { collectBattery } from "./battery.js";
 import { collectMediaInfo } from "./media.js";
 import { collectSpeechVoices } from "./speech.js";
@@ -68,7 +68,7 @@ export async function collectSignals(
 
 	// ── CSS features ──
 	signals.push(
-		{ id: FeatureID.CSSCustomProperties, type: FeatureType.Boolean, value: cssSupports("color", "--test: red") },
+		{ id: FeatureID.CSSCustomProperties, type: FeatureType.Boolean, value: cssSupports("--test", "red") },
 		{ id: FeatureID.CSSGridSupport, type: FeatureType.Boolean, value: cssSupports("display", "grid") },
 		{ id: FeatureID.CSSFlexboxSupport, type: FeatureType.Boolean, value: cssSupports("display", "flex") },
 		{ id: FeatureID.CSSContainerQuery, type: FeatureType.Boolean, value: cssSupports("container-type", "inline-size") },
@@ -97,7 +97,7 @@ export async function collectSignals(
 
 	// ── Canvas ──
 	if (enableCanvas) {
-		const canvasData = collectCanvasFingerprint();
+		const canvasData = await collectCanvasFingerprint();
 		if (canvasData) {
 			signals.push({ id: FeatureID.CanvasHash, type: FeatureType.Bytes, value: canvasData });
 		}
@@ -130,11 +130,11 @@ export async function collectSignals(
 		}
 	}
 
-	// ── Fonts ──
+	// ── Fonts ── (BUG-008: hash to32-byte digest; model declares Bytes)
 	if (enableFonts) {
-		const fonts = collectFonts();
-		if (fonts.length > 0) {
-			signals.push({ id: FeatureID.FontsHash, type: FeatureType.StringArray, value: fonts });
+		const fontHash = await collectFontHash();
+		if (fontHash) {
+			signals.push({ id: FeatureID.FontsHash, type: FeatureType.Bytes, value: fontHash });
 		}
 	}
 

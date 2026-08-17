@@ -1,6 +1,7 @@
 const std = @import("std");
 const core = @import("core");
 const model = @import("model");
+const version_info = @import("version");
 
 const FeatureID = model.FeatureID;
 const FeatureType = model.FeatureType;
@@ -53,6 +54,12 @@ fn addFeature(id: FeatureID, value: FeatureValue) u32 {
     return @intFromEnum(ErrorCode.success);
 }
 
+/// BUG-009: validate a raw u32 feature_id against the FeatureID enum.
+fn validateFeatureId(raw_id: u32) ?FeatureID {
+    if (raw_id > std.math.maxInt(u16)) return null;
+    return std.meta.intToEnum(FeatureID, @as(u16, @intCast(raw_id))) catch null;
+}
+
 // ── Core API ──
 
 export fn fingerprint_init() u32 {
@@ -80,25 +87,51 @@ export fn fingerprint_get_error() u32 {
 // ── Generic add functions ──
 
 export fn fingerprint_add_boolean(feature_id: u32, value: u32) u32 {
-    return addFeature(@enumFromInt(feature_id), .{ .Boolean = value != 0 });
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
+    return addFeature(id, .{ .Boolean = value != 0 });
 }
 
 export fn fingerprint_add_integer(feature_id: u32, value: i64) u32 {
-    return addFeature(@enumFromInt(feature_id), .{ .Integer = value });
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
+    return addFeature(id, .{ .Integer = value });
 }
 
 export fn fingerprint_add_float(feature_id: u32, value: f64) u32 {
-    return addFeature(@enumFromInt(feature_id), .{ .Float = value });
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
+    return addFeature(id, .{ .Float = value });
 }
 
 export fn fingerprint_add_string(feature_id: u32, ptr: u32, len: u32) u32 {
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
     const data = @as([*]const u8, @ptrFromInt(@as(usize, @intCast(ptr))));
-    return addFeature(@enumFromInt(feature_id), .{ .String = data[0..len] });
+    // R-8: if the pointer falls inside scratch, copy immediately to avoid
+    // aliasing — JS may overwrite scratch before compute reads the value.
+    const scratch_start = @intFromPtr(&scratch_buffer);
+    const scratch_end = scratch_start + SCRATCH_SIZE;
+    const data_ptr = @as(usize, @intCast(ptr));
+    if (data_ptr >= scratch_start and data_ptr + len <= scratch_end) {
+        const alloc = std.heap.wasm_allocator;
+        const buf = alloc.alloc(u8, len) catch return @intFromEnum(ErrorCode.buffer_full);
+        @memcpy(buf, data[0..len]);
+        return addFeature(id, .{ .String = buf });
+    }
+    return addFeature(id, .{ .String = data[0..len] });
 }
 
 export fn fingerprint_add_bytes(feature_id: u32, ptr: u32, len: u32) u32 {
+    const id = validateFeatureId(feature_id) orelse return @intFromEnum(ErrorCode.invalid_feature_id);
     const data = @as([*]const u8, @ptrFromInt(@as(usize, @intCast(ptr))));
-    return addFeature(@enumFromInt(feature_id), .{ .Bytes = data[0..len] });
+    // R-8: same scratch aliasing guard as add_string.
+    const scratch_start = @intFromPtr(&scratch_buffer);
+    const scratch_end = scratch_start + SCRATCH_SIZE;
+    const data_ptr = @as(usize, @intCast(ptr));
+    if (data_ptr >= scratch_start and data_ptr + len <= scratch_end) {
+        const alloc = std.heap.wasm_allocator;
+        const buf = alloc.alloc(u8, len) catch return @intFromEnum(ErrorCode.buffer_full);
+        @memcpy(buf, data[0..len]);
+        return addFeature(id, .{ .Bytes = buf });
+    }
+    return addFeature(id, .{ .Bytes = data[0..len] });
 }
 
 // ── Compute ──
@@ -163,7 +196,7 @@ fn buildFingerprint() Fingerprint {
     return .{
         .metadata = .{
             .schema_version = 1,
-            .sdk_version = "0.1.0",
+            .sdk_version = version_info.version,
             .collected_at = 0,
         },
         .features = feature_buffer[0..feature_count],

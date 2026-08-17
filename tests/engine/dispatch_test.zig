@@ -84,20 +84,13 @@ test "process: unknown codec maps to invalid_request" {
     try testing.expectEqual(Status.invalid_request, res.status);
 }
 
-test "process: serialize with json codec emits json" {
-    var arena_instance = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena_instance.deinit();
-    const arena = arena_instance.allocator();
+test "process: json codec is rejected at boundary (BUG-014)" {
+    const req = Request{ .operation = .validate, .codec = .json, .payload = "" };
+    var response_buffer: [64]u8 = undefined;
+    var res = Response.init(.validate, &response_buffer);
+    try engine.process(&req, &res, std.testing.allocator);
 
-    const payload = try encodeFp(arena, try cleanFingerprint(arena));
-    var response_buffer: [4096]u8 = undefined;
-    const req = Request{ .operation = .serialize, .codec = .json, .payload = payload };
-    var res = Response.init(.serialize, &response_buffer);
-    try engine.process(&req, &res, arena);
-
-    try testing.expectEqual(Status.ok, res.status);
-    try testing.expect(std.mem.startsWith(u8, res.slice(), "{"));
-    try testing.expect(std.mem.indexOf(u8, res.slice(), "\"features\"") != null);
+    try testing.expectEqual(Status.invalid_request, res.status);
 }
 
 fn cleanFingerprint(arena: std.mem.Allocator) !model.Fingerprint {

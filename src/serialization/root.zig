@@ -1,5 +1,4 @@
 pub const CodecID = @import("codec.zig").CodecID;
-pub const Codec = @import("codec.zig").Codec;
 pub const schema_version_v1 = @import("codec.zig").schema_version_v1;
 pub const schema_version_v2 = @import("codec.zig").schema_version_v2;
 

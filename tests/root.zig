@@ -1,5 +1,6 @@
 comptime {
     _ = @import("adapter/amqp_test.zig");
+    _ = @import("adapter/client_test.zig");
     _ = @import("adapter/loopback_test.zig");
     _ = @import("adapter/tcp_test.zig");
     _ = @import("adapter/transport_test.zig");
@@ -7,6 +8,8 @@ comptime {
     _ = @import("browser/wasm_test.zig");
     _ = @import("build/browser_package_test.zig");
     _ = @import("build/dist_surface_test.zig");
+    _ = @import("cmd/ingress_http_test.zig");
+    _ = @import("cmd/ingress_test.zig");
     _ = @import("core/bounds_test.zig");
     _ = @import("core/entropy_test.zig");
     _ = @import("core/feature_sim_test.zig");
@@ -33,9 +36,11 @@ comptime {
     _ = @import("io/dispatcher_test.zig");
     _ = @import("io/executor_test.zig");
     _ = @import("io/frame_test.zig");
+    _ = @import("io/io_test.zig");
     _ = @import("io/message_test.zig");
     _ = @import("io/reader_writer_test.zig");
     _ = @import("io/ring_buffer_test.zig");
+    _ = @import("log/log_test.zig");
     _ = @import("model/api_test.zig");
     _ = @import("model/definitions_test.zig");
     _ = @import("model/feature_binding_test.zig");

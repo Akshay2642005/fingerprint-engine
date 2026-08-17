@@ -4,7 +4,7 @@
 
 Logging today is ad-hoc and inconsistent:
 
-- `src/worker/main.zig` and `src/scripts.zig` print with `std.debug.print`
+- `src/cmd/worker.zig` and `src/scripts.zig` print with `std.debug.print`
   (unconditional, no levels, no scopes).
 - The AMQP client logs through `std.log.scoped(.amqp)` — which routes to
   Zig's default stderr logger unless an executable opts in with a custom
@@ -67,7 +67,7 @@ Properties:
 
 `std.log` calls from the AMQP client are routed through the same levels by
 declaring a custom log function in the **executable root modules**
-(`src/worker/main.zig`, future `src/ingress/main.zig`, `src/scripts.zig`):
+(`src/cmd/worker.zig`, `src/cmd/ingress.zig`, `src/scripts.zig`):
 
 ```zig
 pub const std_options = std.Options{
@@ -93,7 +93,7 @@ resolved in `build.zig` (option → env → default).
 
 ### Migration
 
-- Replace every `std.debug.print` in `src/worker/main.zig` and
+- Replace every `std.debug.print` in `src/cmd/worker.zig` and
   `src/scripts.zig` with `log.zig` calls at the appropriate level
   (announcements → `info`, dropped frames → `warn`, CLI errors → `err`).
 - Wire `std_options.logFn` in the worker, scripts, and later ingress

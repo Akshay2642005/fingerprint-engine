@@ -105,6 +105,7 @@ pub fn checkBounds(feat: Feature, allocator: std.mem.Allocator) ![]BoundWarning 
     defer warnings.deinit(allocator);
 
     const def = Registry.get(feat.id);
+    std.debug.assert(def.name.len > 0);
 
     switch (feat.value) {
         .Integer => |v| {

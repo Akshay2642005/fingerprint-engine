@@ -36,7 +36,7 @@ pub fn decode(req: *const Request, scratch: std.mem.Allocator) DecodeError!model
 pub fn decodePayload(payload: []const u8, scratch: std.mem.Allocator) DecodeError!model.Fingerprint {
     var fbs = std.io.fixedBufferStream(payload);
     const decoded = serialization.decode(fbs.reader(), scratch) catch |err| switch (err) {
-        error.InvalidMagic, error.Truncated => return error.InvalidPayload,
+        error.InvalidMagic, error.InvalidPayload, error.Truncated => return error.InvalidPayload,
         error.OutOfMemory => return error.OutOfMemory,
         error.UnsupportedVersion => return error.UnsupportedVersion,
     };

@@ -8,6 +8,7 @@ const Fingerprint = fingerprint.Fingerprint;
 const FingerprintMetadata = fingerprint.FingerprintMetadata;
 
 const FeatureType = @import("model").FeatureType;
+const FeatureID = @import("model").FeatureID;
 
 /// Binary format magic bytes: "FNGR"
 const MAGIC = [_]u8{ 'F', 'N', 'G', 'R' };
@@ -55,6 +56,8 @@ fn freeFeatureValue(allocator: std.mem.Allocator, value: FeatureValue) void {
 /// versions encode the v1 body with their version number preserved — the
 /// version gate lives at the decode/engine boundary, not here.
 pub fn encode(w: anytype, fp: Fingerprint) !void {
+    std.debug.assert(fp.metadata.schema_version != 0);
+    std.debug.assert(fp.features.len <= std.math.maxInt(u16));
     try w.writeAll(&MAGIC);
     try w.writeInt(u16, fp.metadata.schema_version, .little);
     switch (fp.metadata.schema_version) {
@@ -82,7 +85,10 @@ fn encodeFeature(w: anytype, feat: Feature) !void {
     try w.writeInt(u16, @intFromEnum(feat.id), .little);
     try w.writeByte(@intFromEnum(feat.value.valueType()));
 
-    var payload_buf: [1024]u8 = undefined;
+    // R-3: payload cap per feature — 4 KiB covers any practical browser
+    // fingerprint value (longest: StringArray with many entries). If a
+    // feature exceeds this, the fixedBufferStream write will error.
+    var payload_buf: [4096]u8 = undefined;
     var pfbs = std.io.fixedBufferStream(&payload_buf);
     var pw = pfbs.writer();
     try writeValuePayload(&pw, feat.value);
@@ -136,6 +142,7 @@ fn writeValuePayload(w: anytype, value: FeatureValue) !void {
 
 pub const DecodeError = error{
     InvalidMagic,
+    InvalidPayload,
     UnsupportedVersion,
     Truncated,
     OutOfMemory,
@@ -161,6 +168,7 @@ pub fn decode(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFinge
 
     const schema_bytes = try readArray(r, 2);
     const schema_version = std.mem.readInt(u16, &schema_bytes, .little);
+    std.debug.assert(schema_version != 0);
 
     return switch (schema_version) {
         codec.schema_version_v1 => decodeV1(r, allocator),
@@ -254,12 +262,17 @@ fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!Feature {
     defer allocator.free(payload);
     try readExact(r, payload);
 
+    // BUG-009: validate enum tags from untrusted wire data before use.
+    const feature_type = std.meta.intToEnum(FeatureType, type_tag) catch return error.InvalidPayload;
+
     var pfbs = std.io.fixedBufferStream(payload);
     var pr = pfbs.reader();
-    const value = try readValuePayload(&pr, allocator, @enumFromInt(type_tag));
+    const value = try readValuePayload(&pr, allocator, feature_type);
+
+    const feature_id = std.meta.intToEnum(FeatureID, id_int) catch return error.InvalidPayload;
 
     return Feature{
-        .id = @enumFromInt(id_int),
+        .id = feature_id,
         .value = value,
     };
 }
@@ -268,7 +281,9 @@ fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) 
     switch (tag) {
         .Boolean => {
             const byte = (try readArray(r, 1))[0];
-            return FeatureValue{ .Boolean = byte != 0 };
+            // R-4: reject non-canonical booleans — payload must be exactly 1 byte.
+            if (byte != 0 and byte != 1) return error.InvalidPayload;
+            return FeatureValue{ .Boolean = byte == 1 };
         },
         .Integer => {
             const bytes = try readArray(r, 8);

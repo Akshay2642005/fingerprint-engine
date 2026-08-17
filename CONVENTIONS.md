@@ -564,9 +564,17 @@ All changes to this repository MUST follow the [Conventional Commits 1.0.0](http
 
 ### Git Operations
 
-- No direct work on `main` or `master`. Every task MUST start with a feature branch or worktree via `kickoff-branch`.
+- `master` is **locked**: no direct pushes, no direct work, no force
+  pushes, no deletions. It only receives merges — from `develop` — after
+  the full gate (test suite, simulations, regression testing) is green.
+- `develop` is the **integration branch**: all commits, features, and
+  fixes land here first, either directly or via feature branches that
+  branch off `develop`. `master` never receives work-in-progress.
+- Every task MUST start with a feature branch or worktree off `develop`
+  via `kickoff-branch`.
 - **Integrate (solo profile):** Ship with `bash scripts/land-branch.sh <branch> "<conventional message>"` after `release-branch` gates.
-- `git push origin <feature-branch>` is allowed for backup; never push directly to `main`.
+- `git push origin <feature-branch>` is allowed for backup; never push
+  directly to `master`, and never push to `develop` around a red gate.
 - **Git Attribution:** NEVER include `Co-authored-by`, `Co-Authored-By`, or any other footer that attributes code to an AI agent.
 - Never create GitHub issues from automated workflows — produce local .md files in `specs/` instead.
 

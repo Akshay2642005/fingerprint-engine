@@ -1,3 +1,4 @@
+const std = @import("std");
 const Operation = @import("operation.zig").Operation;
 
 /// Codec identifiers shared by the engine and the FPKG envelope. Single source
@@ -14,4 +15,9 @@ pub const Request = struct {
     /// Serialized input. For similarity this is the dual-encoded `{a, b}`
     /// payload: u32 a_len | a bytes | b bytes.
     payload: []const u8,
+
+    pub fn init(op: Operation, codec_id: CodecID, payload: []const u8) Request {
+        std.debug.assert(payload.len > 0 or op == .validate or op == .hash);
+        return .{ .operation = op, .codec = codec_id, .payload = payload };
+    }
 };

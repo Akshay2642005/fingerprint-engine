@@ -1,8 +1,11 @@
 # Bug registry — Fingerprint Engine
 #
 # Confirmed defects found during the 2026-08-08 repository audit
-# (specs/quality/audits/2026-08-08.md). Each entry records the symptom, root cause,
-# affected files, and the planned fix. Status: open | in_progress | fixed.
+# (specs/quality/audits/2026-08-08.md), in macOS bring-up testing on
+# 2026-08-14, and in the 2026-08-15 production-readiness audit
+# (specs/quality/audits/2026-08-15.md). Each entry records the symptom,
+# root cause, affected files, and the planned fix.
+# Status: open | in_progress | fixed.
 #
 # Severity: critical | high | medium | low
 
@@ -10,7 +13,7 @@ bugs:
   - id: BUG-001
     title: "Browser SDK swaps schema_version and feature_count when parsing the worker reply"
     severity: high
-    status: open
+    status: fixed
     found: "2026-08-08"
     areas: [browser-sdk, wire-protocol]
     files:
@@ -39,11 +42,19 @@ bugs:
       - Update tests/clients/browser/transport.test.mjs
       - Consider a parity test that runs `zig build scripts -- worker request`
         and feeds the captured reply bytes through `parseWorkerReply`.
+    resolution: |
+      Fixed 2026-08-11 on fix/s1-bugs. `parseWorkerReply()` now reads
+      `featureCount` at bytes 33..35 and `schemaVersion` at 35..37 (LE),
+      matching the worker's `[32]digest | u16 feature_count | u16 schema`
+      layout in src/engine/ops/hash.zig. The self-consistent swapped test
+      was re-encoded to the real wire layout and a golden test pins the
+      reply against the integration digest constant
+      (db29fc13...e6c75, features=3, schema=2). TS suite: 13/13.
 
   - id: BUG-002
     title: "Version drift — worker, AMQP client, and wasm advertise stale versions"
     severity: medium
-    status: open
+    status: fixed
     found: "2026-08-08"
     areas: [versioning, worker, amqp, wasm]
     files:
@@ -71,11 +82,20 @@ bugs:
     tests:
       - Unit test: worker `version` output equals the injected version.
       - AMQP test: connection properties carry the injected version.
+    resolution: |
+      Fixed 2026-08-11 on fix/s1-bugs. `build.zig` now derives a version
+      string from `package_version` via `b.addOptions()` and injects a
+      `build_options` module into the worker, adapter, wasm, and scripts
+      modules; the hardcoded constants in src/worker/main.zig,
+      src/adapter/amqp/types.zig, src/wasm.zig, and src/scripts.zig are
+      deleted. Regression tests added: worker `version` output equals the
+      injected version (tests/worker/worker_test.zig) and AMQP connection
+      properties carry it (tests/adapter/amqp_test.zig).
 
   - id: BUG-003
     title: "Stale test counts in specs/planning/SESSION.yaml"
     severity: low
-    status: open
+    status: fixed
     found: "2026-08-08"
     areas: [docs, specs]
     files:
@@ -91,3 +111,363 @@ bugs:
       Refresh counts (383/376/7) on the next docs pass; consider making
       the CI summary the reference and keeping specs counts best-effort.
     tests: n/a
+    resolution: |
+      Fixed 2026-08-11 on fix/s1-bugs. Counts refreshed to the current
+      suite (385 total / 378 unit / 7 integration) in SESSION.yaml,
+      specs/architecture/tech-stack.md, and specs/quality/TEST_PLAN.md
+      (the suite grew 383 -> 385 with the two BUG-002 regression tests).
+      Historical references in PHASES.yaml, PLAN.md, STATUS.yaml, and the
+      v0.2.2 snapshot describe the shipped state and were left unchanged.
+
+  - id: BUG-004
+    title: "darwin flush() passes a far-future timespec that macOS kevent rejects with EINVAL"
+    severity: high
+    status: fixed
+    found: "2026-08-14"
+    areas: [io, darwin]
+    files:
+      - src/io/darwin.zig
+    symptom: |
+      `flush()` with no queued deadline expressed a wait-forever wait as a
+      `timespec` of maxInt(i64) nanoseconds (~292 years). macOS rejects any
+      kevent timeout above 2^31 seconds with EINVAL, so the wait returned
+      errno 22 and `posix.zig`'s `.INVAL => unreachable` branch panicked in
+      the worker/ingress event loop (darwin.zig flush).
+    root_cause: |
+      Wait-forever was modelled as a huge finite timeout instead of a NULL
+      kevent timeout. The macOS boundary is exactly 2^31 seconds: verified
+      empirically that `sec=i32max` is accepted while `sec=3e9` returns
+      EINVAL.
+    fix: |
+      Pass `timeout_ptr = null` (kevent waits indefinitely) when blocking
+      with no pending deadline, and clamp far-future deadlines to
+      `maxInt(i32)-1` seconds so they cannot exceed the accepted bound. The
+      caller's flush loop re-waits if a clamped timeout fires.
+    tests:
+      - Full `zig build test` suite (previously panicked on macOS).
+      - Standalone kevent repro (kqtest/main.zig) pins the 2^31s boundary.
+    resolution: |
+      Fixed 2026-08-14 on develop. `flush()` now waits with a NULL timeout
+      for indefinite waits and clamps deadlines above 2^31s to
+      `maxInt(i32)-1` seconds. All 432 tests pass on macOS.
+
+  - id: BUG-005
+    title: "darwin cancel() delivers error.Canceled to timeout completions"
+    severity: high
+    status: fixed
+    found: "2026-08-14"
+    areas: [io, darwin]
+    files:
+      - src/io/darwin.zig
+    symptom: |
+      Panic "attempt to unwrap error: Canceled" in the timeout callback
+      (`client.zig:284`, `on_timeout` `_ = result catch unreachable`) when
+      a deadline race was cancelled.
+    root_cause: |
+      `cancel()` unlinked the completion but still delivered
+      `error.Canceled`; the epoll backend unlinks timeout completions
+      without delivering an error (they `catch unreachable`). A first fix
+      attempt removed the completion unguarded, panicking in queue.zig:96
+      "to_remove is not in the queue".
+    fix: |
+      `cancel()` early-returns for `.timeout` completions, removing them
+      from the timeouts queue guarded by `contains()`, delivering no error
+      — matching the epoll backend exactly. A deadline race only cancels a
+      timeout because the operation itself won first.
+    tests:
+      - Full `zig build test` suite.
+    resolution: |
+      Fixed 2026-08-14 on develop. Timeout completions are unlinked without
+      an error, mirroring epoll; the whole suite passes on macOS.
+
+  - id: BUG-006
+    title: "shutdown install() only handled SIGTERM/SIGINT on Windows and Linux"
+    severity: medium
+    status: fixed
+    found: "2026-08-14"
+    areas: [shutdown, darwin]
+    files:
+      - src/cmd/shutdown.zig
+    symptom: |
+      On macOS, `install()` was a no-op, so worker/ingress died by signal
+      instead of exiting 0 after draining — the H-2 graceful-shutdown
+      integration tests failed on macOS runners.
+    root_cause: |
+      The SIGTERM/SIGINT handler switch covered `.windows` and `.linux`
+      only; every other POSIX target had no branch. The `restorer` field in
+      the Linux Sigaction literal is Linux-glibc-only and does not exist on
+      Darwin's struct, so the Linux branch could not be shared verbatim.
+    fix: |
+      Route all POSIX tags (.linux, .macos, .ios, .tvos, .watchos,
+      .visionos, .freebsd, .netbsd, .openbsd, .dragonfly, .haiku, .solaris,
+      .aix, .serenity) through a new `installPosix()` helper whose Sigaction
+      literal omits `restorer`.
+    tests:
+      - H-2 "exits 0 on SIGTERM after draining" integration tests on macOS.
+    resolution: |
+      Fixed 2026-08-14 on develop. Both H-2 shutdown tests pass on macOS.
+
+  - id: BUG-007
+    title: "ingress 413 close-without-drain resets the connection (ConnectionResetByPeer)"
+    severity: high
+    status: fixed
+    found: "2026-08-14"
+    areas: [ingress]
+    files:
+      - src/cmd/ingress/http.zig
+      - src/integration_tests.zig
+    symptom: |
+      `integration_tests.test.ingress: enforces boundary checks
+      (413/400/415/405/healthz)` failed on macOS with
+      `ConnectionResetByPeer` at integration_tests.zig:554 while reading the
+      413 body for an oversized POST (2048 bytes > --max-body 1024).
+    root_cause: |
+      The 413 path rejected `Content-Length > max_body` before reading the
+      body and closed the socket with unread received data; macOS races and
+      sends RST (reproduced empirically: 1 of 3 runs reset without draining,
+      0 of 3 with draining). Closing a TCP socket with pending received
+      bytes resets the connection.
+    fix: |
+      Drain the declared Content-Length (buffered head bytes first, then the
+      socket in 512-byte chunks) before replying 413 via a new
+      `discardBody()`. Every recv still races the H-1 read deadline, so a
+      client that stalls mid-body is dropped instead of wedging the accept
+      loop. The 405-path comment was updated to keep its oversized-no-drain
+      policy accurate.
+    tests:
+      - Full `zig build test` suite; 5/5 consecutive runs green.
+    resolution: |
+      Fixed 2026-08-14 on develop. The 413 path drains the declared body
+      before replying, so a well-formed client sees a clean 413. All 432
+      tests pass on macOS across repeated runs.
+
+  # ── 2026-08-15 production-readiness audit (specs/quality/audits/2026-08-15.md) ──
+
+  - id: BUG-008
+    title: "Browser SDK emits non-conforming CanvasHash/AudioHash/FontsHash"
+    severity: high
+    status: fixed
+    found: "2026-08-15"
+    areas: [browser-sdk, model, wire-protocol, risk]
+    files:
+      - src/clients/browser/src/collectors/canvas.ts
+      - src/clients/browser/src/collectors/audio.ts
+      - src/clients/browser/src/collectors/fonts.ts
+      - src/clients/browser/src/collectors/collector.ts
+      - src/clients/browser/src/collectors/index.ts
+    symptom: |
+      The three critical features ship under the wrong type/size: FontsHash is
+      sent as StringArray (model declares Bytes, definitions.zig:61), CanvasHash
+      sends 40,000 raw pixel bytes and AudioHash 4,096 raw float bytes against
+      a 64-byte bound (bounds.zig:83).
+    root_cause: |
+      The collectors emit raw signal data under digest-typed feature ids.
+    fix: |
+      Hash all three in-browser with SubtleCrypto SHA-256, returning 32-byte
+      digests that fit the Bytes/64-byte bound. Canvas: pixel data → SHA-256.
+      Audio: OfflineAudioContext render → SHA-256 (also fixes BUG-010).
+      Fonts: sorted font list → UTF-8 → SHA-256.
+    tests: |
+      TS compiles clean; Zig suite 456/456 green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-008-016-browser-sdk. All three collectors now
+      produce32-byte SHA-256 digests conforming to the model's Bytes/64-byte bound.
+
+  - id: BUG-009
+    title: "@enumFromInt on untrusted wire/JS values in binary decode and wasm exports"
+    severity: high
+    status: fixed
+    found: "2026-08-15"
+    areas: [serialization, wasm]
+    files:
+      - src/serialization/binary.zig
+      - src/wasm.zig
+      - tests/serialization/binary_test.zig
+    symptom: |
+      binary.zig:259,262 build FeatureType/FeatureID with @enumFromInt from
+      wire bytes; an invalid tag is UB and the subsequent Registry.get lookup
+      goes out of bounds — worker crash on a malformed frame. wasm.zig
+      fingerprint_add_* (@enumFromInt(feature_id)) traps on out-of-range JS ids.
+    root_cause: |
+      No validation of enum tags on trust boundaries before cast/lookup.
+    fix: |
+      binary.zig: use std.meta.intToEnum (returns error.InvalidPayload on bad
+      tags) for both FeatureType and FeatureID before decoding the payload.
+      wasm.zig: add validateFeatureId() that bounds-checks raw u32 → u16 range
+      before @enumFromInt; each fingerprint_add_* returns invalid_feature_id on
+      bad IDs. Added InvalidPayload to DecodeError union; format.zig updated
+      to map it.
+    tests: |
+      Two negative-space tests: invalid FeatureType tag (0xFF) and invalid
+      FeatureID tag (9999) both decode to error.InvalidPayload. 456 tests green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-009-enum-validation. 456 tests green + wasm.
+
+  - id: BUG-010
+    title: "Audio fingerprint is non-deterministic (autoplay suspension + timer jitter)"
+    severity: high
+    status: fixed
+    found: "2026-08-15"
+    areas: [browser-sdk, determinism]
+    files:
+      - src/clients/browser/src/collectors/audio.ts
+    symptom: |
+      A live AudioContext is suspended without a user gesture (constant
+      -Infinity blob, zero entropy); when running, 10 ms wall-clock sampling
+      jitter vs the 46 ms FFT window yields different bytes per session.
+    root_cause: |
+      Live AudioContext + timer-based sampling instead of deterministic
+      OfflineAudioContext render.
+    fix: |
+      Rewrite collection on OfflineAudioContext (deterministic, no autoplay
+      dependency); output hashed to 32-byte SHA-256 digest. Unavailable
+      case returns explicit null.
+    tests: |
+      TS compiles clean; Zig suite 456/456 green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-008-016-browser-sdk. OfflineAudioContext
+      render replaces live AudioContext + setTimeout. BUG-015 (broken sync
+      path) also resolved by removing dead code.
+
+  - id: BUG-011
+    title: "integerScore can overflow/panic on i64 extremes"
+    severity: medium
+    status: fixed
+    found: "2026-08-15"
+    areas: [core, similarity]
+    files:
+      - src/core/similarity/feature.zig
+      - tests/core/feature_sim_test.zig
+    symptom: |
+      feature.zig:26 `@abs(a - b)` overflows when a=i64.min, b>0 (panic in
+      Debug/ReleaseSafe, wraps in ReleaseFast); @abs(i64.min) is UB. Inputs are
+      untrusted package integers.
+    root_cause: |
+      Signed subtraction before absolute value without clamping.
+    fix: |
+      Use std.math.sub (saturating) to compute the signed difference, catching
+      overflow to maxInt(i64); handle the remaining @abs(i64.min) edge case
+      by checking d == minInt before taking the absolute value.
+    tests: |
+      Three boundary tests added (i64.min vs i64.max, i64.min vs 0, i64.min vs
+      i64.min). Suite: 451 tests green.
+    resolution: |
+      Fixed 2026-08-15 on fix/bug-011-integer-overflow. Saturating arithmetic
+      replaces @abs(a - b) with overflow-safe branches; boundary tests pin
+      i64.min/i64.max paths. 451 tests green (425 unit + 23 integration + 3
+      new similarity boundary tests).
+
+  - id: BUG-012
+    title: "Jaccard array similarity can exceed 1.0 with duplicate elements"
+    severity: medium
+    status: fixed
+    found: "2026-08-15"
+    areas: [core, similarity]
+    files:
+      - src/core/similarity/feature.zig
+    symptom: |
+      feature.zig:71-133 count per-item intersection with `break`, so
+      a=[X,X], b=[X] yields score 2.0 — violating the documented 0..1 contract.
+    root_cause: |
+      Set semantics approximated over multisets without dedup.
+    fix: |
+      Clamp Jaccard ratio to 1.0 via @min on all four array helpers; add
+      duplicate-element boundary tests.
+    tests: |
+      Duplicate-element tests for StringArray and IntegerArray (BUG-012);
+      454 tests green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-012-013-jaccard-json-escapes. @min(..., 1.0)
+      applied to jaccardStrings, jaccardIntegers, jaccardFloats, jaccardByteSlices.
+      454 tests green.
+
+  - id: BUG-013
+    title: "jsonEncode emits invalid JSON (\\xNN escapes)"
+    severity: medium
+    status: fixed
+    found: "2026-08-15"
+    areas: [serialization, json]
+    files:
+      - src/serialization/json.zig
+    symptom: |
+      json.zig:52,84 write Bytes values as \\xNN escapes, which are not valid
+      JSON (RFC 8259); any JSON containing a Bytes feature is unparseable.
+    root_cause: |
+      Non-standard escape encoding for byte strings.
+    fix: |
+      Encode Bytes as \\u00XX (valid JSON Unicode escape) instead of \\xXX.
+    tests: |
+      JSON encode test asserting \\u00XX format and absence of \\x; 454 tests green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-012-013-jaccard-json-escapes. Both Bytes and
+      BytesArray branches updated. 454 tests green.
+
+  - id: BUG-014
+    title: "JSON codec advertised at the dispatch boundary but unusable"
+    severity: medium
+    status: fixed
+    found: "2026-08-15"
+    areas: [engine, serialization]
+    files:
+      - src/engine/engine.zig
+      - tests/engine/dispatch_test.zig
+    symptom: |
+      engine.process accepts codec json (engine.zig:38) but format.decode
+      returns InvalidPayload for json in every op; jsonEncode is encode-only.
+      The wire accepts a tag that can never succeed.
+    root_cause: |
+      jsonDecode was never implemented; the boundary accepts the tag
+      regardless.
+    fix: |
+      Reject json at the engine boundary — engine.process now requires
+      codec == .binary. jsonDecode can be implemented later when needed.
+    tests: |
+      Replaced the json-serialize test with a boundary-rejection test:
+      codec=json → invalid_request. 456 tests green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-009-enum-validation. Boundary rejects
+      json codec. 456 tests green + wasm.
+
+  - id: BUG-015
+    title: "collectAudioFingerprintSync is broken and dead"
+    severity: low
+    status: fixed
+    found: "2026-08-15"
+    areas: [browser-sdk]
+    files:
+      - src/clients/browser/src/collectors/audio.ts
+      - src/clients/browser/src/collectors/index.ts
+    symptom: |
+      audio.ts:112-115 calls getChannelData on the Promise returned by
+      startRendering() — always throws, always returns null; never called.
+    root_cause: |
+      Wrong cast of the OfflineAudioContext rendering result.
+    fix: |
+      Removed dead sync path entirely. The async collectAudioFingerprint
+      (now using OfflineAudioContext) is the sole entry point.
+    tests: |
+      TS compiles clean; index.ts updated to stop exporting the removed function.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-008-016-browser-sdk. Dead code removed.
+
+  - id: BUG-016
+    title: "CSSCustomProperties is permanently false (CSS.supports misuse)"
+    severity: low
+    status: fixed
+    found: "2026-08-15"
+    areas: [browser-sdk]
+    files:
+      - src/clients/browser/src/collectors/collector.ts
+    symptom: |
+      collector.ts:71 CSS.supports("color", "--test: red") tests the string as
+      a value of `color`, invalid everywhere -> false on all browsers.
+    root_cause: |
+      Custom properties must be tested as CSS.supports("--test", "red") or the
+      declaration form.
+    fix: |
+      Changed to CSS.supports("--test", "red") — correct two-argument form for
+      custom property detection.
+    tests: |
+      TS compiles clean; Zig suite 456/456 green.
+    resolution: |
+      Fixed 2026-08-17 on fix/bug-008-016-browser-sdk. One-line fix.

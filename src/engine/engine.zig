@@ -28,6 +28,19 @@ const dispatch_table = [_]struct { op: Operation, handler: Handler }{
     .{ .op = .package, .handler = ops.package.handle },
 };
 
+// R-1: every defined Operation tag must have a handler. A new op added to
+// operation.zig without a corresponding row here is a comptime error.
+comptime {
+    const op_fields = @typeInfo(Operation).@"enum".fields;
+    if (dispatch_table.len != op_fields.len) {
+        @compileError("dispatch_table has " ++
+            std.fmt.comptimePrint("{d}", .{dispatch_table.len}) ++
+            " entries but Operation defines " ++
+            std.fmt.comptimePrint("{d}", .{op_fields.len}) ++
+            " tags — add a handler row for each new Operation");
+    }
+}
+
 /// Looks up the handler for an operation. Unknown (or future) operations
 /// return null so the caller can reply `invalid_request`.
 pub fn lookup(op: Operation) ?Handler {
@@ -44,7 +57,9 @@ pub fn process(req: *const Request, res: *Response, scratch: std.mem.Allocator) 
     res.status = .ok;
     res.payload_len = 0;
 
-    if (req.codec != .binary and req.codec != .json) {
+    // BUG-014: JSON codec was advertised but jsonDecode was never implemented.
+    // Reject anything that isn't binary to avoid silent failures downstream.
+    if (req.codec != .binary) {
         res.status = .invalid_request;
         return;
     }
@@ -58,6 +73,8 @@ pub fn process(req: *const Request, res: *Response, scratch: std.mem.Allocator) 
         res.payload_len = 0;
         res.status = mapError(err);
     };
+
+    std.debug.assert(res.status == .ok or res.payload_len == 0);
 }
 
 fn mapError(err: anyerror) Status {

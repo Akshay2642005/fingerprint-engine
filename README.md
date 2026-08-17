@@ -12,9 +12,8 @@
 > features, configuration, and architecture. Breaking changes are expected.
 >
 > **Production use is not recommended at this stage.**
-A deterministic, zero-dependency distributed fingerprint engine written in
 
-[Zig](https://ziglang.org) 0.14.1.
+A deterministic, zero-dependency distributed fingerprint engine written in [Zig](https://ziglang.org) 0.14.1.
 
 The engine is a **reusable deterministic computation engine**, not a service:
 canonical fingerprints are computed server-side by stateless Zig workers that
@@ -36,7 +35,7 @@ builds through `zig build`.
 - **Entropy analysis** — Shannon entropy per feature and weighted fingerprint entropy
 - **Risk assessment** — quantifies missing features, bound violations, coverage, entropy deficit
 - **Deterministic engine** — versioned `Operation`/`Status`, immutable `Request`, caller-owned `Response`, comptime dispatch — no io/transport code inside
-- **Async IO primitives** — arena-backed `Message`/`MessagePool`, `RingBuffer`, typed `Channel`, `Executor`, FPKG `Frame`, fixed-buffer `Reader`/`Writer`, comptime `Dispatcher`
+- **Async IO primitives** — completion-based event loop (epoll on Linux, IOCP on Windows, kqueue on Darwin; io_uring is the documented design vision) with `Completion`/`submit`/`flush`, deadline races and `cancel`; arena-backed `Message`/`MessagePool`, `RingBuffer`, typed `Channel`, FPKG `Frame`, fixed-buffer `Reader`/`Writer`, comptime `Dispatcher`
 - **Worker executable** — `--transport=loopback|tcp`, `--publish=none|amqp`, ships as a Docker container
 - **Browser SDK** — hand-written TypeScript (`dist/` from `zig build clients:browser`): collect → `SignalPackage` v2 → POST to the ingress, plus `assertAllowed()`/`onSessionBlocked()` middleware for the fraud platform's blocking decisions
 
@@ -60,8 +59,18 @@ zig build test-integration
 # WebAssembly infra artifact (zig-out/bin/fingerprint.wasm)
 zig build wasm
 
-# Worker executable (zig-out/bin/worker)
+# Worker executable (zig-out/bin/worker) — standalone
 zig build worker --release=safe
+
+# Ingress executable (zig-out/bin/ingress) — standalone
+zig build ingress --release=safe
+
+# Combined binary (zig-out/bin/fingerprint): worker + ingress subcommands
+zig build fingerprint --release=safe
+
+# Docker images (worker/ingress, tagged from build.zig.zon)
+zig build docker:worker
+zig build docker:ingress
 
 # Performance benchmarks
 zig build bench
@@ -129,9 +138,9 @@ if (assertAllowed().blocked) {
 │   ├── core/                 # Deterministic algorithms: hashing, normalization, validation, similarity, entropy, risk — depends on model
 │   ├── serialization/        # Binary TLV + JSON codecs, codec interface, integrity — depends on model
 │   ├── engine/               # Operation/Status/Request/Response/process — comptime dispatch, no io — depends on core+serialization
-│   ├── io/                   # Async transport primitives (message, ring buffer, channel, completion, executor, frame, reader, writer, dispatcher) — depends on nothing
+│   ├── io/                   # Completion-based event loop (linux.zig epoll, windows.zig IOCP, darwin.zig kqueue) + user-space primitives (message, ring buffer, channel, frame, reader, writer, dispatcher) — depends on nothing
 │   ├── adapter/              # Transport implementations: loopback, tcp, AMQP 0-9-1 — depends on io+stdx only
-│   ├── worker/               # Deterministic worker executable — depends on engine+adapter
+│   ├── cmd/                  # CLI layer (ADR-011): main.zig (combined `fingerprint` binary), worker.zig, ingress.zig — each also builds standalone
 │   ├── stdx.zig              # Leaf utilities (copy helpers, bitsets, test PRNG)
 │   ├── wasm.zig              # WebAssembly infra artifact (bench + wasmtime test containers only)
 │   ├── clients/browser/      # hand-written TypeScript SDK: src/ + generated/ + dist/ (via `zig build clients:browser`)
@@ -143,7 +152,7 @@ if (assertAllowed().blocked) {
 │   └── demo.html             # Dev-only SDK demo (configure + collect; never shipped in the npm package)
 ├── tests/
 │   ├── root.zig              # Self-verifying test registry (SNAP_UPDATE=1 regenerates)
-│   ├── model/ core/ serialization/ engine/ io/ adapter/ worker/ build/ browser/
+│   ├── model/ core/ serialization/ engine/ io/ adapter/ cmd/ build/ browser/
 │   ├── clients/browser/      # TS SDK tests (node --test; golden parity, middleware, transport)
 │   ├── fuzz/                 # Fuzz harnesses (decode, normalize, hashing)
 │   ├── data/ fixtures/       # Test vectors, similarity suites, signal-package-v2 golden + manifest

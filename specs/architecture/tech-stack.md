@@ -1,4 +1,4 @@
-# Tech Stack — Fingerprint Engine (current, v0.2.2)
+# Tech Stack — Fingerprint Engine (current, v0.3.0)
 
 Refreshed 2026-08-08. Supersedes the pre-rework inventory (Zig 0.16.0, 37
 features, empty tests) — see `specs/decisions/rework/ANALYSIS.md` F8.
@@ -66,7 +66,7 @@ io/transport code; adapters never import the engine.
 
 ## Testing
 
-- 383 tests (376 unit + 7 integration/e2e); 3 fuzz targets; 12 benchmarks.
+- 385 tests (378 unit + 7 integration/e2e); 3 fuzz targets; 12 benchmarks.
 - Golden fixture `signal-package-v2.bin` (digest `db29fc13…e6c75`, features=3,
   schema=2) pins the canonical digest across Zig/worker/TS parity tests.
 - TS parity test cross-checks the SDK serializer against the Zig codec.
