@@ -17,6 +17,7 @@
 //! keeps serving (H-2).
 
 const std = @import("std");
+const builtin = @import("builtin");
 const io = @import("io");
 const adapter = @import("adapter");
 const version_info = @import("version");
@@ -137,6 +138,19 @@ fn reasonPhrase(status: u16) []const u8 {
         502 => "Bad Gateway",
         else => "Error",
     };
+}
+
+/// Renders the client's remote address as `ip:port` for log attribution.
+/// A healthz probe from curl or a load balancer sends no `Origin` header, so
+/// the peer address is the only reliable source; `parsed.origin` (the browser
+/// CORS header) is appended when present. `buf` must hold the formatted
+/// address (IPv6 needs 46 bytes + port); too small returns a truncated label.
+fn peerLabel(client: socket_t, buf: []u8) []const u8 {
+    if (builtin.os.tag == .windows) return "unknown"; // getpeername via winsock only
+    var address = std.net.Address{ .any = undefined };
+    var len: std.posix.socklen_t = @sizeOf(std.posix.sockaddr.storage);
+    std.posix.getpeername(client, &address.any, &len) catch return "unknown";
+    return std.fmt.bufPrint(buf, "{}", .{address}) catch buf[0..buf.len];
 }
 
 // ── Server ────────────────────────────────────────────────────────────
@@ -332,6 +346,13 @@ pub const HttpServer = struct {
         defer arena.deinit();
         const a = arena.allocator();
 
+        // Flow trace (specs/architecture/logging.md, S3b): flow lifecycle
+        // lines are info (visible at the default level); the request access
+        // line and byte-count detail stay at debug.
+        var peer_buf: [64]u8 = undefined;
+        const peer = peerLabel(client, &peer_buf);
+        log.ingress.debug("ingress: connection accepted from {s}", .{peer});
+
         // 1. Bounded head read (request line + headers).
         var head_buf: [max_header_bytes]u8 = undefined;
         const head = self.readHead(client, &head_buf) catch |err| {
@@ -347,6 +368,11 @@ pub const HttpServer = struct {
             try self.replyError(client, 400, @errorName(err), null);
             return;
         };
+        if (parsed.content_length) |cl| {
+            log.ingress.debug("ingress: {s} {s} (content-length {d}) from {s}", .{ @tagName(parsed.method), parsed.target, cl, peer });
+        } else {
+            log.ingress.debug("ingress: {s} {s} from {s}", .{ @tagName(parsed.method), parsed.target, peer });
+        }
 
         if (parsed.method == .options) {
             try self.replyPreflight(client, parsed.origin);
@@ -362,6 +388,15 @@ pub const HttpServer = struct {
                     "{{\"status\":\"ok\",\"version\":\"{s}\"}}",
                     .{version_info.version},
                 ) catch unreachable;
+                // Attribute the probe to the client's real remote address:
+                // monitoring/load-balancer probes send no Origin header, so
+                // the peer address is the meaningful source; a browser probe's
+                // Origin header (CORS) is appended when present.
+                if (parsed.origin) |origin| {
+                    log.ingress.info("ingress: healthz probe from {s} (origin {s})", .{ peer, origin });
+                } else {
+                    log.ingress.info("ingress: healthz probe from {s}", .{peer});
+                }
                 try self.reply(client, 200, "application/json", body, null, parsed.origin);
             } else {
                 try self.replyError(client, 404, "not found", null);
@@ -384,16 +419,19 @@ pub const HttpServer = struct {
                     if (scratch) |buf| self.drainBody(client, &head_buf, head.end, head.len, buf) catch {};
                 }
             }
+            log.ingress.warn("ingress: unsupported method {s} from {s}", .{ @tagName(parsed.method), parsed.origin orelse "unknown" });
             try self.replyError(client, 405, "method not allowed", parsed.origin);
             return;
         }
 
         // POST only beyond this point.
         if (parsed.chunked) {
+            log.ingress.warn("ingress: chunked transfer from {s}", .{parsed.origin orelse "unknown"});
             try self.replyError(client, 400, "chunked transfer not supported", null);
             return;
         }
         const content_length = parsed.content_length orelse {
+            log.ingress.warn("ingress: missing content-length from {s}", .{parsed.origin orelse "unknown"});
             try self.replyError(client, 411, "content-length required", null);
             return;
         };
@@ -404,6 +442,7 @@ pub const HttpServer = struct {
             // per-recv H-1 deadline bounds a client that stalls mid-body;
             // a client that streams is bounded by the bytes it sends.
             self.discardBody(client, head.end, head.len, @intCast(content_length));
+            log.ingress.warn("ingress: request body {d} exceeds max {d} from {s}", .{ content_length, self.max_body, parsed.origin orelse "unknown" });
             try self.replyError(client, 413, "request body too large", parsed.origin);
             return;
         }
@@ -415,12 +454,14 @@ pub const HttpServer = struct {
         // 5. Boundary checks.
         if (parsed.integrity) |expected| {
             if (!integrityMatches(expected, body)) {
+                log.ingress.warn("ingress: integrity mismatch from {s}", .{parsed.origin orelse "unknown"});
                 try self.replyError(client, 400, "integrity mismatch", null);
                 return;
             }
         }
         if (parsed.schema_version) |v| {
             if (v != 1 and v != 2) {
+                log.ingress.warn("ingress: unsupported schema version {d} from {s}", .{ v, parsed.origin orelse "unknown" });
                 try self.replyError(client, 415, "unsupported schema version", null);
                 return;
             }
@@ -432,6 +473,8 @@ pub const HttpServer = struct {
             try self.replyError(client, 400, "invalid body", null);
             return;
         };
+        log.ingress.info("ingress: signal received from client, forwarding to worker", .{});
+        log.ingress.debug("ingress: forwarding to worker ({d} payload bytes)", .{body.len});
         const worker_reply = self.pool.request(a, frame) catch |err| {
             log.ingress.warn("ingress: worker request failed: {s}", .{@errorName(err)});
             try self.replyError(client, 502, "worker unavailable", null);
@@ -444,7 +487,11 @@ pub const HttpServer = struct {
             try self.replyError(client, 502, "malformed worker reply", null);
             return;
         }
-        try self.reply(client, statusToHttp(payload[0]), "application/octet-stream", payload, "fingerprint-result", parsed.origin);
+        const http_status = statusToHttp(payload[0]);
+        log.ingress.info("ingress: worker reply status {d} -> http {d}", .{ payload[0], http_status });
+        try self.reply(client, http_status, "application/octet-stream", payload, "fingerprint-result", parsed.origin);
+        log.ingress.info("ingress: reply relayed", .{});
+        log.ingress.debug("ingress: relayed reply ({d} bytes)", .{payload.len});
     }
 
     /// Reads the request head up to the CRLFCRLF terminator, bounded by

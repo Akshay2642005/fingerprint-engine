@@ -54,9 +54,9 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 445
+  total_tests: 448
   unit_tests: 425
-  integration_tests: 20
+  integration_tests: 23
   status: all_green
   fuzz_targets: 3
   benchmarks: 12
@@ -123,7 +123,9 @@ handoff:
   note: |
     S1 (BUG-001 + H-1/H-2), S2 (version SSoT), S3 (application logging — src/log.zig,
     worker/ingress/fingerprint/scripts wiring, --log-level/--log-format + env,
-    amqp get --quiet) delivered; 445 tests green (425 unit + 20 integration).
+    amqp get --quiet), S3b (flow logging — worker/ingress/pool flow + worker_id,
+    flow lines at info per UAT feedback, specs/planning/S3b-flow-logging.md)
+    delivered; 448 tests green (425 unit + 23 integration).
     Next slices: S4 ingress was delivered in S4-c/d; S5 AMQP consumer + DLQ;
     S6 compose + ingress release surface. Backlog in specs/quality/audits/2026-08-08.md
     (BUGS.yaml, architecture/ingress.md, architecture/logging.md).

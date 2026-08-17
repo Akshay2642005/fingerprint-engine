@@ -341,10 +341,35 @@ fn serve(
     // cannot stall the drain indefinitely.
     while (!shutdown_requested.load(.acquire)) {
         const frame = t.readFrame(a) catch |err| {
-            if (peerGone(err)) return;
+            if (peerGone(err)) {
+                // Clean peer close: the client hung up. serve() returns
+                // normally here, so the close is attributed inside — the
+                // accept loop only sees non-peerGone (protocol) errors.
+                log.worker.debug("worker: client closed", .{});
+                return;
+            }
             return err;
         };
 
+        // got job: decode the request header for the flow trace. Flow
+        // lifecycle lines are info (visible at the default level, S3b);
+        // frame-detail fields (codec, payload_len) stay at debug. The decode
+        // is gated on the info level so the default build pays the cost
+        // exactly once per frame; processFrame re-decodes (with integrity)
+        // anyway.
+        if (log.shouldLog(.info)) {
+            if (adapter.decodeFrame(frame)) |decoded| {
+                log.worker.info("worker: got job type={s}", .{@tagName(decoded.header.message_type)});
+                if (log.shouldLog(.debug)) {
+                    log.worker.debug(
+                        "worker: job detail codec={s} payload_len={d}",
+                        .{ @tagName(decoded.header.codec), decoded.header.payload_len },
+                    );
+                }
+            } else |_| {} // decode errors surface in processFrame below
+        }
+
+        log.worker.info("worker: processing job", .{});
         var buf: [io.frame.header_size + 1 + max_result]u8 = undefined;
         const reply = processFrame(frame, &buf, a) catch |err| {
             // Poison frame (bad magic, integrity violation, ...): drop and
@@ -354,13 +379,37 @@ fn serve(
             _ = arena.reset(.retain_capacity);
             continue;
         };
+        // The reply type/status for the flow trace; decoded once, gated on
+        // the info level (the reply is self-built, so decode cannot fail).
+        const flow_reply: ?Reply = if (log.shouldLog(.info)) (decodeReply(reply) catch null) else null;
+
+        if (flow_reply) |r| {
+            log.worker.info("worker: job done status={s}", .{@tagName(r.status)});
+            if (log.shouldLog(.debug)) {
+                log.worker.debug("worker: job detail result_len={d}", .{r.payload.len});
+            }
+        }
 
         try t.writeFrame(reply);
+        if (flow_reply) |r| {
+            log.worker.info("worker: reply sent to client (type={s})", .{@tagName(r.message_type)});
+        }
         try t.publish(reply); // transport-level outbound hook (no-op in v1)
         if (publisher) |p| {
+            if (flow_reply) |r| {
+                log.worker.info(
+                    "worker: publishing reply (type={s}) to exchange '{s}' key '{s}'",
+                    .{
+                        @tagName(r.message_type),
+                        adapter.amqp_publisher.exchange_name,
+                        adapter.amqp_publisher.routingKey(r.message_type),
+                    },
+                );
+            }
             p.publish_reply(reply) catch |err| {
                 log.worker.warn("worker: publish dropped: {s}", .{@errorName(err)});
             };
+            log.worker.info("worker: publish confirmed", .{});
         }
         t.ack(frame);
         _ = arena.reset(.retain_capacity);
@@ -435,13 +484,16 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             // deadline (H-1). On exit the current client is closed by deinit.
             while (!shutdown_requested.load(.acquire)) {
                 if (!try t.acceptWait(accept_poll_ms)) continue;
+                log.worker.info("worker: client accepted", .{});
                 serve(adapter.Tcp, &t, alloc, publisher_ptr) catch |err| {
-                    if (peerGone(err)) continue; // client done; serve the next
+                    // serve() already attributes clean peer closes; only
+                    // protocol errors land here.
                     // Protocol errors (InvalidMagic, Truncated,
                     // IntegrityViolation, ...) are per-connection: after a
                     // malformed frame the stream is desynchronized, so close
                     // the client and keep serving. A single bad client must
                     // never take down the worker (or its container).
+                    log.worker.warn("worker: client dropped: {s}", .{@errorName(err)});
                     t.closeClient();
                     continue;
                 };

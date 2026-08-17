@@ -15,6 +15,7 @@
 
 const std = @import("std");
 const adapter = @import("adapter");
+const log = @import("log");
 
 /// Upper bound on a single connect attempt (a dead or unreachable worker
 /// cannot wedge a request).
@@ -36,9 +37,9 @@ pub const WorkerPool = struct {
     pub fn init(allocator: std.mem.Allocator, workers: []const []const u8) !WorkerPool {
         const slots = try allocator.alloc(Slot, workers.len);
         errdefer allocator.free(slots);
-        for (slots, workers) |*slot, seed| {
+        for (slots, workers, 0..) |*slot, seed, id| {
             const host, const port = splitHostPort(seed) catch return error.InvalidWorker;
-            slot.* = .{ .host = host, .port = port };
+            slot.* = .{ .id = id, .host = host, .port = port };
         }
         return .{ .allocator = allocator, .slots = slots };
     }
@@ -66,6 +67,10 @@ pub const WorkerPool = struct {
                 last_err = err;
                 // The connection is broken (or the worker is dead): drop it
                 // so the next attempt reconnects.
+                log.pool.warn(
+                    "pool: worker {d} ({s}:{d}) unavailable ({s}), retrying next slot",
+                    .{ slot.id, slot.host, slot.port, @errorName(err) },
+                );
                 if (slot.client) |*c| c.close();
                 slot.client = null;
                 continue;
@@ -73,6 +78,7 @@ pub const WorkerPool = struct {
             self.next = (idx + 1) % n;
             return reply;
         }
+        log.pool.warn("pool: no workers reachable", .{});
         return last_err orelse error.NoWorkers;
     }
 
@@ -88,15 +94,22 @@ pub const WorkerPool = struct {
             );
             errdefer client.close();
             try client.connect(connect_timeout_ns);
+            log.pool.info("pool: connected to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
             slot.client = client;
         }
         const c = &slot.client.?;
+        log.pool.debug("pool: forwarding signal package to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
         try c.writeFrame(frame);
-        return c.readFrame(allocator);
+        const reply = try c.readFrame(allocator);
+        log.pool.debug("pool: reply from worker {d} ({s}:{d}) ({d} bytes)", .{ slot.id, slot.host, slot.port, reply.len });
+        return reply;
     }
 };
 
 const Slot = struct {
+    /// Stable worker index (0-based `--worker=` seed position) used in logs
+    /// as `worker_id` so operators can correlate a request to its worker.
+    id: usize,
     host: []const u8,
     port: u16,
     client: ?adapter.TcpClient = null,

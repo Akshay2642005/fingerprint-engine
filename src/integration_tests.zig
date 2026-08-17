@@ -500,6 +500,117 @@ test "worker: --log-level=err suppresses the listening announcement but still se
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: listening on ") == null);
 }
 
+test "worker: --log-level=debug emits the request flow trace (S3b)" {
+    const alloc = std.testing.allocator;
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+        "--log-level=debug",
+    }, alloc);
+    defer {
+        _ = spawned.child.kill() catch {};
+        _ = spawned.child.wait() catch {};
+    }
+
+    // One well-formed exchange drives the got-job → processing → reply →
+    // publish flow lines.
+    const fixture = try std.fs.cwd().readFileAlloc(
+        alloc,
+        "tests/fixtures/fingerprints/signal-package-v2.bin",
+        1 << 16,
+    );
+    defer alloc.free(fixture);
+
+    var frame_buf: [header_size + 1 << 16]u8 = undefined;
+    const frame = try buildFrame(signal_package_type, fixture, &frame_buf);
+
+    var stream = try std.net.tcpConnectToHost(alloc, "127.0.0.1", spawned.port);
+    try stream.writeAll(frame);
+
+    var reply_buf: [header_size + 1 << 16]u8 = undefined;
+    try expectHashReply(try readFrame(stream.reader(), &reply_buf));
+
+    // Close the client side: serve returns on EndOfStream and logs
+    // `worker: client closed` before the accept loop polls for shutdown.
+    stream.close();
+    // Give the worker a beat to observe the EOF and write the close line
+    // before SIGTERM races it.
+    std.time.sleep(200 * std.time.ns_per_ms);
+
+    // Terminate, then drain stderr fully (dup before kill, as above).
+    const stderr_dup = try std.posix.dup(spawned.child.stderr.?.handle);
+    defer std.posix.close(stderr_dup);
+    _ = spawned.child.kill() catch {};
+    _ = spawned.child.wait() catch {};
+    const stderr_file = std.fs.File{ .handle = stderr_dup };
+    const all_stderr = try stderr_file.readToEndAlloc(alloc, 1 << 16);
+    defer alloc.free(all_stderr);
+
+    // The flow trace spans the request lifecycle; the line prefix contract is
+    // `worker: <verb> ...` (specs/architecture/logging.md, F-2).
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: got job type=signal_package") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail codec=binary payload_len=84") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: processing job") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job done status=ok") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail result_len=36") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: reply sent to client (type=fingerprint_result)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: client closed") != null);
+}
+
+test "worker: flow logs emit at the default info level (S3b)" {
+    const alloc = std.testing.allocator;
+
+    // No --log-level: the default (info) must still show the flow lifecycle
+    // (got job → processing → done → reply sent) but not the debug detail.
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    defer {
+        _ = spawned.child.kill() catch {};
+        _ = spawned.child.wait() catch {};
+    }
+
+    const fixture = try std.fs.cwd().readFileAlloc(
+        alloc,
+        "tests/fixtures/fingerprints/signal-package-v2.bin",
+        1 << 16,
+    );
+    defer alloc.free(fixture);
+
+    var frame_buf: [header_size + 1 << 16]u8 = undefined;
+    const frame = try buildFrame(signal_package_type, fixture, &frame_buf);
+
+    var stream = try std.net.tcpConnectToHost(alloc, "127.0.0.1", spawned.port);
+    try stream.writeAll(frame);
+
+    var reply_buf: [header_size + 1 << 16]u8 = undefined;
+    try expectHashReply(try readFrame(stream.reader(), &reply_buf));
+
+    stream.close();
+    std.time.sleep(200 * std.time.ns_per_ms);
+
+    const stderr_dup = try std.posix.dup(spawned.child.stderr.?.handle);
+    defer std.posix.close(stderr_dup);
+    _ = spawned.child.kill() catch {};
+    _ = spawned.child.wait() catch {};
+    const stderr_file = std.fs.File{ .handle = stderr_dup };
+    const all_stderr = try stderr_file.readToEndAlloc(alloc, 1 << 16);
+    defer alloc.free(all_stderr);
+
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: got job type=signal_package") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: processing job") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job done status=ok") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: reply sent to client (type=fingerprint_result)") != null);
+    // Frame-detail lines stay at debug: not emitted at the default level.
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail") == null);
+}
+
 // ── Ingress e2e (S4-c/d) ─────────────────────────────────────────────
 
 /// Spawns the ingress binary and reads its `ingress: listening on host:port`
@@ -850,4 +961,78 @@ test "ingress: exits 0 on SIGTERM after draining (H-2)" {
     const term = try ingress.child.wait();
     try std.testing.expectEqual(std.process.Child.Term.Exited, std.meta.activeTag(term));
     try std.testing.expectEqual(@as(u8, 0), term.Exited);
+}
+
+test "ingress: --log-level=debug emits the request flow trace (S3b)" {
+    const alloc = std.testing.allocator;
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    defer {
+        _ = spawned.child.kill() catch {};
+        _ = spawned.child.wait() catch {};
+    }
+
+    const worker_arg = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{spawned.port});
+    defer alloc.free(worker_arg);
+    var ingress = try spawnIngress(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        "--log-level=debug",
+        worker_arg,
+    }, alloc);
+    defer {
+        _ = ingress.child.kill() catch {};
+        _ = ingress.child.wait() catch {};
+    }
+
+    // A POST drives the accept → head → forward → reply → relay trace; a
+    // healthz probe drives the access + attribution lines.
+    const fixture = try fixtureWithIntegrity(alloc);
+    defer alloc.free(fixture.body);
+    defer alloc.free(fixture.integrity);
+
+    const post = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+    }, fixture.body);
+    defer alloc.free(post.body);
+    try std.testing.expectEqual(@as(u16, 200), post.status);
+    try expectHashPayload(post.body);
+
+    const health = try httpRequest(alloc, ingress.port, "GET", "/healthz", &.{}, &.{});
+    defer alloc.free(health.body);
+    try std.testing.expectEqual(@as(u16, 200), health.status);
+
+    // Terminate, then drain stderr fully (dup before kill, as above).
+    const stderr_dup = try std.posix.dup(ingress.child.stderr.?.handle);
+    defer std.posix.close(stderr_dup);
+    _ = ingress.child.kill() catch {};
+    _ = ingress.child.wait() catch {};
+    const stderr_file = std.fs.File{ .handle = stderr_dup };
+    const all_stderr = try stderr_file.readToEndAlloc(alloc, 1 << 16);
+    defer alloc.free(all_stderr);
+
+    // The trace spans connection, request, pool forward, relay, and close;
+    // line prefixes are `ingress: <verb>` / `pool: <verb>` (F-2). Method and
+    // status tags print lowercase (`@tagName`), e.g. `ingress: post /`.
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: connection accepted from 127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: post /") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: signal received from client, forwarding to worker") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: forwarding to worker (84 payload bytes)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: connected to worker 0 (127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: forwarding signal package to worker 0 (127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: reply from worker 0 (127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: worker reply status 0 -> http 200") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: reply relayed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: relayed reply (37 bytes)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: get /healthz (content-length 0) from 127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: healthz probe from 127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: connection closed") != null);
 }
