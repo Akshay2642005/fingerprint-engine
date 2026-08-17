@@ -43,7 +43,7 @@ jobs:
 
   test-macos:
     name: Test (macOS)
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +76,9 @@ jobs:
       - name: Install TS SDK dependencies
         run: npm install
         working-directory: src/clients/browser
+
+      - name: Build TS SDK dist
+        run: zig build clients:browser
 
       - name: Run TS SDK tests
         run: npm test
