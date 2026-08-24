@@ -25,6 +25,17 @@ const client = @import("client.zig");
 /// connect (idempotent): messages survive broker restarts.
 pub const exchange_name = "fingerprint";
 
+/// Dead-letter exchange. Result queues declare with
+/// `x-dead-letter-exchange=fingerprint.dlx` so failed/rejected messages
+/// route here; the DLQ binds under `dead-letter`.
+pub const dlx_name = "fingerprint.dlx";
+
+/// Dead-letter queue. Receives messages from the DLX.
+pub const dlq_name = "fingerprint.dlq";
+
+/// Routing key used by the DLQ binding on the DLX.
+pub const dlq_routing_key = "dead-letter";
+
 /// Routing key prefix; the full key is `result.<message-type>` so a consumer
 /// can bind by exchange topic (`result.*`) or per message type.
 const routing_key_prefix = "result.";
@@ -101,6 +112,33 @@ pub const Publisher = struct {
             .durable = true,
             .auto_delete = false,
             .internal = false,
+        });
+
+        // Dead-letter topology: DLX exchange + DLQ queue bound under
+        // `dead-letter`. Result queues (declared by consumers) set
+        // `x-dead-letter-exchange=fingerprint.dlx` so failed/rejected
+        // messages route here automatically.
+        try c.exchange_declare(.{
+            .exchange = dlx_name,
+            .type = "direct",
+            .passive = false,
+            .durable = true,
+            .auto_delete = false,
+            .internal = false,
+        });
+        try c.queue_declare(.{
+            .queue = dlq_name,
+            .passive = false,
+            .durable = true,
+            .exclusive = false,
+            .auto_delete = false,
+            .arguments = .{},
+        });
+        try c.queue_bind(.{
+            .queue = dlq_name,
+            .exchange = dlx_name,
+            .routing_key = dlq_routing_key,
+            .no_wait = false,
         });
         return .{ .client = c, .message_size_max = options.message_size_max };
     }

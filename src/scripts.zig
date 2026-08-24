@@ -70,6 +70,13 @@ const usage =
     \\    consumed as they are read; exits after --count messages or
     \\    --timeout-ms of polling.
     \\
+    \\  zig build scripts -- amqp dlq [--address=host:port] [--count=N]
+    \\    [--timeout-ms=N]
+    \\    Read messages from the dead-letter queue (fingerprint.dlq). Each
+    \\    message is decoded as an FPKG frame and printed. Messages are
+    \\    consumed as they are read; exits after --count messages or
+    \\    --timeout-ms of polling.
+    \\
 ;
 
 /// Fixture packages are defined here, in the same model code the engine
@@ -321,6 +328,9 @@ fn amqpCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
     if (args.len > 2 and std.mem.eql(u8, args[2], "get")) {
         return amqpGetCommand(alloc, args[2..]);
     }
+    if (args.len > 2 and std.mem.eql(u8, args[2], "dlq")) {
+        return amqpDlqCommand(alloc, args[2..]);
+    }
     var address: []const u8 = "127.0.0.1:5672";
     if (args.len > 2) {
         for (args[2..]) |arg| {
@@ -548,6 +558,131 @@ fn amqpGetCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
         }) catch {};
 
         try stdout.print("message: tag={d} queue_depth={d}\n", .{
+            message_info.delivery_tag,
+            message_info.message_count,
+        });
+        if (!message_info.has_body) {
+            try stdout.print("  (no body)\n", .{});
+            continue;
+        }
+        const body = try publisher.client.get_message_body();
+        try printFpkgMessage(stdout, body);
+        seen += 1;
+        if (count != 0 and seen >= count) break;
+    }
+}
+
+const amqp_dlq_usage =
+    \\Usage:
+    \\
+    \\  zig build scripts -- amqp dlq [--address=host:port] [--count=N]
+    \\    [--timeout-ms=N] [--quiet]
+    \\
+    \\Read messages from the dead-letter queue (fingerprint.dlq). Each
+    \\message is decoded as an FPKG frame and printed (message type,
+    \\integrity, status, digest). Messages are consumed as they are read.
+    \\Exits after --count messages or --timeout-ms of polling.
+    \\
+    \\Options:
+    \\  --address=host:port  broker address (default 127.0.0.1:5672)
+    \\  --count=N            stop after N messages (default: until timeout)
+    \\  --timeout-ms=N       stop after N ms of polling (default 10000;
+    \\                       0 = poll forever until interrupted)
+    \\  --quiet              suppress connection diagnostics (log level err)
+    \\
+;
+
+/// amqp dlq — read messages from the dead-letter queue.
+fn amqpDlqCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
+    var address: []const u8 = "127.0.0.1:5672";
+    var count: usize = 0;
+    var timeout_ms: u64 = 10_000;
+    var quiet = false;
+
+    for (args[1..]) |arg| {
+        if (std.mem.startsWith(u8, arg, "--address=")) {
+            address = arg["--address=".len..];
+        } else if (std.mem.startsWith(u8, arg, "--count=")) {
+            count = std.fmt.parseInt(usize, arg["--count=".len..], 10) catch {
+                log.scripts.err("amqp dlq: invalid --count '{s}'", .{arg});
+                std.process.exit(1);
+            };
+        } else if (std.mem.startsWith(u8, arg, "--timeout-ms=")) {
+            timeout_ms = std.fmt.parseInt(u64, arg["--timeout-ms=".len..], 10) catch {
+                log.scripts.err("amqp dlq: invalid --timeout-ms '{s}'", .{arg});
+                std.process.exit(1);
+            };
+        } else if (std.mem.eql(u8, arg, "--quiet")) {
+            quiet = true;
+        } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+            try std.io.getStdOut().writer().writeAll(amqp_dlq_usage);
+            return;
+        } else {
+            log.scripts.err("amqp dlq: unknown option '{s}'\n\n{s}", .{ arg, amqp_dlq_usage });
+            std.process.exit(1);
+        }
+    }
+
+    if (quiet) log.level = .err;
+
+    const colon = std.mem.lastIndexOfScalar(u8, address, ':') orelse {
+        log.scripts.err("amqp dlq: invalid --address '{s}' (expected host:port)", .{address});
+        std.process.exit(1);
+    };
+    const host = address[0..colon];
+    const port = std.fmt.parseInt(u16, address[colon + 1 ..], 10) catch {
+        log.scripts.err("amqp dlq: invalid port in --address '{s}'", .{address});
+        std.process.exit(1);
+    };
+    const parsed = std.net.Address.parseIp(host, port) catch {
+        log.scripts.err("amqp dlq: invalid --address '{s}' (expected host:port)", .{address});
+        std.process.exit(1);
+    };
+
+    const stdout = std.io.getStdOut().writer();
+
+    // Reuse the publisher for the connection; it declares the DLX and DLQ
+    // topology on init.
+    var publisher = adapter.amqp_publisher.Publisher.init(alloc, .{
+        .address = parsed,
+        .user_name = "guest",
+        .password = "guest",
+        .virtual_host = "/",
+        .message_size_max = io.frame.header_size + (1 << 16),
+    }) catch |err| {
+        log.scripts.err("amqp dlq: connect failed: {s} (is RabbitMQ running at {s}?)", .{ @errorName(err), address });
+        std.process.exit(1);
+    };
+    defer publisher.deinit(alloc);
+    try stdout.print("amqp dlq: polling queue '{s}' on exchange '{s}'\n", .{
+        adapter.amqp_publisher.dlq_name,
+        adapter.amqp_publisher.dlx_name,
+    });
+
+    const deadline: u64 = if (timeout_ms == 0)
+        std.math.maxInt(u64)
+    else
+        @as(u64, @intCast(std.time.milliTimestamp())) + timeout_ms;
+
+    var seen: usize = 0;
+    while (true) {
+        if (timeout_ms != 0 and @as(u64, @intCast(std.time.milliTimestamp())) >= deadline) break;
+
+        const message = publisher.client.get_message(.{ .queue = adapter.amqp_publisher.dlq_name, .no_ack = false }) catch |err| {
+            log.scripts.err("amqp dlq: get_message failed: {s}", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        const message_info = message orelse {
+            std.time.sleep(250 * std.time.ns_per_ms);
+            continue;
+        };
+        defer publisher.client.nack(.{
+            .delivery_tag = message_info.delivery_tag,
+            .requeue = false,
+            .multiple = false,
+        }) catch {};
+
+        try stdout.print("dlq message: tag={d} queue_depth={d}\n", .{
             message_info.delivery_tag,
             message_info.message_count,
         });

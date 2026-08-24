@@ -11,9 +11,17 @@ git:
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
-  latest_tag: v0.3.0
+  latest_tag: v0.4.0
 
 releases:
+  v0.4.0:
+    date: "2026-08-24"
+    status: released
+    artifacts:
+      - GitHub Release (WASM + native binaries for linux-x86_64, linux-aarch64, macos-x86_64, macos-aarch64)
+      - npm package (@akshay2642005/fingerprint-sdk v0.4.0)
+      - GHCR images (fingerprint-worker, fingerprint-ingress)
+
   v0.3.0:
     date: "2026-08-17"
     status: released
@@ -59,8 +67,8 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 456
-  unit_tests: 433
+  total_tests: 457
+  unit_tests: 434
   integration_tests: 23
   status: all_green
   fuzz_targets: 3

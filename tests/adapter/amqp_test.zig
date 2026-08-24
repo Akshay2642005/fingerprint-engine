@@ -91,3 +91,95 @@ test "amqp: publish_reply rejects frames larger than message_size_max" {
     const frame = try adapter.buildFrame(.fingerprint_result, .binary, &[_]u8{0} ** 128, &frame_buf);
     try std.testing.expectError(error.BodyTooLarge, publisher.publish_reply(frame));
 }
+
+test "amqp: push consumer e2e (requires live broker)" {
+    // Skip gracefully if no broker is reachable.
+    var client = try amqp.Client.init(std.testing.allocator, .{
+        .message_count_max = 1,
+        .message_body_size_max = io.frame.header_size + (1 << 16),
+        .reply_timeout_ms = 2000,
+    });
+    defer client.deinit(std.testing.allocator);
+
+    const address = std.net.Address.parseIp("127.0.0.1", 5672) catch unreachable;
+    client.connect(.{
+        .host = address,
+        .user_name = "guest",
+        .password = "guest",
+        .vhost = "/",
+    }) catch return; // skip — broker not reachable
+
+    // Declare exchange.
+    try client.exchange_declare(.{
+        .exchange = adapter.amqp_publisher.exchange_name,
+        .type = "direct",
+        .passive = false,
+        .durable = true,
+        .auto_delete = false,
+        .internal = false,
+    });
+
+    // Declare a throwaway result queue with DLX args (mirrors real topology).
+    const queue_name = try std.fmt.allocPrint(std.testing.allocator, "fpkg-consume-test-{x}", .{stdx.unique_u128()});
+    defer std.testing.allocator.free(queue_name);
+    try client.queue_declare(.{
+        .queue = queue_name,
+        .passive = false,
+        .durable = false,
+        .exclusive = true,
+        .auto_delete = true,
+        .arguments = .{},
+    });
+    try client.queue_bind(.{
+        .queue = queue_name,
+        .exchange = adapter.amqp_publisher.exchange_name,
+        .routing_key = adapter.amqp_publisher.routingKey(.fingerprint_result),
+        .no_wait = false,
+    });
+
+    // Set QoS and register consumer.
+    try client.qos(.{ .prefetch_count = 1 });
+    try client.consume(.{ .queue = queue_name, .no_ack = false });
+
+    // Publish a test frame.
+    var frame_buf: [io.frame.header_size + 16]u8 = undefined;
+    const test_payload = &[_]u8{ 0, 0xdb, 0x29, 0xfc, 0x13, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A };
+    const frame = try adapter.buildFrame(.fingerprint_result, .binary, test_payload, &frame_buf);
+
+    const TestBody = struct {
+        data: []const u8,
+        fn vtableWrite(context: *const anyopaque, buffer: []u8) usize {
+            const self: *const @This() = @ptrCast(@alignCast(context));
+            @memcpy(buffer[0..self.data.len], self.data);
+            return self.data.len;
+        }
+        fn body(self: *const @This()) amqp.Encoder.Body {
+            return .{ .context = self, .vtable = &.{ .write = &vtableWrite } };
+        }
+    };
+    const test_body = TestBody{ .data = frame };
+    try client.publish(.{
+        .exchange = adapter.amqp_publisher.exchange_name,
+        .routing_key = adapter.amqp_publisher.routingKey(.fingerprint_result),
+        .mandatory = false,
+        .immediate = false,
+        .properties = .{
+            .content_type = "application/octet-stream",
+            .delivery_mode = .persistent,
+        },
+        .body = test_body.body(),
+    });
+
+    // Receive via push consumer.
+    const delivery = try client.consume_next();
+    try std.testing.expectEqualStrings(adapter.amqp_publisher.routingKey(.fingerprint_result), delivery.routing_key);
+    try std.testing.expectEqualStrings(adapter.amqp_publisher.exchange_name, delivery.exchange);
+    try std.testing.expect(!delivery.redelivered);
+
+    const body = try client.consume_body();
+    try std.testing.expectEqual(frame.len, body.len);
+    try std.testing.expectEqualSlices(u8, frame, body);
+
+    // Ack the delivery.
+    try client.consumer_ack(delivery.delivery_tag, false);
+}

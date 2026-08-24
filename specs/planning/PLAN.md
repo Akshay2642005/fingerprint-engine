@@ -1,6 +1,6 @@
 # Fingerprint Engine — Plan
 
-Current: **v0.3.0** (2026-08-17), audit hardening shipped. This file
+Current: **v0.4.0** (2026-08-24), AMQP consumer + DLQ + full-stack compose shipped. This file
 replaces the pre-rework M1–M4 integration/quality plan (see
 `specs/archive/` for the superseded items).
 
@@ -12,7 +12,7 @@ replaces the pre-rework M1–M4 integration/quality plan (see
 | M2 — Integration SDKs | npm browser package; PyPI/Cargo dropped with the native SDK | ✅ done |
 | M3 — Production readiness | benchmarks, fuzz, docs, security | ✅ done |
 | M4 — Distributed rework | Zig 0.14.1, layered repo, engine/io/adapter/worker, AMQP, TS SDK, Docker | ✅ done (v0.2.0–v0.2.2) |
-| M5 — Platform integration | **ingress** + full-stack compose + AMQP consumer/DLQ + release surface | 🔜 next (S1–S6) |
+| M5 — Platform integration | **ingress** + full-stack compose + AMQP consumer/DLQ + release surface | ✅ done (v0.4.0) |
 
 ## M5 plan (the active milestone)
 

@@ -42,6 +42,9 @@ pub const BasicPublishOptions = types.BasicPublishOptions;
 pub const GetMessagePropertiesResult = types.GetMessagePropertiesResult;
 pub const GetMessageOptions = types.GetMessageOptions;
 pub const BasicNackOptions = types.BasicNackOptions;
+pub const BasicQosOptions = types.BasicQosOptions;
+pub const BasicConsumeOptions = types.BasicConsumeOptions;
+pub const ConsumerDelivery = types.ConsumerDelivery;
 
 pub const tcp_port_default = protocol.tcp_port_default;
 pub const frame_min_size = protocol.frame_min_size;
@@ -56,6 +59,10 @@ pub const Client = struct {
         result: ?GetMessagePropertiesResult,
     ) Decoder.Error!void;
     pub const GetMessageBodyCallback = *const fn (
+        self: *Client,
+        body: []const u8,
+    ) Decoder.Error!void;
+    pub const ConsumerBodyCallback = *const fn (
         self: *Client,
         body: []const u8,
     ) Decoder.Error!void;
@@ -93,6 +100,15 @@ pub const Client = struct {
             callback: GetMessageBodyCallback,
         },
         nack: Callback,
+        qos: Callback,
+        consume: Callback,
+        consume_body_pending: struct {
+            body_size: u64,
+        },
+        consume_body: struct {
+            body_size: u64,
+            callback: ConsumerBodyCallback,
+        },
         publish_enqueue: struct {
             count: u32 = 0,
         },
@@ -145,13 +161,16 @@ pub const Client = struct {
 
     publish_confirms: Confirms,
 
-    /// Synchronous result slot for `get_message` / `get_message_body`.
+    /// Synchronous result slot for `get_message` / `get_message_body` /
+    /// `consume_next`.
     /// The reference implementation delivers results through callbacks; the
     /// synchronous API hands them back as return values instead.
     pending: union(enum) {
         none,
         get_message: ?GetMessagePropertiesResult,
         message_body: []const u8,
+        delivery: ConsumerDelivery,
+        delivery_body: []const u8,
     } = .none,
 
     /// Body consumed by `get_message`'s receive loop when the broker
@@ -728,6 +747,224 @@ pub const Client = struct {
         try self.send();
     }
 
+    /// Sets Quality of Service (prefetch) for the channel. Must be called
+    /// before `consume()` to limit how many unacknowledged messages the
+    /// broker will push.
+    pub fn qos(self: *Client, options: BasicQosOptions) !void {
+        assert(self.action == .none);
+        self.action = .{ .qos = on_noop };
+
+        const method: spec.ServerMethod = .{ .basic_qos = .{
+            .prefetch_size = options.prefetch_size,
+            .prefetch_count = options.prefetch_count,
+            .global = options.global,
+        } };
+        method.encode(.current, self.send_buffer.encoder());
+        self.awaiter = .{ .send_and_await_reply = .{
+            .channel = .current,
+            .state = .sending,
+            .callback = &struct {
+                fn dispatch(context: *Client, reply: spec.ClientMethod) Decoder.Error!void {
+                    assert(reply == .basic_qos_ok);
+                    assert(context.action == .qos);
+                    const qos_callback = context.action.qos;
+                    context.action = .none;
+                    qos_callback(context);
+                }
+            }.dispatch,
+        } };
+        try self.send();
+        while (self.action == .qos) try self.recv();
+    }
+
+    /// Registers a push consumer on the given queue. After this call the
+    /// broker will push deliveries via `basic.deliver` frames. Use
+    /// `consume_next()` to receive each delivery.
+    pub fn consume(self: *Client, options: BasicConsumeOptions) !void {
+        assert(self.action == .none);
+        self.action = .{ .consume = on_noop };
+
+        const method: spec.ServerMethod = .{ .basic_consume = .{
+            .queue = options.queue,
+            .consumer_tag = options.consumer_tag,
+            .no_local = options.no_local,
+            .no_ack = options.no_ack,
+            .exclusive = options.exclusive,
+            .no_wait = false,
+            .arguments = options.arguments,
+        } };
+        method.encode(.current, self.send_buffer.encoder());
+        self.awaiter = .{ .send_and_await_reply = .{
+            .channel = .current,
+            .state = .sending,
+            .callback = &struct {
+                fn dispatch(context: *Client, reply: spec.ClientMethod) Decoder.Error!void {
+                    assert(reply == .basic_consume_ok);
+                    assert(context.action == .consume);
+                    const consume_callback = context.action.consume;
+                    context.action = .none;
+                    consume_callback(context);
+                }
+            }.dispatch,
+        } };
+        try self.send();
+        while (self.action == .consume) try self.recv();
+    }
+
+    /// Waits for the next broker delivery. Returns the delivery properties
+    /// (consumer tag, delivery tag, exchange, routing key, properties). The
+    /// caller must then call `consume_body()` to retrieve the body bytes.
+    /// The body pointer borrows the receive buffer and is valid until the
+    /// next call to `consume_next()`.
+    pub fn consume_next(self: *Client) !ConsumerDelivery {
+        assert(self.action == .none or self.action == .consume_body_pending);
+        assert(self.pending == .none);
+
+        if (self.action == .consume_body_pending) {
+            // Body already stashed from a coalesced recv; skip to body.
+            const body_size = self.action.consume_body_pending.body_size;
+            self.action = .{ .consume_body = .{
+                .body_size = body_size,
+                .callback = on_consumer_body,
+            } };
+            self.awaiter = .{ .await_body = .{
+                .channel = .current,
+                .callback = &struct {
+                    fn dispatch(
+                        ctx: *Client,
+                        body: []const u8,
+                    ) Decoder.Error!void {
+                        assert(ctx.action == .consume_body);
+                        assert(ctx.action.consume_body.body_size == body.len);
+                        const callback = ctx.action.consume_body.callback;
+                        ctx.action = .none;
+                        try callback(ctx, body);
+                    }
+                }.dispatch,
+            } };
+            while (self.action == .consume_body) try self.recv();
+            return self.pending.delivery;
+        }
+
+        // Wait for basic.deliver from the broker. The awaiter is NOT armed
+        // here — process_method handles basic.deliver by storing metadata
+        // into pending.delivery and then arming await_content_header.
+        self.action = .{ .consume_body_pending = .{ .body_size = 0 } };
+
+        while (self.action == .consume_body_pending) try self.recv();
+
+        return self.pending.delivery;
+    }
+
+    fn consume_deliver_dispatch(
+        context: *Client,
+        delivery_tag: u64,
+        message_count: u32,
+        header: Decoder.Header,
+    ) Decoder.Error!void {
+        _ = message_count;
+        assert(context.action == .consume_body_pending);
+        assert(header.body_size <= context.receive_buffer.buffer.len);
+
+        const properties = try Decoder.BasicProperties.decode(
+            header.property_flags,
+            header.properties,
+        );
+        // Update the pending delivery with the decoded properties.
+        context.pending = .{ .delivery = .{
+            .consumer_tag = context.pending.delivery.consumer_tag,
+            .delivery_tag = delivery_tag,
+            .redelivered = context.pending.delivery.redelivered,
+            .exchange = context.pending.delivery.exchange,
+            .routing_key = context.pending.delivery.routing_key,
+            .properties = properties,
+        } };
+
+        const has_body = header.body_size > 0;
+        context.action = if (has_body) .{
+            .consume_body = .{
+                .body_size = header.body_size,
+                .callback = on_consumer_body,
+            },
+        } else .none;
+
+        if (has_body) {
+            context.awaiter = .{ .await_body = .{
+                .channel = .current,
+                .callback = &struct {
+                    fn dispatch(
+                        ctx: *Client,
+                        body: []const u8,
+                    ) Decoder.Error!void {
+                        assert(ctx.action == .consume_body);
+                        assert(ctx.action.consume_body.body_size == body.len);
+                        const callback = ctx.action.consume_body.callback;
+                        ctx.action = .none;
+                        try callback(ctx, body);
+                    }
+                }.dispatch,
+            } };
+        }
+    }
+
+    fn on_consumer_body(context: *Client, body: []const u8) Decoder.Error!void {
+        assert(context.action == .none);
+        context.pending = .{ .delivery_body = body };
+    }
+
+    /// Returns the body of the current delivery (from `consume_next()`).
+    /// The returned slice borrows the receive buffer and is valid until the
+    /// next call to `consume_next()`.
+    pub fn consume_body(self: *Client) ![]const u8 {
+        const body = switch (self.pending) {
+            .delivery_body => |body| body,
+            else => unreachable,
+        };
+        self.pending = .none;
+        return body;
+    }
+
+    /// Acknowledges a consumer delivery. Separate from publisher-confirm acks.
+    pub fn consumer_ack(self: *Client, delivery_tag: u64, multiple: bool) !void {
+        assert(self.awaiter == .none);
+        assert(self.action == .none);
+        self.action = .{ .nack = on_noop };
+
+        const method: spec.ServerMethod = .{ .basic_ack = .{
+            .delivery_tag = delivery_tag,
+            .multiple = multiple,
+        } };
+        method.encode(.current, self.send_buffer.encoder());
+        self.awaiter = .{ .send_and_forget = &struct {
+            fn dispatch(context: *Client) void {
+                assert(context.action == .nack);
+                context.action = .none;
+            }
+        }.dispatch };
+        try self.send();
+    }
+
+    /// Rejects a consumer delivery and optionally requeues it.
+    pub fn consumer_nack(self: *Client, delivery_tag: u64, requeue: bool) !void {
+        assert(self.awaiter == .none);
+        assert(self.action == .none);
+        self.action = .{ .nack = on_noop };
+
+        const method: spec.ServerMethod = .{ .basic_nack = .{
+            .delivery_tag = delivery_tag,
+            .requeue = requeue,
+            .multiple = false,
+        } };
+        method.encode(.current, self.send_buffer.encoder());
+        self.awaiter = .{ .send_and_forget = &struct {
+            fn dispatch(context: *Client) void {
+                assert(context.action == .nack);
+                context.action = .none;
+            }
+        }.dispatch };
+        try self.send();
+    }
+
     /// Resets the client state after a failed `connect`, so the caller can
     /// retry. The socket is closed; buffers are emptied.
     fn reset(self: *Client) void {
@@ -917,11 +1154,36 @@ pub const Client = struct {
             ),
             .connection_blocked,
             .connection_unblocked,
-            .basic_deliver,
             => fatal(
                 "AMQP operation not supported: {s} channel={}",
                 .{ @tagName(client_method), frame_header.channel },
             ),
+            .basic_deliver => |deliver| {
+                // Push consumer delivery — store metadata and arm the
+                // content-header awaiter so the next frame (header) triggers
+                // the dispatch that reads properties and arms the body awaiter.
+                if (self.action == .consume_body_pending) {
+                    self.pending = .{ .delivery = .{
+                        .consumer_tag = deliver.consumer_tag,
+                        .delivery_tag = deliver.delivery_tag,
+                        .redelivered = deliver.redelivered,
+                        .exchange = deliver.exchange,
+                        .routing_key = deliver.routing_key,
+                        .properties = undefined, // set by consume_deliver_dispatch
+                    } };
+                    self.awaiter = .{ .await_content_header = .{
+                        .channel = frame_header.channel,
+                        .delivery_tag = deliver.delivery_tag,
+                        .message_count = 0,
+                        .callback = &consume_deliver_dispatch,
+                    } };
+                    return;
+                }
+                fatal(
+                    "Unexpected basic.deliver (no active consumer): tag={d} exchange=\"{s}\"",
+                    .{ deliver.delivery_tag, deliver.exchange },
+                );
+            },
             .basic_ack => |basic_ack| {
                 // Processing acks in "publish confirms" mode.
                 if (self.action == .publish) {
