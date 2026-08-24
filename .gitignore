@@ -3,3 +3,4 @@ zig-out/
 **node_modules/
 **/dist/
 src/clients/browser/src/generated/
+.DS_Store

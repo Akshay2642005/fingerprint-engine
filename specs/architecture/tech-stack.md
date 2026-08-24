@@ -1,4 +1,4 @@
-# Tech Stack — Fingerprint Engine (current, v0.3.0)
+# Tech Stack — Fingerprint Engine (current, v0.4.0)
 
 Refreshed 2026-08-08. Supersedes the pre-rework inventory (Zig 0.16.0, 37
 features, empty tests) — see `specs/decisions/rework/ANALYSIS.md` F8.

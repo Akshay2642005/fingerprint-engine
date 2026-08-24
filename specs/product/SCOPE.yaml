@@ -1,9 +1,9 @@
 # Project Scope — Fingerprint Engine (Post-Rework)
 
 name: Fingerprint Engine
-version: 0.3.0
+version: 0.4.0
 engine_phases: 1-11 (complete) + rework/distributed-engine (complete)
-current_milestone: "Distributed engine — v0.3.0"
+current_milestone: "Distributed engine — v0.4.0"
 
 targets:
   - browser: "TypeScript signal-collection SDK — collects signals, packages them (SignalPackage v2), POSTs to the ingress. Never computes the canonical fingerprint."

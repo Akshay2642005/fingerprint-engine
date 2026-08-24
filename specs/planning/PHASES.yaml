@@ -9,7 +9,7 @@ design_phase:
 
 plan_phase:
   status: completed
-  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed. Distributed rework (specs/decisions/rework/) executed to v0.3.0."
+  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed. Distributed rework (specs/decisions/rework/) executed to v0.4.0."
 
 build_phase:
   status: completed
