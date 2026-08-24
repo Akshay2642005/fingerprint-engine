@@ -82,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fingerprint-${{ matrix.target }}
-          path: fingerprint-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+          path: "*.tar.gz"
 
   build-wasm:
     name: Build WASM
@@ -125,17 +125,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
+          merge-multiple: true
 
       - name: Create release assets
         run: |
           mkdir -p release-assets
-          TAG=${GITHUB_REF_NAME#v}
-          # WASM
-          cp artifacts/fingerprint-wasm-release/*.wasm release-assets/ 2>/dev/null || true
-          # Native binaries
-          for dir in artifacts/fingerprint-*/; do
-            cp "$dir"/*.tar.gz release-assets/ 2>/dev/null || true
-          done
+          cp artifacts/*.wasm release-assets/ 2>/dev/null || true
+          cp artifacts/*.tar.gz release-assets/ 2>/dev/null || true
 
       - name: Generate release notes
         run: |
