@@ -347,3 +347,37 @@ pub const BasicNackOptions = struct {
     /// this indicates rejection of all outstanding messages.
     multiple: bool,
 };
+
+pub const BasicQosOptions = struct {
+    /// Prefetch window in octets. 0 = no limit.
+    prefetch_size: u32 = 0,
+    /// Prefetch window in messages. 0 = no limit.
+    prefetch_count: u16 = 0,
+    /// Apply to entire connection (RabbitMQ: per-channel when false,
+    /// per-consumer when false).
+    global: bool = false,
+};
+
+pub const BasicConsumeOptions = struct {
+    /// Queue to consume from.
+    queue: []const u8,
+    /// Consumer tag (empty = server-generated).
+    consumer_tag: []const u8 = "",
+    /// If true, the server will not send messages to this consumer.
+    no_local: bool = false,
+    /// If true, messages are auto-acked on delivery.
+    no_ack: bool = false,
+    /// Request exclusive consumer access.
+    exclusive: bool = false,
+    /// Arguments (RabbitMQ extensions).
+    arguments: ?Encoder.Table = null,
+};
+
+pub const ConsumerDelivery = struct {
+    consumer_tag: []const u8,
+    delivery_tag: u64,
+    redelivered: bool,
+    exchange: []const u8,
+    routing_key: []const u8,
+    properties: Decoder.BasicProperties,
+};

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-24
+
+### Added
+
+- **AMQP push consumer** (`basic.consume` + `basic_qos`): the client now
+  supports broker-initiated delivery via `consume_next()` /
+  `consume_body()` / `consumer_ack()` / `consumer_nack()`, in addition to
+  the existing polling `basic.get` model.
+- **Dead-letter queue (DLQ) topology**: publisher declares `fingerprint.dlx`
+  exchange and `fingerprint.dlq` queue on connect. Result queues (declared
+  by consumers) can set `x-dead-letter-exchange=fingerprint.dlx` to
+  automatically route failed/rejected messages to the DLQ.
+- **`zig build scripts -- amqp dlq`**: reads messages from the DLQ, decodes
+  each as an FPKG frame, and prints a readable summary (same as `amqp get`
+  but on the DLQ queue).
+- Consumer e2e test (`tests/adapter/amqp_test.zig`) — skips gracefully
+  when no broker is reachable.
+- **Full-stack compose**: `docker compose up` now runs rabbitmq + worker +
+  ingress. The ingress connects to the worker via `--worker=worker:8080`.
+- **`fingerprint-ingress` image published to GHCR** alongside the worker
+  in the release pipeline.
+- **Cross-platform native binaries** in release artifacts:
+  `fingerprint`, `worker`, and `ingress` executables for Linux x86_64
+  (musl), Linux aarch64 (musl), macOS x86_64, and macOS aarch64.
+
+### Changed
+
+- Version bumped to 0.4.0 across `build.zig.zon` and `package.json`.
+
 ## [0.3.0] - 2026-08-17
 
 ### Added

@@ -16,6 +16,45 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
       - rabbitmq_logs:/var/log/rabbitmq
 
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.worker
+    container_name: fingerprint-worker
+    restart: always
+    ports:
+      - "8081:8080"
+    environment:
+      - FPKG_LOG_LEVEL=info
+    command:
+      - "start"
+      - "--transport=tcp"
+      - "--listen=0.0.0.0:8080"
+      - "--publish=amqp"
+      - "--amqp-address=rabbitmq:5672"
+      - "--amqp-user=guest"
+      - "--amqp-password=guest"
+    depends_on:
+      - rabbitmq
+
+  ingress:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.ingress
+    container_name: fingerprint-ingress
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - FPKG_LOG_LEVEL=info
+      - FPKG_WORKERS=worker:8080
+    command:
+      - "start"
+      - "--listen=0.0.0.0:8080"
+      - "--worker=worker:8080"
+    depends_on:
+      - worker
+
 volumes:
   rabbitmq_data:
   rabbitmq_logs:
