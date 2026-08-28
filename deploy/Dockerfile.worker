@@ -4,19 +4,19 @@ FROM alpine:3.22 AS builder
 ARG ZIG_VERSION=0.14.1
 
 RUN apk add --no-cache \
-    curl \
-    xz \
-    ca-certificates
+  curl \
+  xz \
+  ca-certificates
 
 WORKDIR /app
 
 # Install official Zig 0.14.1 Linux x86_64 release.
 RUN curl -fsSL \
-        "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
-        -o /tmp/zig.tar.xz \
-    && tar -xf /tmp/zig.tar.xz -C /opt \
-    && ln -s "/opt/zig-x86_64-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig \
-    && rm /tmp/zig.tar.xz
+  "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" \
+  -o /tmp/zig.tar.xz \
+  && tar -xf /tmp/zig.tar.xz -C /opt \
+  && ln -s "/opt/zig-x86_64-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig \
+  && rm /tmp/zig.tar.xz
 
 RUN zig version
 
@@ -30,24 +30,24 @@ COPY . .
 #
 # x86_64-linux-musl gives us a binary suitable for Alpine.
 RUN zig build worker \
-    -Dtarget=x86_64-linux-musl \
-    --release=safe
+  -Dtarget=x86_64-linux-musl \
+  --release=safe
 
 
 FROM alpine:3.22 AS runtime
 
 RUN apk add --no-cache tini \
-    && addgroup -S worker \
-    && adduser -S \
-        -G worker \
-        -h /nonexistent \
-        -s /sbin/nologin \
-        worker
+  && addgroup -S worker \
+  && adduser -S \
+  -G worker \
+  -h /nonexistent \
+  -s /sbin/nologin \
+  worker
 
 COPY --from=builder \
-    --chown=worker:worker \
-    /app/zig-out/bin/worker \
-    /usr/local/bin/worker
+  --chown=worker:worker \
+  /app/zig-out/bin/worker \
+  /usr/local/bin/worker
 
 RUN chmod 0555 /usr/local/bin/worker
 
@@ -55,10 +55,9 @@ USER worker
 
 EXPOSE 8080
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/worker"]
 
-CMD ["/usr/local/bin/worker", \
-     "start", \
-     "--transport=tcp", \
-     "--listen=0.0.0.0:8080", \
-     "--publish=none"]
+CMD [ "start", \
+  "--transport=tcp", \
+  "--listen=0.0.0.0:8080", \
+  "--publish=none"]
