@@ -41,7 +41,7 @@ pub const TcpClient = struct {
         port_number: u16,
         idle_timeout_ns: u64,
     ) !TcpClient {
-        const address = try std.net.Address.parseIp(host, port_number);
+        const address = try transport.resolveHost(allocator, host, port_number);
 
         var io_inst = try IO.init(io_entries, 0);
         errdefer io_inst.deinit();
