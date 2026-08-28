@@ -37,6 +37,24 @@ pub fn check(comptime T: type) void {
     }
 }
 
+/// Resolves a `host` (IP literal or DNS name) into a `std.net.Address`,
+/// picking the first resolvable streaming-family address. This is how the
+/// adapter layer supports container/host names (e.g. `worker`, `rabbitmq`)
+/// in addition to raw IPs. All memory is owned by `allocator` and released
+/// before returning, so the returned `Address` is a plain value.
+pub fn resolveHost(allocator: std.mem.Allocator, host: []const u8, port: u16) !std.net.Address {
+    // Short-circuit the common IP-literal case without a getaddrinfo round
+    // trip (and avoid its ambient-allocator behaviour).
+    if (std.net.Address.parseIp(host, port)) |addr| {
+        return addr;
+    } else |_| {}
+
+    const list = try std.net.getAddressList(allocator, host, port);
+    defer list.deinit();
+    if (list.addrs.len == 0) return error.UnknownHostName;
+    return list.addrs[0];
+}
+
 /// Writes a full FPKG frame (header + payload) into `out`, computing the
 /// integrity digest from the payload. Returns the written slice.
 pub fn buildFrame(

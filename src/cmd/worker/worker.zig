@@ -431,8 +431,8 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             log.worker.err("worker: invalid --amqp-address '{s}' (expected host:port)", .{options.amqp_address});
             std.process.exit(1);
         };
-        const address = std.net.Address.parseIp(host, port) catch {
-            log.worker.err("worker: invalid --amqp-address '{s}' (expected host:port)", .{options.amqp_address});
+        const address = adapter.transport.resolveHost(alloc, host, port) catch {
+            log.worker.err("worker: cannot resolve --amqp-address '{s}'", .{options.amqp_address});
             std.process.exit(1);
         };
         const p = adapter.amqp_publisher.Publisher.init(alloc, .{

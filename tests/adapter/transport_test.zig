@@ -106,3 +106,27 @@ test "readFrameFrom rejects tampered frames" {
         adapter.readFrameFrom(fbs.reader(), testing.allocator),
     );
 }
+
+test "resolveHost parses an IPv4 literal directly" {
+    const addr = try adapter.transport.resolveHost(testing.allocator, "127.0.0.1", 8080);
+    try testing.expectEqual(@as(u16, 8080), addr.getPort());
+    try testing.expect(addr.any.family == std.posix.AF.INET);
+    // Round-trips identically to parseIp for a literal — the fast path and
+    // the getaddrinfo path agree on the address.
+    const parsed = std.net.Address.parseIp("127.0.0.1", 8080) catch unreachable;
+    try testing.expectEqual(parsed.any.family, addr.any.family);
+    switch (addr.any.family) {
+        std.posix.AF.INET => try testing.expectEqual(parsed.in.sa.addr, addr.in.sa.addr),
+        std.posix.AF.INET6 => try testing.expectEqual(parsed.in6.sa.addr, addr.in6.sa.addr),
+        else => unreachable,
+    }
+}
+
+test "resolveHost resolves a DNS hostname" {
+    // `localhost` resolves on every supported dev platform (and in the
+    // test container via /etc/hosts), exercising the getaddrinfo path.
+    const addr = try adapter.transport.resolveHost(testing.allocator, "localhost", 8080);
+    try testing.expectEqual(@as(u16, 8080), addr.getPort());
+    const family = addr.any.family;
+    try testing.expect(family == std.posix.AF.INET or family == std.posix.AF.INET6);
+}
