@@ -1,0 +1,59 @@
+---
+import Base from '../layouts/Base.astro'
+
+const glossary = [
+  { term: 'SignalPackage', body: 'Versioned container for a single capture: package + feature version, os/platform/hardware class, and the ordered feature digest list. SHA-256 integrity-checked.' },
+  { term: 'FPKG', body: 'Fingerprint package envelope: 48-byte header (FNGR/FPKG magic, envelope version 1, message type, codec, payload length, integrity digest) + payload.' },
+  { term: 'Feature hash', body: 'SHA-256 over type-tagged value bytes. Tagging against feature+version prevents cross-feature collisions; goldens replay the exact terminal digest.' },
+  { term: 'Ingress', body: 'HTTP gateway that validates and accepts browser packages, forwards them to a pooled worker fleet, and relays the worker reply.' },
+  { term: 'Worker', body: 'Stateless Zig service consuming FPKG frames over TCP or AMQP, running engine.process(), and publishing fingerprint/risk/entropy/similarity results.' },
+  { term: 'Fingerprint', body: 'Structural digest derived from a weighted union of static hashes, giving per-feature similarity 0.0–1.0 against a recorded digest.' },
+  { term: 'Risk assessment', body: 'Quantifies a package: missing features, bound violations, incomplete coverage, and entropy deficit into a risk score + flags.' },
+  { term: 'Browser SDK', body: 'TypeScript client that collects signals and POSTs a SignalPackage v2 body. Primary entry: collect() (and serialization/parse for the low-level API).' },
+  { term: 'Determinism', body: 'Same input bytes → same output bytes on any platform. The engine\'s core architectural invariant, enforced by golden replay tests.' },
+  { term: 'Compile-time first', body: 'Validate at compile time, not runtime. Integer sizes are intentional and breaking if changed — the wire ABI is stable.' },
+]
+
+const wireMarks = [
+  { name: 'FPKG', marker: 'FPKG', note: 'Fingerprint package magic (48-byte envelope) for wire frames.' },
+  { name: 'FNGR', marker: 'FNGR', note: 'SignalPackage v2 body magic (4 bytes).' },
+  { name: 'SHA-256', marker: '—', note: 'Versioned digest for feature hashes, package integrity, and the canonical fingerprint.' },
+  { name: 'TLV', marker: '—', note: 'Type–Length–Value encoding; little-endian throughout.' },
+  { name: 'x-fpkg', marker: '—', note: 'HTTP header family carrying package version and integrity on POST.' },
+]
+---
+
+<Base title="Specs" canonicalPath="/specs/" navKey="reference">
+  <div class="wrap" style="padding:56px 0 60px;">
+    <p class="sec-label">Specs &amp; terminology</p>
+    <h1 style="font-size:34px; font-weight:400; margin:0 0 12px;">Specifications</h1>
+    <p style="color:var(--ink-faint); max-width:760px; margin:0 0 36px;">
+      The Fingerprint Engine is a strict-layered system: the core engine (shared business logic),
+      the browser SDK (WebAssembly signal collection), and the server library (native fingerprint
+      matching and fraud detection). Dependencies flow downward; there are no circular dependencies.
+      Platform-specific code never contains fingerprint algorithms.
+    </p>
+
+    <p class="sec-label">Glossary</p>
+    <h2 class="block-title">Core terminology.</h2>
+    <div class="grid">
+      {glossary.map((g) => (<div class="card"><h3>{g.term}</h3><p>{g.body}</p></div>))}
+    </div>
+
+    <p class="sec-label" style="margin-top:40px;">Wire format</p>
+    <h2 class="block-title">Signatures &amp; encodings.</h2>
+    <article class="doc">
+      <table>
+        <thead><tr><th>Name</th><th>Markers</th><th>Purpose</th></tr></thead>
+        <tbody>
+          {wireMarks.map((s) => (<tr><td><code>{s.name}</code></td><td><code>{s.marker}</code></td><td>{s.note}</td></tr>))}
+        </tbody>
+      </table>
+    </article>
+
+    <div class="cta-row" style="justify-content:flex-start; margin-top:28px;">
+      <a class="btn primary" href="/docs/reference/fpkp-frame/">FPKG frame reference</a>
+      <a class="btn ghost" href="/docs/concepts/">concepts</a>
+    </div>
+  </div>
+</Base>

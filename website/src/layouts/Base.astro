@@ -1,0 +1,210 @@
+---
+import '../styles/global.css'
+
+interface Props {
+  title: string
+  description?: string
+  canonicalPath: string
+  pageTitle?: string
+  navKey?: string
+}
+
+const {
+  title,
+  description = 'Fingerprint Engine — deterministic, distributed browser fingerprinting in Zig.',
+  canonicalPath,
+  pageTitle,
+  navKey = '',
+} = Astro.props
+
+const siteTitle = pageTitle ? `${pageTitle} · Fingerprint Engine` : title
+const canonical = new URL(canonicalPath, Astro.site).toString()
+
+const nav = [
+  { key: '', label: 'home', href: '/' },
+  { key: 'docs', label: 'docs', href: '/docs/' },
+  { key: 'concepts', label: 'concepts', href: '/docs/concepts/' },
+  { key: 'reference', label: 'reference', href: '/docs/reference/signals/' },
+  { key: 'releases', label: 'releases', href: '/releases/' },
+  { key: 'contributing', label: 'contributing', href: '/docs/contributing/' },
+]
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{siteTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#f5f3ee" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:title" content={siteTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chivo+Mono:ital,wght@0,100..900;1,100..900&display=swap"
+      rel="stylesheet"
+    />
+    <script is:inline>
+      // iii-style pre-paint theme boot.
+      (function () {
+        var KEY = 'fpe_theme'
+        var stored = null
+        try { stored = localStorage.getItem(KEY) } catch (e) {}
+        var dark = stored === 'dark' || (stored === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (dark) {
+          var el = document.documentElement
+          el.dataset.theme = 'dark'
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.content = '#111110'
+          el.style.cssText = '--bg:#111110;--panel:#1a1916;--paper:#111110;--paper-2:#222220;--ink:#f2f0ed;--ink-2:#e2dfd9;--ink-soft:#e2dfd9;--ink-faint:#9c9893;--ink-ghost:#5d5a55;--mute:#9c9893;--mute-2:#5d5a55;--rule:#2a2926;--rule-2:#1f1e1c;--accent:#3ea8ff'
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <nav class="site-nav" id="site-nav">
+      <div class="inner">
+        <a class="brand" href="/">
+          <svg class="brand-mark" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true" focusable="false">
+            <path d="M9 26 C 8 21 10 18 9 13 C 8.4 10 9 8 9 6" />
+            <path class="bm-c" d="M16 26 C 15 21 17 18 16 13 C 15.4 10 16 8 16 6" />
+            <path d="M23 26 C 22 21 24 18 23 13 C 22.4 10 23 8 23 6" />
+          </svg>
+          <span>Fingerprint Engine</span>
+        </a>
+        <div class="nav-links">
+          {nav.map((n) => (
+            <a href={n.href} aria-current={navKey === n.key ? 'page' : undefined}>{n.label}</a>
+          ))}
+          <a href="https://github.com/Akshay2642005/fingerprint-engine" rel="noopener">github <span class="ext">↗</span></a>
+          <button class="theme-btn" id="theme-btn" aria-label="Toggle theme" type="button">◐</button>
+        </div>
+        <button class="nav-toggle" id="nav-toggle" aria-label="Open menu" type="button">☰</button>
+      </div>
+    </nav>
+    <div class="mobile-menu" id="mobile-menu">
+      {nav.map((n) => (<a href={n.href}>{n.label}</a>))}
+      <a href="https://github.com/Akshay2642005/fingerprint-engine" rel="noopener">github ↗</a>
+    </div>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="inner">
+        <div class="cols">
+          <div>
+            <div class="fb">
+              <svg class="brand-mark sm" viewBox="0 0 32 32" width="18" height="18" aria-hidden="true" focusable="false">
+                <path d="M9 26 C 8 21 10 18 9 13 C 8.4 10 9 8 9 6" />
+                <path class="bm-c" d="M16 26 C 15 21 17 18 16 13 C 15.4 10 16 8 16 6" />
+                <path d="M23 26 C 22 21 24 18 23 13 C 22.4 10 23 8 23 6" />
+              </svg>
+              Fingerprint Engine
+            </div>
+            <p style="max-width:260px; font-size:12px; color:var(--mute-2);">
+              deterministic, distributed browser fingerprinting in Zig. 102 signals. zero dependencies.
+            </p>
+          </div>
+          <div>
+            <h5>docs</h5>
+            <ul>
+              <li><a href="/docs/start/">start</a></li>
+              <li><a href="/docs/concepts/">concepts</a></li>
+              <li><a href="/docs/guides/">guides</a></li>
+              <li><a href="/docs/operating/">operating</a></li>
+              <li><a href="/docs/reference/signals/">signals</a></li>
+            </ul>
+          </div>
+          <div>
+            <h5>project</h5>
+            <ul>
+              <li><a href="/releases/">releases</a></li>
+              <li><a href="/docs/contributing/">contributing</a></li>
+              <li><a href="/docs/architecture/">architecture</a></li>
+              <li><a href="https://github.com/Akshay2642005/fingerprint-engine" rel="noopener">github ↗</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="bottom">
+          <span>© 2025–2026 Fingerprint Engine Contributors · MIT</span>
+          {canonicalPath && <span style="display:block; font-size:11px; margin-top:8px;">{Astro.site?.host ?? ''}</span>}
+        </div>
+      </div>
+    </footer>
+
+    <script is:inline>
+      // nav scroll compaction
+      var navEl = document.getElementById('site-nav')
+      function onScroll () { if (window.scrollY > 40) navEl.classList.add('scrolled'); else navEl.classList.remove('scrolled') }
+      window.addEventListener('scroll', onScroll, { passive: true }); onScroll()
+      // theme toggle
+      document.getElementById('theme-btn').addEventListener('click', function () {
+        var el = document.documentElement
+        var dark = el.dataset.theme === 'dark'
+        try { localStorage.setItem('fpe_theme', dark ? 'light' : 'dark') } catch (e) {}
+        el.dataset.theme = dark ? '' : 'dark'
+        var meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.content = dark ? '#f5f3ee' : '#111110'
+        applyDark(!dark)
+      })
+      function applyDark (dark) {
+        var el = document.documentElement
+        if (dark) el.style.cssText = '--bg:#111110;--panel:#1a1916;--paper:#111110;--paper-2:#222220;--ink:#f2f0ed;--ink-2:#e2dfd9;--ink-soft:#e2dfd9;--ink-faint:#9c9893;--ink-ghost:#5d5a55;--mute:#9c9893;--mute-2:#5d5a55;--rule:#2a2926;--rule-2:#1f1e1c;--accent:#3ea8ff'
+        else el.style.cssText = ''
+      }
+      // mobile menu
+      var toggle = document.getElementById('nav-toggle')
+      var menu = document.getElementById('mobile-menu')
+      toggle.addEventListener('click', function () { menu.classList.toggle('open'); var o = menu.classList.contains('open'); toggle.textContent = o ? '×' : '☰' })
+      menu.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', function () { menu.classList.remove('open'); toggle.textContent = '☰' }) })
+
+      // Collapsible, highlighted code blocks: wrap a fenced block that follows a
+      // [data-compose] sentinel in <details>, with an always-visible copy button.
+      document.querySelectorAll('[data-compose]').forEach(function (anchor) {
+        // The sentinel is often wrapped in a <p>; start the search from its parent.
+        var node = anchor.parentElement
+        while (node && !(node.matches && node.matches('pre.astro-code'))) node = node.nextElementSibling
+        if (!node) return
+        var title = anchor.getAttribute('data-compose') || 'Code'
+        var details = document.createElement('details')
+        details.className = 'collapsible'
+        var summary = document.createElement('summary')
+        summary.textContent = title
+        var btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'copy-btn'
+        btn.textContent = 'Copy'
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation()
+          var code = node.querySelector('code')
+          var text = code ? code.innerText : node.innerText
+          navigator.clipboard.writeText(text).then(function () {
+            btn.textContent = 'Copied!'
+            btn.classList.add('copied')
+            setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('copied') }, 1500)
+          }).catch(function () {
+            btn.textContent = 'Failed'
+            setTimeout(function () { btn.textContent = 'Copy' }, 1500)
+          })
+        })
+        summary.appendChild(btn)
+        details.appendChild(summary)
+        node.parentNode.insertBefore(details, node)
+        details.appendChild(node)
+        var p = anchor.parentElement
+        anchor.remove()
+        if (p && p.tagName === 'P' && p.children.length === 0) p.remove()
+      })
+    </script>
+  </body>
+</html>

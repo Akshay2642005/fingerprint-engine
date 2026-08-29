@@ -1,0 +1,40 @@
+---
+import { getCollection, render } from 'astro:content'
+import DocsLayout from '../../layouts/Docs.astro'
+
+export async function getStaticPaths() {
+  const docs = await getCollection('docs')
+  const paths = []
+  for (const d of docs) {
+    const segs = d.id.split('/')
+    const isReadme = segs[segs.length - 1].toLowerCase() === 'readme'
+    // README files map to their parent category URL: concepts/README → /docs/concepts/
+    const slug = (isReadme ? segs.slice(0, -1) : segs).join('/')
+    paths.push({ params: { slug }, props: { doc: d } })
+    // Also serve legacy ".md" URLs (direct links / stale bookmarks) so they
+    // don't 404 — the same doc is rendered either way.
+    paths.push({ params: { slug: d.id + '.md' }, props: { doc: d } })
+  }
+  return paths
+}
+
+const { doc } = Astro.props
+const { Content, headings } = await render(doc)
+const toc = headings.filter((h) => h.depth === 2).map((h) => ({ id: h.slug, label: h.text }))
+
+const crumbs = doc.data.crumbs ?? (doc.data.category === 'start' ? [] : [doc.data.category])
+const navKeys = doc.data.category
+const canonicalPath = `/docs/${doc.id}/`.replace(/\/[^/]*readme\/?$/i, '/')
+---
+
+<DocsLayout
+  title={doc.data.title}
+  description={doc.data.description}
+  canonicalPath={canonicalPath}
+  navKey={navKeys}
+  category={doc.data.category}
+  crumbs={crumbs}
+  toc={toc}
+>
+  <Content />
+</DocsLayout>

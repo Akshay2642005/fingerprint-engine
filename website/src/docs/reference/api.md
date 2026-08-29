@@ -1,3 +1,10 @@
+---
+title: "API Reference"
+description: "Engine operations, SDK, and worker CLI."
+category: "reference"
+order: 3
+---
+
 # Fingerprint Engine API Documentation
 
 ## Overview

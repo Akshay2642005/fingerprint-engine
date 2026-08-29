@@ -1,0 +1,73 @@
+---
+import Base from './Base.astro'
+import Mermaid from '../components/Mermaid.astro'
+
+interface Props {
+  title: string
+  description?: string
+  canonicalPath: string
+  navKey?: string
+  category: string
+  crumbs?: string[]
+  toc?: { id: string; label: string }[]
+}
+
+const { title, description, canonicalPath, navKey = 'docs', category, crumbs = [], toc = [] } = Astro.props
+
+const nav = [
+  { label: 'Start', href: '/docs/start/', active: category === 'start' },
+  { label: 'Concepts', href: '/docs/concepts/', active: category === 'concepts' },
+  { label: 'Guides', href: '/docs/guides/', active: category === 'guides' },
+  { label: 'Operating', href: '/docs/operating/', active: category === 'operating' },
+  { label: 'Architecture', href: '/docs/architecture/', active: category === 'architecture' },
+  { label: 'Reference', href: '/docs/reference/signals/', active: category === 'reference' },
+  { label: 'Internals', href: '/docs/internals/', active: category === 'internals' },
+  { label: 'Contributing', href: '/docs/contributing/', active: category === 'contributing' },
+]
+---
+
+<Base title={title} description={description} canonicalPath={canonicalPath} navKey={navKey}>
+  <div class="wrap docs-shell">
+    <aside class="docs-sidebar">
+      <div class="sec">
+        <div class="sec-label">Documentation</div>
+        {nav.map((n) => (
+          <a href={n.href} class:list={{ here: n.active }}>{n.label}</a>
+        ))}
+      </div>
+      <div class="sec">
+        <div class="sec-label">Project</div>
+        <a href="/releases/">releases</a>
+        <a href="/docs/contributing/">contributing</a>
+        <a href="https://github.com/Akshay2642005/fingerprint-engine" rel="noopener">github ↗</a>
+      </div>
+    </aside>
+
+    <article class="docs-main">
+      {crumbs.length > 0 && (
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <a href="/docs/">docs</a>
+          {crumbs.map((c, i) => (
+            i < crumbs.length - 1
+              ? <><span>/</span><a href="#">{c}</a></>
+              : <><span>/</span><span>{c}</span></>
+          ))}
+        </nav>
+      )}
+      <div style="display:flex; gap:44px; align-items:flex-start;">
+        <article class="doc" style="flex:1; min-width:0;">
+          <slot />
+        </article>
+        {toc.length > 0 && (
+          <aside class="docs-toc">
+            <div class="sec-label">On this page</div>
+            <nav>
+              {toc.map((i) => <a href={`#${i.id}`}>{i.label}</a>)}
+            </nav>
+          </aside>
+        )}
+      </div>
+      <Mermaid />
+    </article>
+  </div>
+</Base>

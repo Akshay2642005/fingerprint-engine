@@ -35,7 +35,7 @@ const builtin = @import("builtin");
 //   zig build docker:ingress        - build the ingress Docker image
 //   zig build bench                 - run performance benchmarks
 //   zig build clients:browser       - build the browser npm package (dist/)
-//   zig build docs                  - build docs (nested src/docs_website/)
+//   zig build docs                  - build docs (static site under website/)
 //   zig build scripts -- <cmd>      - free-form automation scripts
 
 const zig_version = std.SemanticVersion{
@@ -701,7 +701,25 @@ fn build_test_integration(b: *std.Build, steps: struct {
 }
 
 fn build_docs(b: *std.Build, step: *std.Build.Step) void {
-    const nested_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build" });
-    nested_build.setCwd(b.path("./src/docs_website/"));
-    step.dependOn(&nested_build.step);
+    // The docs website is a static Astro site under website/. Building it
+    // requires Node.js/npm. This step runs `npm install` (idempotent) and
+    // `npm run build`, then installs the generated static output into
+    // zig-out/docs.
+    const npm_exe = "npm";
+
+    const npm_install = b.addSystemCommand(&.{ npm_exe, "install" });
+    npm_install.setCwd(b.path("./website/"));
+    npm_install.has_side_effects = true;
+    step.dependOn(&npm_install.step);
+
+    const npm_build = b.addSystemCommand(&.{ npm_exe, "run", "build" });
+    npm_build.setCwd(b.path("./website/"));
+    step.dependOn(&npm_build.step);
+
+    const install = b.addInstallDirectory(.{
+        .source_dir = b.path("./website/dist"),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+    step.dependOn(&install.step);
 }

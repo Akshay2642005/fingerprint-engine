@@ -1,0 +1,76 @@
+---
+import { getCollection, type CollectionEntry } from 'astro:content'
+import Base from '../../layouts/Base.astro'
+import Search from '../../components/Search.astro'
+
+type DocEntry = CollectionEntry<'docs'>
+const docs = await getCollection('docs')
+
+const byCategory = new Map<string, DocEntry[]>()
+for (const d of docs) {
+  const cat = d.data.category
+  if (!byCategory.has(cat)) byCategory.set(cat, [])
+  byCategory.get(cat)!.push(d)
+}
+
+const catTitles = {
+  start: 'Start',
+  concepts: 'Concepts',
+  guides: 'Guides',
+  operating: 'Operating',
+  architecture: 'Architecture',
+  reference: 'Reference',
+  internals: 'Internals',
+  contributing: 'Contributing',
+}
+type Category = keyof typeof catTitles
+const catOrder: Category[] = ['start', 'concepts', 'guides', 'operating', 'architecture', 'reference', 'internals', 'contributing']
+const catBlurbs: Record<Category, string> = {
+  start: 'Get up and running with the browser SDK and the full distributed stack.',
+  concepts: 'Why the browser/engine/platform split exists and how the model works.',
+  guides: 'Integrate the engine into your application — SDK, serialization, compose, CLI.',
+  operating: 'Deploy and operate the distributed pipeline — compose, AMQP, monitoring.',
+  architecture: 'The layered architecture and design principles.',
+  reference: 'Every detail: the 102-signal registry, API, operations, and wire format.',
+  internals: 'How the engine works under the hood — hashing, serialization, testing.',
+  contributing: 'Contribute to Fingerprint Engine.',
+}
+
+// Category pages live at /docs/<category>/ (the category README).
+const catHref = (cat: Category) =>
+  cat === 'start' ? '/docs/start/' : `/docs/${cat}/`
+const subpages = (d: DocEntry): string | false =>
+  d.id === 'start' || /readme$/i.test(d.id) ? false : d.id
+---
+
+<Base title="Documentation" canonicalPath="/docs/" navKey="docs" pageTitle="Docs">
+  <div class="wrap" style="padding:56px 0 60px;">
+    <p class="sec-label">Documentation</p>
+    <h1 style="font-size:34px; font-weight:400; margin:0 0 12px;">Fingerprint Engine documentation</h1>
+    <p style="color:var(--ink-faint); max-width:720px; margin:0 0 40px;">
+      A deterministic, distributed browser fingerprinting engine. The browser collects,
+      the engine computes, the platform decides. This documentation is rendered live from
+      the repository source.
+    </p>
+
+    <Search />
+
+    {catOrder.filter((c) => byCategory.has(c)).map((cat) => (
+      <div style="margin-bottom:40px;">
+        <p class="sec-label" style="margin-bottom:6px;">{catTitles[cat]}</p>
+        <p style="color:var(--ink-faint); font-size:13px; margin:0 0 14px;">{catBlurbs[cat]}</p>
+        <div class="grid">
+          {(byCategory.get(cat) || [])
+            .filter((d) => subpages(d))
+            .sort((a, b) => (a.data.order ?? 99) - (b.data.order ?? 99))
+            .map((d) => (
+              <a class="doc-card" href={`/docs/${d.id}/`}>
+                <h3>{d.data.title}</h3>
+                <p>{d.data.description}</p>
+              </a>
+            ))}
+        </div>
+      </div>
+    ))}
+  </div>
+</Base>
