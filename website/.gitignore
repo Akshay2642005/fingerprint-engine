@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.astro/
+# Generated from repo-root sources by `npm run build` (scripts/sync.mjs).
+# These are derivable; do not commit. All other docs under src/docs/ are
+# canonical hand-authored content and are committed.
+src/docs/contributing.md
+src/docs/reference/conventions.md
+src/docs/security.md

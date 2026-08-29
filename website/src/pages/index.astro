@@ -1,0 +1,161 @@
+---
+import Base from '../layouts/Base.astro'
+import { Code } from 'astro:components'
+
+const features = [
+  { title: '102 signals', body: 'Across 21 categories — navigator, screen, canvas, WebGL, audio, fonts, hardware, and more.' },
+  { title: 'deterministic', body: 'same input, same output, any platform. Versioned operations and golden-fixture replay.' },
+  { title: 'sha-256 hashing', body: 'type-tagged digests prevent cross-type collisions; incremental hasher matches the batch hash.' },
+  { title: 'zero dependencies', body: 'pure Zig std library. no runtime registry, no reflection, no dynamic dispatch.' },
+  { title: 'versioned wire', body: 'compact TLV binary (FNGR magic) and readable JSON with a stable ABI.' },
+  { title: 'distributed', body: 'stateless Zig workers compute the fingerprint in Docker — never in the browser.' },
+  { title: 'scoring', body: 'weighted similarity (0.0–1.0), Shannon entropy, and quantitative risk assessment.' },
+  { title: 'privacy by design', body: 'no PII, no IP/geo, no camera or mic streams, no history, no credentials. ever.' },
+]
+
+const categories = [
+  'Navigator', 'Screen', 'Hardware', 'Canvas', 'WebGL', 'Audio', 'Fonts',
+  'Storage', 'Network', 'Battery', 'Media', 'Permissions', 'Speech',
+  'Input', 'Browser APIs', 'CSS', 'Crypto', 'GPU', 'Performance', 'OS', 'Metadata',
+]
+
+const installCmd = `npm install @akshay2642005/fingerprint-sdk`
+
+const tsSnippet = `import { configure, collect } from '@akshay2642005/fingerprint-sdk';
+
+configure({ ingressUrl: 'https://ingress.example.com/v1/fingerprints' });
+
+const r = await collect();
+console.log('package :', r.packageId);    // 16-byte replay id
+console.log('signals :', r.signalCount);  // 102 collected
+console.log('sent    :', r.sent);         // ingress accepted
+console.log('reply   :', r.reply);        // worker digest`
+---
+
+<Base title="Fingerprint Engine" canonicalPath="/" navKey="home">
+  <header class="hero">
+    <div class="wrap">
+      <div class="hero-brand">
+        <svg class="brand-mark lg" viewBox="0 0 32 32" width="40" height="40" aria-hidden="true" focusable="false">
+          <path d="M9 26 C 8 21 10 18 9 13 C 8.4 10 9 8 9 6" />
+          <path class="bm-c" d="M16 26 C 15 21 17 18 16 13 C 15.4 10 16 8 16 6" />
+          <path d="M23 26 C 22 21 24 18 23 13 C 22.4 10 23 8 23 6" />
+        </svg>
+        <span>Fingerprint Engine</span>
+      </div>
+      <p class="eyebrow">Fingerprint Engine · v0.4.1 · zig</p>
+      <h1>Deterministic, distributed browser fingerprinting in Zig.</h1>
+      <p class="lede">
+        Collect 102 browser signals, package them into a versioned SignalPackage,
+        and compute the canonical fingerprint on stateless server-side workers —
+        never in the browser.
+      </p>
+      <div class="badges">
+        <span class="badge accent">zig 0.14.1</span>
+        <span class="badge">0 dependencies</span>
+        <span class="badge">102 signals</span>
+        <span class="badge">21 categories</span>
+        <span class="badge">sha-256</span>
+        <span class="badge accent">MIT</span>
+      </div>
+      <div class="cta-row">
+        <a class="btn primary" href="/docs/start/">get started</a>
+        <a class="btn ghost" href="/docs/start/">read the docs</a>
+        <a class="btn ghost" href="/releases/">releases</a>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>102</b><span>signals</span></div>
+        <div class="stat"><b>21</b><span>categories</span></div>
+        <div class="stat"><b>0</b><span>dependencies</span></div>
+        <div class="stat"><b>sha-256</b><span>hashing</span></div>
+      </div>
+    </div>
+  </header>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="alert">
+        <strong>Early development.</strong> This project is under heavy development. APIs, features,
+        and architecture change frequently; breaking changes are expected and production use is not yet
+        recommended.
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <p class="sec-label">How it works</p>
+      <h2 class="block-title">The browser collects. The engine computes. The platform decides.</h2>
+      <div class="steps">
+        <div class="step"><span class="n">1</span><div><h3>Collect</h3><p>The TypeScript SDK gathers 102 non-identifying signals and serializes a versioned SignalPackage v2 body.</p></div></div>
+        <div class="step"><span class="n">2</span><div><h3>Ship</h3><p>The SDK POSTs the package to the ingress with x-fpkg headers and a SHA-256 integrity digest.</p></div></div>
+        <div class="step"><span class="n">3</span><div><h3>Compute</h3><p>Stateless Zig workers run engine.process() to produce the fingerprint, risk, entropy, and similarity.</p></div></div>
+        <div class="step"><span class="n">4</span><div><h3>Decide</h3><p>Results stream over AMQP to the fraud platform, which pushes blocking decisions back over WebSocket.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <p class="sec-label">Features</p>
+      <h2 class="block-title">Everything you need, with nothing you don't.</h2>
+      <div class="grid">
+        {features.map((f) => (
+          <div class="card"><h3>{f.title}</h3><p>{f.body}</p></div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <p class="sec-label">Quick start</p>
+      <h2 class="block-title">Collect signals in the browser, in seconds.</h2>
+      <Code code={installCmd} lang="bash" />
+      <Code code={tsSnippet} lang="ts" />
+      <p style="color:var(--ink-faint); font-size:13px; margin-top:12px;">
+        Read the full <a href="/docs/start/">start guide</a> and the
+        <a href="/docs/guides/browser-sdk/">browser SDK guide</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <p class="sec-label">Signals</p>
+      <h2 class="block-title">21 categories, 102 signals.</h2>
+      <div class="grid">
+        {categories.map((c) => <a class="doc-card" href="/docs/reference/signals/"><h3>{c}</h3></a>)}
+      </div>
+      <p style="color:var(--ink-faint); font-size:13px; margin-top:14px;">
+        Full registry: <a href="/docs/reference/signals/">the 102-signal reference</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <p class="sec-label">Privacy by design</p>
+      <h2 class="block-title">No PII, ever.</h2>
+      <p style="color:var(--ink-faint); max-width:720px;">
+        The engine never touches IP/geo-location, camera or mic streams, browsing history, cookie
+        contents, the file system, or credentials. Every collected signal is a non-identifying browser
+        characteristic gathered ephemerally and hashed deterministically.
+      </p>
+      <div class="cta-row" style="justify-content:flex-start; margin-top:20px;">
+        <a class="btn ghost" href="/docs/concepts/trust-privacy/">trust &amp; privacy</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" style="border-bottom:0;">
+    <div class="wrap" style="text-align:center;">
+      <h2 class="block-title">Build with Fingerprint Engine.</h2>
+      <p style="color:var(--ink-faint); margin-bottom:22px;">Documentation, concepts, and reference — rendered live from the repository.</p>
+      <div class="cta-row" style="justify-content:center;">
+        <a class="btn primary" href="/docs/">documentation</a>
+        <a class="btn ghost" href="/docs/contributing/">contribute</a>
+      </div>
+    </div>
+  </section>
+</Base>

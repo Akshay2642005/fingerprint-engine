@@ -147,7 +147,7 @@ if (assertAllowed().blocked) {
 │   ├── bench/                # Benchmark harness
 │   ├── build/                # Build-time generators (browser package generator, dist surface guard)
 │   ├── scripts.zig           # Automation dispatcher subcommands
-│   └── docs_website/         # Nested Zig project — `zig build docs`
+├── website/                 # Static docs + landing site (Astro) — `zig build docs`
 ├── examples/
 │   └── demo.html             # Dev-only SDK demo (configure + collect; never shipped in the npm package)
 ├── tests/

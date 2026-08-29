@@ -1,0 +1,77 @@
+---
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import Base from '../layouts/Base.astro'
+
+const changelogPath = fileURLToPath(new URL('../../../CHANGELOG.md', import.meta.url))
+const raw = await readFile(changelogPath, 'utf8')
+
+interface Section { heading: string; items: string[] }
+interface Release { version: string; date: string; sections: Section[] }
+
+const blocks: Release[] = []
+const lines = raw.split('\n')
+let cur: Release | null = null
+for (const line of lines) {
+  const m = line.match(/^## \[([^\]]+)\] - (\S+)/)
+  if (m) { cur = { version: m[1], date: m[2], sections: [] }; blocks.push(cur); continue }
+  if (!cur) continue
+  const sh = line.match(/^### (.+)/)
+  if (sh) { cur.sections.push({ heading: sh[1], items: [] }); continue }
+  const li = line.match(/^[-*]\s+(.+)/)
+  if (li && cur.sections.length) { cur.sections[cur.sections.length - 1].items.push(li[1]) }
+}
+// The CHANGELOG is newest-first; drop the "Unreleased" placeholder and keep
+// newest at the top.
+const releases = blocks.filter((b) => b.version !== 'Unreleased')
+const latest = releases[0]
+const latestUrl = `https://github.com/Akshay2642005/fingerprint-engine/releases/tag/v${latest.version}`
+
+// minimal inline markdown: **bold** and `code`
+function renderInline(text: string) {
+  return text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>')
+}
+---
+
+<Base title="Releases" canonicalPath="/releases/" navKey="releases">
+  <div class="wrap" style="padding:56px 0 60px;">
+    <p class="sec-label">Releases</p>
+    <h1 style="font-size:34px; font-weight:400; margin:0 0 12px;">Version history</h1>
+    <p style="color:var(--ink-faint); max-width:720px; margin:0 0 8px;">
+      Rendered directly from the repository CHANGELOG, following Keep a Changelog and Semantic Versioning.
+      Release artifacts — native binaries, WebAssembly, the npm package, and GHCR worker/ingress images —
+      are produced automatically from annotated git tags.
+    </p>
+
+    {releases.length > 0 && (
+      <div class="cta-row" style="justify-content:flex-start; margin:20px 0 40px;">
+        <a class="btn primary" href={latestUrl} rel="noopener">v{latest.version} <span>↗</span></a>
+        <a class="btn ghost" href="https://github.com/Akshay2642005/fingerprint-engine/releases" rel="noopener">all releases ↗</a>
+      </div>
+    )}
+
+    <div class="timeline">
+      {releases.map((r) => (
+        <div class="tl-item">
+          <div class="date">{r.date}</div>
+          <h3>
+            <a href={`https://github.com/Akshay2642005/fingerprint-engine/releases/tag/v${r.version}`} rel="noopener">
+              v{r.version}
+            </a>
+          </h3>
+          {r.sections.length === 0 && <p style="color:var(--ink-faint); font-size:13px;">No changelog entries.</p>}
+          {r.sections.map((s) => (
+            <div style="margin-top:12px;">
+              <div class="sec-label" style="font-size:11px; color:var(--mute-2); margin:0 0 6px;">{s.heading}</div>
+              <ul style="margin:0; padding-left:18px;">
+                {s.items.map((item) => (
+                  <li style="font-size:13px; color:var(--ink-faint); margin:4px 0;"><Fragment set:html={renderInline(item)} /></li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  </div>
+</Base>

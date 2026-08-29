@@ -1,3 +1,10 @@
+---
+title: "Architecture"
+description: "Layered architecture and design principles."
+category: "architecture"
+order: 1
+---
+
 # Architecture Overview
 
 ## Design Principle
@@ -165,21 +172,44 @@ computation. The canonical fingerprint is produced only server-side.
 The SignalPackage v2 body uses a versioned TLV (Type-Length-Value) encoding,
 little-endian throughout:
 
+```mermaid
+flowchart TD
+  PKG["<pre style='text-align:left;font-family:monospace;font-size:13px;line-height:1.55;margin:0'>SignalPackage v2 Body — TLV, little-endian
+┌────────────────────────────────────────────────────┐
+│ Magic     · FNGR                           4 bytes │
+│ Schema    · u16 = 2                        2 bytes │
+│ SdkLen    · u16                            2 bytes │
+│ Sdk       · UTF-8                        len bytes │
+│ Collected · i64 (ms epoch)                 8 bytes │
+│ PkgId     · [16]u8  (replay id)           16 bytes │
+│ Count     · u16                            2 bytes │
+│ Features  · × N (TLV records)                      │
+│  FeatureID u16 | Type u8 | Len u32 | Payload len B │
+└────────────────────────────────────────────────────┘</pre>"]
 ```
-┌───────────────────────────────────────────────────────────────┐
-│ Magic: "FNGR" (4 bytes)                                       │
-│ Schema Version: u16 = 2                                       │
-│ SDK Version Length: u16 | SDK Version: bytes                 │
-│ Collected At: i64 (ms epoch)                                  │
-│ Package ID: [16]u8 (replay identity)                          │
-│ Feature Count: u16                                            │
-│ Features:                                                     │
-│   ┌─────────────────────────────────────────────────────────┐ │
-│   │ FeatureID: u16 | Type: u8 | Payload Length: u32 | Payload│ │
-│   └─────────────────────────────────────────────────────────┘ │
-│   ... (repeated)                                              │
-└───────────────────────────────────────────────────────────────┘
-```
+
+The wire layout, byte by byte (offsets are from the start of the body; `len`
+is the SDK version length):
+
+| Offset | Size | Field | Notes |
+| ------ | ---- | ----- | ----- |
+| `0` | 4 | Magic | ASCII `FNGR` |
+| `4` | 2 | Schema Version | `u16` = 2 |
+| `6` | 2 | SDK Version Length | `u16` byte length of the SDK version string |
+| `8` | `len` | SDK Version | UTF-8, exactly `len` bytes |
+| `8 + len` | 8 | Collected At | `i64` milliseconds since the Unix epoch |
+| `16 + len` | 16 | Package ID | `[16]u8` replay identity |
+| `32 + len` | 2 | Feature Count | `u16` number of feature records |
+| `34 + len` | variable | Features | `Feature Count` TLV records |
+
+Each feature record is itself a TLV triple:
+
+| Offset (within record) | Size | Field |
+| ----------------------- | ---- | ----- |
+| `0` | 2 | FeatureID · `u16` |
+| `2` | 1 | Type · `u8` |
+| `3` | 4 | Payload Length · `u32` |
+| `7` | `len` | Payload · `len` bytes |
 
 Payloads are shaped by FeatureType: Boolean `u8` 0/1; Integer `i64`;
 Float `u64` bitcast; String/Bytes `u32 len + bytes`; arrays `u32 count +

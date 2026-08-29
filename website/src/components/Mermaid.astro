@@ -1,0 +1,137 @@
+---
+// Client-side Mermaid renderer.
+// Mermaid cannot consume CSS variables in `themeVariables` (it throws
+// "Unsupported color format"), so we feed it concrete hex palettes that
+// match the site's light and dark themes, and re-render the diagrams when
+// the user toggles the theme (the toggle sets data-theme on <html>).
+---
+
+<script>
+  import mermaid from 'mermaid'
+
+  const palettes = {
+    light: {
+      fontFamily: 'Chivo Mono, ui-monospace, monospace',
+      fontSize: '20px',
+      primaryColor: '#efece4',
+      primaryTextColor: '#1a1a18',
+      primaryBorderColor: '#d8d3c8',
+      lineColor: '#8a857a',
+      secondaryColor: '#e6e1d6',
+      tertiaryColor: '#f5f3ee',
+      background: '#f5f3ee',
+      clusterBkg: '#e6e1d6',
+      edgeLabelBackground: '#f5f3ee',
+      nodeTextColor: '#1a1a18',
+      textColor: '#1a1a18',
+      actorBkg: '#efece4',
+      actorBorder: '#d8d3c8',
+      actorTextColor: '#1a1a18',
+      signalColor: '#8a857a',
+      sequenceNumberColor: '#1a1a18',
+    },
+    dark: {
+      fontFamily: 'Chivo Mono, ui-monospace, monospace',
+      fontSize: '20px',
+      primaryColor: '#1a1916',
+      primaryTextColor: '#f2f0ed',
+      primaryBorderColor: '#2a2926',
+      lineColor: '#9c9893',
+      secondaryColor: '#222220',
+      tertiaryColor: '#111110',
+      background: '#111110',
+      clusterBkg: '#222220',
+      edgeLabelBackground: '#111110',
+      nodeTextColor: '#f2f0ed',
+      textColor: '#f2f0ed',
+      actorBkg: '#1a1916',
+      actorBorder: '#2a2926',
+      actorTextColor: '#f2f0ed',
+      signalColor: '#9c9893',
+      sequenceNumberColor: '#f2f0ed',
+    },
+  }
+
+  function palette() {
+    return document.documentElement.dataset.theme === 'dark' ? palettes.dark : palettes.light
+  }
+
+  function setup() {
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'loose',
+      theme: 'base',
+      themeVariables: palette(),
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis', nodeSpacing: 48, rankSpacing: 56, padding: 24 },
+      sequence: { useMaxWidth: true, mirrorActorTags: false, messageFontSize: 20, noteFontSize: 16, wrap: true },
+    })
+  }
+
+  async function renderAll(root) {
+    setup()
+    const blocks = Array.from(root.querySelectorAll('pre[data-language="mermaid"]'))
+    for (const pre of blocks) {
+      const codeEl = pre.querySelector('code')
+      const src = (codeEl ? codeEl.textContent : pre.textContent || '').trim()
+      if (!src) continue
+      const id = 'mmd-' + Math.random().toString(36).slice(2, 10)
+      try {
+        const { svg } = await mermaid.render(id, src)
+        const wrap = document.createElement('div')
+        wrap.className = 'mermaid-wrap'
+        wrap.dataset.src = src
+        wrap.innerHTML = svg
+        pre.replaceWith(wrap)
+      } catch (err) {
+        const bad = document.createElement('div')
+        bad.className = 'alert warn'
+        const msg = err instanceof Error ? err.message : String(err)
+        bad.textContent = 'diagram failed to render: ' + msg
+        pre.replaceWith(bad)
+      }
+    }
+  }
+
+  async function reRenderAll() {
+    setup()
+    const wraps = Array.from(document.querySelectorAll('.mermaid-wrap'))
+    for (const wrap of wraps) {
+      const src = wrap.dataset.src
+      if (!src) continue
+      const id = 'mmd-' + Math.random().toString(36).slice(2, 10)
+      try {
+        const { svg } = await mermaid.render(id, src)
+        wrap.innerHTML = svg
+      } catch (_) {
+        // keep the previous render if a re-render fails
+      }
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => renderAll(document))
+  } else {
+    renderAll(document)
+  }
+
+  // Re-render diagrams when the color theme changes.
+  const observer = new MutationObserver(() => reRenderAll())
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+</script>
+
+<style>
+  .mermaid-wrap {
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    padding: 16px;
+    overflow-x: auto;
+    margin: 20px 0;
+  }
+  .mermaid-wrap svg {
+    display: block;
+    margin: 0 auto;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100%;
+  }
+</style>

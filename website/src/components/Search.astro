@@ -1,0 +1,77 @@
+---
+---
+
+<div class="search-box">
+  <input id="fp-search" type="search" placeholder="search the docs…" autocomplete="off" aria-label="Search documentation" />
+  <div class="search-results" id="fp-results" style="display:none;"></div>
+</div>
+
+<script>
+  interface Item {
+    id: string
+    title: string
+    description: string
+    category: string
+    url: string
+    text: string
+  }
+  const catLabel: Record<string, string> = {
+    start: 'start', concepts: 'concepts', guides: 'guides', operating: 'operating',
+    architecture: 'architecture', reference: 'reference', internals: 'internals',
+    contributing: 'contributing',
+  }
+
+  let index = null as Item[] | null
+  const input = document.getElementById('fp-search') as HTMLInputElement
+  const results = document.getElementById('fp-results') as HTMLDivElement
+
+  input.addEventListener('focus', () => { if (index && input.value) render(input.value) })
+  input.addEventListener('input', () => render(input.value))
+
+  async function ensureIndex() {
+    if (index) return
+    const res = await fetch('/search-index.json')
+    index = (await res.json()) as Item[]
+  }
+
+  function render(q: string) {
+    if (!q.trim()) { results.style.display = 'none'; results.innerHTML = ''; return }
+    ensureIndex().then(() => {
+      const terms = q.toLowerCase().split(/\s+/).filter(Boolean)
+      const hits = (index || [])
+        .map((item) => {
+          const t = item.text.toLowerCase()
+          let score = 0
+          for (const term of terms) {
+            if (t.includes(term)) score += term === item.category ? 3 : 1
+          }
+          return { item, score }
+        })
+        .filter((r) => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 12)
+      results.innerHTML = ''
+      if (!hits.length) {
+        results.innerHTML = '<div class="search-none">no results</div>'
+      } else {
+        for (const { item } of hits) {
+          const a = document.createElement('a')
+          a.href = item.url
+          a.innerHTML = `${escapeHtml(item.title)}<small>${catLabel[item.category] ?? item.category}${item.id !== item.category && !item.id.startsWith(item.category + '/README') ? ' · ' + escapeHtml(item.id.split('/').pop() || '') : ''}</small>`
+          a.addEventListener('click', () => { results.style.display = 'none'; input.value = '' })
+          results.appendChild(a)
+        }
+      }
+      results.style.display = 'block'
+    }).catch(() => {})
+  }
+
+  function escapeHtml(s: string) {
+    return s.replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
+  }
+
+  document.addEventListener('click', (e) => {
+    if (!(e.target as HTMLElement).closest('.search-box')) { results.style.display = 'none' }
+  })
+</script>

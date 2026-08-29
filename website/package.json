@@ -1,0 +1,37 @@
+{
+  "name": "fingerprint-engine-website",
+  "private": true,
+  "license": "MIT",
+  "version": "0.4.1",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "description": "Fingerprint Engine — static documentation and landing site (Astro).",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "node scripts/sync.mjs && astro build",
+    "preview": "astro preview",
+    "type-check": "astro check",
+    "sync": "node scripts/sync.mjs"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^4.0.8",
+    "astro": "^5.6.1",
+    "mermaid": "^11.17.2",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/node": "^26.4.0",
+    "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "esbuild@0.27.7": true,
+    "esbuild@0.25.12": true,
+    "@esbuild/darwin-arm64@0.27.7": true,
+    "@esbuild/darwin-arm64@0.25.12": true,
+    "sharp@0.34.5": true,
+    "puppeteer@25.9.0": true
+  }
+}
