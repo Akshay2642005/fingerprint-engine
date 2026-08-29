@@ -1,19 +1,28 @@
 # Release Plan — Fingerprint Engine
-target_version: 0.4.0
+target_version: 0.4.1
 next_target: TBD
 note: |
-  The distributed-engine roadmap (M1–M5) is complete. v0.4.0 is the current
-  shipped release. A follow-on fix post-0.4.0 resolved compose container-name
-  DNS resolution (PR #31); no functional feature shipped with it. The next
+  The distributed-engine roadmap (M1–M5) is complete. v0.4.1 is the current
+  shipped release (patch: compose/Docker AMQP + DNS fix — PR #31). The next
   milestone is unplanned — awaiting product direction (see
   specs/planning/PHASES.yaml -> next_phase).
 
 releases:
+  v0.4.1:
+    status: released
+    date: "2026-08-29"
+    epics:
+      - e12-audit-backlog
+    summary: |
+      Patch release. Ships the Docker/AMQP fix from PR #31: the worker image
+      connects to RabbitMQ by container name (rabbitmq:5672) via getaddrinfo,
+      and the ingress resolves workers (worker:8080) by name; Docker images
+      restructured so tini execs the binary via ENTRYPOINT. Cross-platform
+      binaries, WASM, npm package, and GHCR images rebuilt at v0.4.1.
+
   v0.4.0:
     status: released
     date: "2026-08-24"
-    followups:
-      - "fix(debug): compose container-name DNS resolution (PR #31, 2026-08-28)"
     epics:
       - rework/distributed-engine
     summary: |

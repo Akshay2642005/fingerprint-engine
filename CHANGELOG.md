@@ -7,13 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-29
+
 ### Fixed
 
+- **AMQP connection in Docker** — the `worker` image connects to RabbitMQ by
+  container name (`rabbitmq:5672`). Hostname resolution now goes through
+  `getaddrinfo`, so `docker compose up` starts the full rabbitmq + worker +
+  ingress stack without an `invalid --amqp-address` error.
 - **Docker compose container-name DNS resolution** — `worker` and `ingress`
   previously failed to connect to `rabbitmq`/`worker` by container name
   because `std.net.Address.parseIp` only accepts IP literals. Connections now
-  resolve hostnames via `getaddrinfo` (`transport.resolveHost`), so `docker
-  compose up` runs the full rabbitmq + worker + ingress stack by service name.
+  resolve hostnames via `getaddrinfo` (`transport.resolveHost`).
 - **Docker images now exec the binary via `ENTRYPOINT`** — restructured
   `ENTRYPOINT`/`CMD` so `tini` launches the service directly; `CMD` carries
   only the `start` subcommand.

@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: none (roadmap complete)
-active_story: none (v0.4.0 shipped; next milestone unplanned)
+active_story: none (v0.4.1 shipped; next milestone unplanned)
 
 epics:
   e01-core-engine:

@@ -2,7 +2,7 @@
 
 Master index for all planning documentation. Everything is written before
 code (per `CONVENTIONS.md`), and status files are refreshed after every
-release. Current release: **v0.4.0** (2026-08-17), Zig **0.14.1**.
+release. Current release: **v0.4.1** (2026-08-29), Zig **0.14.1**.
 
 ## Document map
 
@@ -39,7 +39,7 @@ specs/
 | `planning/PLAN.md` | Milestone plan — M1–M4 (done) + M5 (next) + slices S1–S6 | Current |
 | `planning/STATUS.yaml` | Epic-level execution ledger (e01–e12) + rework breakdown | Current |
 | `planning/PHASES.yaml` | Discover → design → plan → build → verify → release phases | Current |
-| `planning/RELEASES.yaml` | Per-release records (v0.1.0 → v0.4.0) and superseded plans | Current |
+| `planning/RELEASES.yaml` | Per-release records (v0.1.0 → v0.4.1) and superseded plans | Current |
 | `planning/SESSION.yaml` | Session state — active flow, git, modules, CI, handoff | Current |
 | `quality/TEST_PLAN.md` | Test layers, pinned goldens, planned additions | Current |
 | `quality/BUGS.yaml` | Confirmed bug tracker (BUG-001 … BUG-003) | Open |

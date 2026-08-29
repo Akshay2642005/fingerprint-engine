@@ -1,6 +1,8 @@
 # Fingerprint Engine — Plan
 
-Current: **v0.4.0** (2026-08-24), AMQP consumer + DLQ + full-stack compose shipped. The full
+Current: **v0.4.1** (2026-08-29) — patch release shipping the compose/Docker
+AMQP + DNS fix (PR #31); follows **v0.4.0** (2026-08-24), AMQP consumer + DLQ +
+full-stack compose. The full
 distributed-engine roadmap (M1–M5) is **complete**; the next milestone is unplanned
 (see `specs/planning/PHASES.yaml` → next_phase). This file
 replaces the pre-rework M1–M4 integration/quality plan (see
