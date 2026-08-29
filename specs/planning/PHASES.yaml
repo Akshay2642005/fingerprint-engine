@@ -9,7 +9,7 @@ design_phase:
 
 plan_phase:
   status: completed
-  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M4 completed. Distributed rework (specs/decisions/rework/) executed to v0.4.0."
+  notes: "Phases 1-11 planned and executed. Integration/Quality milestones M1-M5 completed. Distributed rework (specs/decisions/rework/) executed to v0.4.0."
 
 build_phase:
   status: completed
@@ -21,9 +21,11 @@ build_phase:
     - Transports and adapter layer (loopback, tcp, AMQP 0-9-1 + result publisher)
     - Worker executable and Docker image
     - Hand-written TypeScript SDK (collect → package → POST; decision middleware)
-    - Testing (383 tests, 3 fuzz targets, 12 benchmarks)
-    - CI/CD (test, wasm-build, worker-build, docker-worker)
-  total_tests: 383
+    - HTTP ingress (S4 — worker pool, FPKG translation, /healthz, Dockerfile, compose, GHCR)
+    - AMQP consumer + DLQ (S5) and full-stack compose (S6)
+    - Testing (457 tests, 3 fuzz targets, 12 benchmarks)
+    - CI/CD (test, wasm-build, worker-build, docker-worker, docker-ingress)
+  total_tests: 457
 
 verify_phase:
   status: completed
@@ -31,6 +33,16 @@ verify_phase:
   release_green: true
 
 release_phase:
+  v0.4.0:
+    status: released
+    date: "2026-08-24"
+    notes: "Distributed-engine milestone M5 — AMQP consumer + DLQ, full-stack compose, ingress GHCR, cross-platform binaries. Follow-up PR #31 fixed compose container-name DNS resolution (2026-08-28)."
+
+  v0.3.0:
+    status: released
+    date: "2026-08-17"
+    notes: "Audit hardening pass (R/C/D items) + BUG-001..016 resolved; CI matrix expansion (macOS + TS SDK tests); ingress/worker builds."
+
   v0.2.2:
     status: released
     date: "2026-08-08"
@@ -59,9 +71,10 @@ next_phase:
   status: planning
   recommended_skill: elaborate-spec
   note: |
-    v0.2.2 released. Backlog from the 2026-08-08 audit (specs/quality/audits/2026-08-08.md):
-    S1 fix BUG-001 (SDK reply field swap) + TCP idle timeouts + graceful
-    shutdown; S2 version single-source-of-truth (BUG-002/003); S3 application
-    logging (specs/architecture/logging.md); S4 HTTP ingress MVP
-    (specs/architecture/ingress.md) + ingress Dockerfile + GHCR release; S5 AMQP
-    consumer + DLQ; S6 full-stack compose + release surface.
+    The 2026-08-08 audit backlog (specs/quality/audits/2026-08-08.md) S1–S6 is
+    fully delivered (S5 AMQP consumer + DLQ; S6 full-stack compose + release
+    surface) and v0.4.0 shipped. No next milestone is defined yet. The
+    distributed-engine roadmap is complete; forward scope needs product
+    direction (see specs/product/VISION.yaml). Candidates previously marked
+    out-of-scope: server matching engine (Go fraud platform, separate repo),
+    native SDK/C ABI (D10), PyPI crates (dropped).

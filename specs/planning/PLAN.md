@@ -1,6 +1,8 @@
 # Fingerprint Engine — Plan
 
-Current: **v0.4.0** (2026-08-24), AMQP consumer + DLQ + full-stack compose shipped. This file
+Current: **v0.4.0** (2026-08-24), AMQP consumer + DLQ + full-stack compose shipped. The full
+distributed-engine roadmap (M1–M5) is **complete**; the next milestone is unplanned
+(see `specs/planning/PHASES.yaml` → next_phase). This file
 replaces the pre-rework M1–M4 integration/quality plan (see
 `specs/archive/` for the superseded items).
 
@@ -14,19 +16,19 @@ replaces the pre-rework M1–M4 integration/quality plan (see
 | M4 — Distributed rework | Zig 0.14.1, layered repo, engine/io/adapter/worker, AMQP, TS SDK, Docker | ✅ done (v0.2.0–v0.2.2) |
 | M5 — Platform integration | **ingress** + full-stack compose + AMQP consumer/DLQ + release surface | ✅ done (v0.4.0) |
 
-## M5 plan (the active milestone)
+## M5 plan (delivered)
 
 Sequenced by the 2026-08-08 audit (`specs/quality/audits/2026-08-08.md`); each slice
-compiles and keeps the suite green:
+shipped in v0.4.0 (and follow-up PR #31):
 
-| Slice | Contents | Design |
+| Slice | Contents | Status |
 |-------|----------|--------|
-| S1 | BUG-001 (SDK reply field swap) + H-1 tcp idle timeouts + H-2 graceful shutdown | audit |
-| S2 | Version single source of truth (BUG-002/003) | audit |
-| S3 | Application logging (`src/log.zig`, `--log-level`/`--log-format`, `--quiet`) | `specs/architecture/logging.md` |
-| S4 | HTTP ingress MVP — executable, FPKG translation, worker pool, /healthz, Dockerfile, compose, CI, GHCR, e2e | `specs/architecture/ingress.md` |
-| S5 | AMQP push consumer + dead-letter queue | audit |
-| S6 | Full-stack compose + ingress release surface + docs refresh | audit |
+| S1 | BUG-001 (SDK reply field swap) + H-1 tcp idle timeouts + H-2 graceful shutdown | ✅ done |
+| S2 | Version single source of truth (BUG-002/003) | ✅ done |
+| S3 | Application logging (`src/log.zig`, `--log-level`/`--log-format`, `--quiet`) | ✅ done |
+| S4 | HTTP ingress MVP — executable, FPKG translation, worker pool, /healthz, Dockerfile, compose, CI, GHCR, e2e | ✅ done |
+| S5 | AMQP push consumer + dead-letter queue | ✅ done |
+| S6 | Full-stack compose + ingress release surface + docs refresh | ✅ done (compose DNS fix in PR #31) |
 
 ## Delivered in the rework (M4)
 
@@ -36,7 +38,7 @@ compiles and keeps the suite green:
 - Worker executable + Docker image (GHCR); hand-written TS browser SDK
   (collect → package → POST; middleware); WASM infra-only.
 - O(1) `zig build` system; docs site; CONVENTIONS.md; CI/release pipelines;
-  383 tests green.
+  457 tests green.
 
 ## Out of scope for this repo
 
@@ -47,7 +49,7 @@ compiles and keeps the suite green:
 
 ## Done criteria for M5
 
-- [ ] `zig build test --summary all` green after every slice.
-- [ ] Browser demo → ingress → worker → AMQP loop runs from `docker compose up`.
-- [ ] Ingress image published to GHCR; release notes list both images.
-- [ ] S1–S6 verification checklists signed off (see `specs/quality/verifications/`).
+- [x] `zig build test --summary all` green after every slice.
+- [x] Browser demo → ingress → worker → AMQP loop runs from `docker compose up`.
+- [x] Ingress image published to GHCR; release notes list both images.
+- [x] S1–S6 verification checklists signed off (see `specs/quality/verifications/`).

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docker compose container-name DNS resolution** — `worker` and `ingress`
+  previously failed to connect to `rabbitmq`/`worker` by container name
+  because `std.net.Address.parseIp` only accepts IP literals. Connections now
+  resolve hostnames via `getaddrinfo` (`transport.resolveHost`), so `docker
+  compose up` runs the full rabbitmq + worker + ingress stack by service name.
+- **Docker images now exec the binary via `ENTRYPOINT`** — restructured
+  `ENTRYPOINT`/`CMD` so `tini` launches the service directly; `CMD` carries
+  only the `start` subcommand.
+
 ## [0.4.0] - 2026-08-24
 
 ### Added
