@@ -1,7 +1,7 @@
 # Session state — Fingerprint Engine
 session:
   started_at: "2026-07-11T00:00:00Z"
-  active_flow: rework/distributed-engine
+  active_flow: complete (roadmap delivered)
   tools_intro: true
 
 workflow_mode: solo-git
@@ -21,6 +21,8 @@ releases:
       - GitHub Release (WASM + native binaries for linux-x86_64, linux-aarch64, macos-x86_64, macos-aarch64)
       - npm package (@akshay2642005/fingerprint-sdk v0.4.0)
       - GHCR images (fingerprint-worker, fingerprint-ingress)
+    followups:
+      - "PR #31 (2026-08-28): fix compose container-name DNS resolution — worker/ingress resolve 'rabbitmq'/'worker' by name via getaddrinfo; Dockerfile ENTRYPOINT/CMD restructured."
 
   v0.3.0:
     date: "2026-08-17"
@@ -134,7 +136,9 @@ ci_cd:
 handoff:
   next_skill: "elaborate-spec"
   note: |
-    All bugs BUG-001 through BUG-016 fixed. S3/S3b logging delivered.
-    S4 ingress delivered. 456 tests green (433 unit + 23 integration).
-    Audit compliance/hardening/ops items (C-1 through C-8, R-1 through R-8,
-    D-1 through D-6) in progress. Next: v0.3.0 release.
+    Roadmap complete. All bugs BUG-001 through BUG-016 fixed; S1–S6 audit
+    backlog delivered; v0.4.0 shipped (AMQP consumer + DLQ, full-stack
+    compose, ingress GHCR image, cross-platform binaries). Follow-up PR #31
+    fixed compose container-name DNS resolution (worker/ingress now resolve
+    'rabbitmq'/'worker' by name). 457 tests green. Next milestone unplanned —
+    needs product direction (see specs/planning/PHASES.yaml -> next_phase).

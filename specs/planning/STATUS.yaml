@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
-current_epic: m5-platform-integration
-active_story: s4-ingress-http
+current_epic: none (roadmap complete)
+active_story: none (v0.4.0 shipped; next milestone unplanned)
 
 epics:
   e01-core-engine:
@@ -63,16 +63,8 @@ epics:
     summary: "AMQP 0-9-1 client + result publisher (outbound only); `zig build scripts -- amqp` and `amqp get` inspectors; verified against RabbitMQ 4.3.4"
 
   e12-audit-backlog:
-    status: in_progress
-    summary: "2026-08-08 audit — bugs registry, hardening, ingress + logging designs; slices S1–S6 sequenced in specs/quality/audits/2026-08-08.md. S1–S3 delivered."
-    slices:
-      - S1: "BUG-001 + H-1 idle timeout + H-2 graceful shutdown (done)"
-      - S2: "Version single source of truth (BUG-002/003; done)"
-      - S3: "Application logging (specs/architecture/logging.md; done — src/log.zig + executable wiring, 2026-08-15)"
-      - S3b: "Flow logging follow-up (specs/planning/S3b-flow-logging.md; done — per-request debug traces + pool lifecycle for worker/ingress, 2026-08-15)"
-      - S4: "HTTP ingress MVP (specs/architecture/ingress.md; CLI + version single-sourcing done in ADR-011; io.connect + TcpClient in specs/architecture/ingress-io.md; server/pool/e2e/deploy done in S4-c/d — specs/architecture/ingress-server.md)"
-      - S5: "AMQP consumer + DLQ"
-      - S6: "Full-stack compose + ingress release surface"
+    status: done
+    summary: "2026-08-08 audit — bugs registry, hardening, ingress + logging designs; slices S1–S6 sequenced in specs/quality/audits/2026-08-08.md. All six slices delivered (S5 AMQP consumer + DLQ, S6 full-stack compose + ingress release surface) and shipped in v0.4.0. Follow-up PR #31 fixed compose container-name DNS resolution."
 
 rework:
   status: done
@@ -84,7 +76,7 @@ rework:
     - amqp: "AMQP 0-9-1 adapter — client, protocol, result publisher"
     - browser-sdk: "Hand-written TS SDK — collect → package → POST; decision middleware"
     - adapter: "Comptime transport contract; loopback + tcp implementations"
-  tests: 383 (376 unit + 7 integration/e2e)
+  tests: 457 (434 unit + 23 integration/e2e)
   notes:
     - "Fixture digest pinned as a compile-time constant in worker e2e tests"
     - "TS parity test cross-checks the SDK serializer against the Zig golden fixture"

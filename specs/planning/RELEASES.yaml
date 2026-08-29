@@ -1,10 +1,19 @@
 # Release Plan — Fingerprint Engine
 target_version: 0.4.0
+next_target: TBD
+note: |
+  The distributed-engine roadmap (M1–M5) is complete. v0.4.0 is the current
+  shipped release. A follow-on fix post-0.4.0 resolved compose container-name
+  DNS resolution (PR #31); no functional feature shipped with it. The next
+  milestone is unplanned — awaiting product direction (see
+  specs/planning/PHASES.yaml -> next_phase).
 
 releases:
   v0.4.0:
     status: released
     date: "2026-08-24"
+    followups:
+      - "fix(debug): compose container-name DNS resolution (PR #31, 2026-08-28)"
     epics:
       - rework/distributed-engine
     summary: |
