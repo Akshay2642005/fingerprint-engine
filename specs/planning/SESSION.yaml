@@ -11,9 +11,18 @@ git:
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
-  latest_tag: v0.4.0
+  latest_tag: v0.4.1
 
 releases:
+  v0.4.1:
+    date: "2026-08-29"
+    status: released
+    summary: "Patch release — compose/Docker AMQP + DNS fix (worker connects to 'rabbitmq:5672' by container name) and Docker ENTRYPOINT/CMD restructure (PR #31)."
+    artifacts:
+      - GitHub Release (WASM + native binaries for linux-x86_64, linux-aarch64, macos-x86_64, macos-aarch64)
+      - npm package (@akshay2642005/fingerprint-sdk v0.4.1)
+      - GHCR images (fingerprint-worker, fingerprint-ingress)
+
   v0.4.0:
     date: "2026-08-24"
     status: released
@@ -138,7 +147,7 @@ handoff:
   note: |
     Roadmap complete. All bugs BUG-001 through BUG-016 fixed; S1–S6 audit
     backlog delivered; v0.4.0 shipped (AMQP consumer + DLQ, full-stack
-    compose, ingress GHCR image, cross-platform binaries). Follow-up PR #31
-    fixed compose container-name DNS resolution (worker/ingress now resolve
+    compose, ingress GHCR image, cross-platform binaries). v0.4.1 patch
+    shipped the compose/Docker AMQP + DNS fix (worker/ingress resolve
     'rabbitmq'/'worker' by name). 457 tests green. Next milestone unplanned —
     needs product direction (see specs/planning/PHASES.yaml -> next_phase).

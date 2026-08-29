@@ -33,6 +33,11 @@ verify_phase:
   release_green: true
 
 release_phase:
+  v0.4.1:
+    status: released
+    date: "2026-08-29"
+    notes: "Patch release — compose/Docker AMQP + DNS fix (PR #31): worker resolves 'rabbitmq:5672' and ingress resolves 'worker:8080' by container name; Docker ENTRYPOINT/CMD restructured."
+
   v0.4.0:
     status: released
     date: "2026-08-24"
@@ -73,8 +78,9 @@ next_phase:
   note: |
     The 2026-08-08 audit backlog (specs/quality/audits/2026-08-08.md) S1–S6 is
     fully delivered (S5 AMQP consumer + DLQ; S6 full-stack compose + release
-    surface) and v0.4.0 shipped. No next milestone is defined yet. The
-    distributed-engine roadmap is complete; forward scope needs product
-    direction (see specs/product/VISION.yaml). Candidates previously marked
-    out-of-scope: server matching engine (Go fraud platform, separate repo),
-    native SDK/C ABI (D10), PyPI crates (dropped).
+    surface) and v0.4.0 shipped; the compose/Docker AMQP + DNS fix shipped as
+    v0.4.1. No next milestone is defined yet. The distributed-engine roadmap
+    is complete; forward scope needs product direction (see
+    specs/product/VISION.yaml). Candidates previously marked out-of-scope:
+    server matching engine (Go fraud platform, separate repo), native SDK/C
+    ABI (D10), PyPI crates (dropped).
