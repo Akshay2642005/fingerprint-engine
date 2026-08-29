@@ -8,7 +8,7 @@ import { fpTheme } from './src/theme.ts'
 // Output is fully static under website/dist for hosting on any static host
 // or GitHub Pages.
 export default defineConfig({
-  site: 'https://fingerprint-engine.dev',
+  site: 'https://fingerprint-engine.vercel.app',
   trailingSlash: 'ignore',
   build: {
     format: 'directory',
