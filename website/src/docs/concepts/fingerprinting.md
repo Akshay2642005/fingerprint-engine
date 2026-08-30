@@ -47,7 +47,7 @@ resilient in a way a cookie is not: it survives clearing cookies, private
 windows, and cross-site journeys, and it cannot be wiped by a `Clear
 Site Data` call. That is precisely its value to fraud and bot prevention
 — and precisely why it must be handled with care (see
-[Trust & Privacy](./trust-privacy.md)).
+[Trust & Privacy](/docs/concepts/trust-privacy/)).
 
 ## Why it is used
 
@@ -83,7 +83,7 @@ minimal, audio and canvas rendering differ, and timezone/language
 combinations are incongruent. A well-constructed fingerprint makes these
 deviations visible as *bound violations*, *missing features*, and
 *entropy deficits*, which feed directly into the risk model described in
-[Scoring](./scoring.md).
+[Scoring](/docs/concepts/scoring/).
 
 The same signals therefore serve both sides of the problem: they recognise
 *known-bad* devices (fraud) and they recognise *abnormally configured*
@@ -99,7 +99,7 @@ not papered over.
   revoke. The more discriminating it is, the more it feels like a durable
   identifier. The design answer is to collect the *minimum minimorum* —
   only derived, non-identifying characteristics — and to never collect
-  personal data (see [Trust & Privacy](./trust-privacy.md)).
+  personal data (see [Trust & Privacy](/docs/concepts/trust-privacy/)).
 - **Discrimination vs. stability.** Signals that are highly
   discriminating (canvas/WebGL rendering, fonts) can drift with driver
   updates or OS upgrades, while perfectly stable signals (language, screen
@@ -128,7 +128,7 @@ non-negotiable principle:
 ### 1. The browser collects
 
 The TypeScript SDK runs in the page and gathers the 102 signals described
-in [Signals](./signals.md). Every collector emits a *plain* value with an
+in [Signals](/docs/concepts/signals/). Every collector emits a *plain* value with an
 explicit type — it does **not** attempt to combine or score anything. The
 browser has no fingerprinting algorithm, no digest logic, and no
 decision-making. Where a raw signal would be too sensitive to transmit
@@ -139,7 +139,7 @@ Even this collection is non-authoritative: the SDK reports what the
 browser chooses to expose and transparently marks degraded or unavailable
 features. It also surfaces — purely as a UX convenience — a blocking
 decision inferred from platform events, but the application is the
-authoritative enforcer (see [Trust & Privacy](./trust-privacy.md)).
+authoritative enforcer (see [Trust & Privacy](/docs/concepts/trust-privacy/)).
 
 ### 2. The engine computes
 
@@ -155,7 +155,7 @@ worker. The worker does the real work, entirely server-side:
 Because this happens in a deterministic, replay-safe worker, the same input
 bytes always produce the same output bytes, on any platform. That is
 fundamental to trusting the results — see
-[Determinism](./determinism.md). The canonical fingerprint is computed
+[Determinism](/docs/concepts/determinism/). The canonical fingerprint is computed
 *only* here, never in the browser.
 
 ### 3. The platform decides

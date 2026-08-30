@@ -224,4 +224,4 @@ pub fn hashFingerprint(fp: Fingerprint, out: *[32]u8) !void {
 
 Any change that shifts the digest of the golden fixture fails the test gate,
 so determinism is enforced, not merely claimed. See
-[Testing](./testing.md) and [Determinism](../concepts/determinism.md).
+[Testing](/docs/internals/testing/) and [Determinism](/docs/concepts/determinism/).

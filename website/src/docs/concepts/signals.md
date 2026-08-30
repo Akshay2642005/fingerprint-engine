@@ -69,7 +69,7 @@ The engine collects *what the device can do* and *how it is configured*, not
 set of supported codecs, not media streams; the presence of cameras and
 microphones as permission status, not as live streams. This is the line
 between a fingerprint and surveillance, and it is non-negotiable (see
-[Trust & Privacy](./trust-privacy.md) for the full explicit list of what is
+[Trust & Privacy](/docs/concepts/trust-privacy/) for the full explicit list of what is
 never collected).
 
 ### 2. Digest-in-the-client for render-derived signals
@@ -132,7 +132,7 @@ hasher.final(&digest);
 
 Because hashing consumes a canonical byte stream with no clock and no
 randomness, the same signal package yields the same digest on any platform —
-the determinism invariant described in [Determinism](./determinism.md). The
+the determinism invariant described in [Determinism](/docs/concepts/determinism/). The
 browser-side serializer mirrors this encoding byte-for-byte (verified by a
 TS↔Zig golden parity test), so the bytes the browser POSTs are exactly the
 bytes the engine hashes.
@@ -142,10 +142,10 @@ bytes the engine hashes.
 - **Hashing** — produces the canonical fingerprint digest from all signals
   (see above).
 - **Similarity** — compares fingerprints feature-by-feature, weighting each
-  signal by its metadata weight (see [Scoring](./scoring.md)).
+  signal by its metadata weight (see [Scoring](/docs/concepts/scoring/)).
 - **Risk** — reasons over signal coverage: which signals are missing, which
   violate expected bounds, and how much entropy the overall package carries
-  (see [Scoring](./scoring.md)).
+  (see [Scoring](/docs/concepts/scoring/)).
 - **Validation/normalization** — checks each signal's type and bounds
   against its `FeatureDefinition` before any computation proceeds.
 
@@ -165,7 +165,7 @@ weights drive similarity and entropy but are **not** part of the hash input —
 two otherwise-identical packages always hash identically regardless of
 weight changes, which keeps digest stability independent of scoring tuning.
 
-See [Scoring](./scoring.md) for how these signals and weights become risk,
+See [Scoring](/docs/concepts/scoring/) for how these signals and weights become risk,
 entropy, and similarity scores, or
-[Trust & Privacy](./trust-privacy.md) for the boundary around what signals
+[Trust & Privacy](/docs/concepts/trust-privacy/) for the boundary around what signals
 are permitted to exist at all.

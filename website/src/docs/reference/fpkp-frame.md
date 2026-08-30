@@ -53,7 +53,7 @@ The `message_type` field is the FPKG `MessageType` enum (`u8`):
 
 Unknown `message_type` tags are rejected as `InvalidMessageType`. The
 worker maps select inbound types to engine operations (see
-[Operations](./operations.md)); the outbound-only types
+[Operations](/docs/reference/operations/)); the outbound-only types
 (`diagnostics`, `fingerprint_computed`, `entropy_result`) are not dispatched
 as operations.
 
@@ -92,11 +92,11 @@ compares it against the header's field. The same algorithm is mirrored in
 anything else, so a worker can reject an unknown-envelope peer without
 misreading its payload. This is one of the two version gates (the other is
 the SignalPackage body schema version, at the engine boundary; see
-[Serialization](../internals/serialization.md)).
+[Serialization](/docs/internals/serialization/)).
 
 ## Worker reply
 
 A worker reply is an FPKG frame whose payload is `u8 status | engine
-result` — the first byte is the engine `Status` (see [Status](./status.md)).
+result` — the first byte is the engine `Status` (see [Status](/docs/reference/status/)).
 For a successful `hash`, that is `0` followed by the 32-byte digest, the
 `u16` feature count, and the `u16` schema version.

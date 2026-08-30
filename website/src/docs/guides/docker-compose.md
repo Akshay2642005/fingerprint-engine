@@ -18,7 +18,7 @@ compose file to copy.
 ## The three services
 
 The stack is intentionally small and layered, mirroring the architecture
-([Architecture](../architecture.md)):
+([Architecture](/docs/architecture/)):
 
 1. **RabbitMQ** — the AMQP 0-9-1 broker. The worker publishes fingerprint
    result events here after computing a digest (`--publish=amqp`). It is
@@ -173,12 +173,12 @@ console.log('sent  :', result.sent);
 console.log('reply :', result.reply);
 ```
 
-See [Browser SDK](./browser-sdk.md) for the full collection contract.
+See [Browser SDK](/docs/guides/browser-sdk/) for the full collection contract.
 
 ## What happens on a request
 
 1. The browser SDK POSTs a SignalPackage v2 body to the ingress
-   ([Serialization](./serialization.md)).
+   ([Serialization](/docs/guides/serialization/)).
 2. The ingress wraps the request as an FPKG frame and sends it to
    `worker:8080` over TCP.
 3. The worker verifies the frame, runs `engine.process()`, computes the
@@ -203,5 +203,5 @@ See [Browser SDK](./browser-sdk.md) for the full collection contract.
 
 For the worker flags seen in this file explained in depth, including
 `--transport`, `--listen`, and all the `--amqp-*` options, see
-[Worker CLI](./worker-cli.md). For the exact bytes of the FPKG frames flowing
-between ingress and worker, see [Serialization](./serialization.md).
+[Worker CLI](/docs/guides/worker-cli/). For the exact bytes of the FPKG frames flowing
+between ingress and worker, see [Serialization](/docs/guides/serialization/).

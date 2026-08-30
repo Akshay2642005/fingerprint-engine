@@ -22,7 +22,7 @@ them:
 Both layers are deterministic: the same logical object serializes to the same
 bytes on any platform. This byte-for-byte stability is what makes replay
 identity and golden-fixture testing possible. See
-[Concepts](../concepts/determinism.md) for the reasoning.
+[Concepts](/docs/concepts/determinism/) for the reasoning.
 
 ## The SignalPackage v2 body
 
@@ -135,7 +135,7 @@ payload:
 | ----- | ---- | ----------- |
 | Magic | 4 bytes | The literal ASCII `FPKG`, identifying the framing layer. |
 | Envelope version | 2 bytes | The FPKG envelope version — `1` for the current frame layout. |
-| Message type | 1 byte | `u8` — the FPKG message type (see [Worker CLI](./worker-cli.md) for the mapping to engine operations). |
+| Message type | 1 byte | `u8` — the FPKG message type (see [Worker CLI](/docs/guides/worker-cli/) for the mapping to engine operations). |
 | Codec | 1 byte | `u8` — the `CodecID` of the payload (binary or JSON, below). |
 | Payload length | 4 bytes | `u32` — byte length of the payload that follows the header. |
 | Integrity digest | 32 bytes | `[32]u8` — the SHA-256 digest of the payload, used to verify the frame. |
@@ -199,11 +199,11 @@ fixture (`signal-package-v2.bin`) so the two remain byte-for-byte aligned.
 ## Where the formats fit
 
 - The **browser SDK** produces the `FNGR` SignalPackage v2 body and POSTs it
-  to the ingress ([Browser SDK](./browser-sdk.md)).
+  to the ingress ([Browser SDK](/docs/guides/browser-sdk/)).
 - The **ingress** re-wraps or forwards it to a worker inside an **FPKG**
-  frame over loopback or TCP ([Worker CLI](./worker-cli.md)).
+  frame over loopback or TCP ([Worker CLI](/docs/guides/worker-cli/)).
 - The **worker** teleports to the envelope, verifies integrity, decodes the
   body per the declared codec, and runs `engine.process()`.
 
 For the deployment that pulls all of this together, see
-[Docker Compose](./docker-compose.md).
+[Docker Compose](/docs/guides/docker-compose/).

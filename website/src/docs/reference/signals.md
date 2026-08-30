@@ -199,6 +199,6 @@ Each `FeatureValue` variant encodes to a fixed, little-endian wire shape:
 | `StringArray` / `BytesArray` | `u32` count LE + per-item `u32` length + bytes |
 | `IntegerArray` / `FloatArray` | `u32` count LE + per-item fixed 8-byte LE |
 
-See [Serialization](../internals/serialization.md) and
-[Hashing](../internals/hashing.md) for how these values reach the wire and
+See [Serialization](/docs/internals/serialization/) and
+[Hashing](/docs/internals/hashing/) for how these values reach the wire and
 the digest.
