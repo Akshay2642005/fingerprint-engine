@@ -46,7 +46,7 @@ stateless worker.
 These pages take you from zero to a running, scaled stack:
 
 - [Local quickstart](./quickstart.md) — run RabbitMQ + worker + ingress with one command and send your first package.
-- [Browser SDK](./browser-sdk.md) — install, configure, collect, and enforce fraud decisions.
+- [Browser SDK](/docs/guides/browser-sdk/) — install, configure, collect, and enforce fraud decisions.
 - [Ingress setup](./ingress.md) — the HTTP gateway: flags, env vars, and the worker pool.
 - [Worker setup](./worker.md) — transports, AMQP publishing, and running multiple workers.
 - [Self-host](./self-host.md) — a full compose file with the ingress and three workers.

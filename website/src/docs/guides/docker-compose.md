@@ -178,7 +178,7 @@ See [Browser SDK](/docs/guides/browser-sdk/) for the full collection contract.
 ## What happens on a request
 
 1. The browser SDK POSTs a SignalPackage v2 body to the ingress
-   ([Serialization](/docs/guides/serialization/)).
+   ([Serialization](/docs/internals/serialization/)).
 2. The ingress wraps the request as an FPKG frame and sends it to
    `worker:8080` over TCP.
 3. The worker verifies the frame, runs `engine.process()`, computes the
@@ -204,4 +204,4 @@ See [Browser SDK](/docs/guides/browser-sdk/) for the full collection contract.
 For the worker flags seen in this file explained in depth, including
 `--transport`, `--listen`, and all the `--amqp-*` options, see
 [Worker CLI](/docs/guides/worker-cli/). For the exact bytes of the FPKG frames flowing
-between ingress and worker, see [Serialization](/docs/guides/serialization/).
+between ingress and worker, see [Serialization](/docs/internals/serialization/).

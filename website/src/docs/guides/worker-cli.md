@@ -123,7 +123,7 @@ worker help
 ## How inbound FPKG message types map to engine operations
 
 The worker is FPKG-typed: every inbound frame declares a **message type** in
-its envelope header (see [Serialization](/docs/guides/serialization/) for the frame
+its envelope header (see [Serialization](/docs/internals/serialization/) for the frame
 layout). The worker dispatches on that type at comptime, mapping each type to
 a specific engine operation. The mapping is:
 
@@ -190,4 +190,4 @@ engine in isolation without a broker, use the loopback transport and
 - `signal_package → hash` is the canonical inbound path; every reply is
   `u8 status | engine result`.
 - For the FPKG frame that carries these messages, and the SignalPackage v2
-  body they wrap, see [Serialization](/docs/guides/serialization/).
+  body they wrap, see [Serialization](/docs/internals/serialization/).

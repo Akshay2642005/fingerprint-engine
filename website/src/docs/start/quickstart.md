@@ -59,7 +59,7 @@ order is correct out of the box.
 
 With the stack up, the ingress is reachable on your machine at
 `http://localhost:8080`. Tell the SDK where it lives (see
-[Browser SDK](/docs/start/browser-sdk/) for the full contract):
+[Browser SDK](/docs/guides/browser-sdk/) for the full contract):
 
 ```ts
 import { configure, collect } from '@akshay2642005/fingerprint-sdk';
@@ -110,7 +110,7 @@ if (result.reply && result.reply.status === 0) {
 
 ## Next steps
 
-- [Browser SDK](/docs/start/browser-sdk/) — configure, collect, and enforce fraud decisions.
+- [Browser SDK](/docs/guides/browser-sdk/) — configure, collect, and enforce fraud decisions.
 - [Ingress](/docs/start/ingress/) — every flag and environment variable.
 - [Worker](/docs/start/worker/) — transports, AMQP publishing, and running multiple workers.
 - [Self-host](/docs/start/self-host/) — a full compose file with the ingress and **three** workers, ready to scale.

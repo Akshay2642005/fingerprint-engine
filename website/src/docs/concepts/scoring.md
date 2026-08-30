@@ -14,7 +14,7 @@ and to say how confident the picture is — the engine computes three
 quantities over the signal package: **risk**, **entropy**, and
 **similarity**. Each is itself deterministic, versioned, and derived from
 the same canonical signal set and its metadata (see
-[Signals](/docs/concepts/signals/)).
+[Signals](/docs/reference/signals/)).
 
 This page explains the three models and how they combine.
 

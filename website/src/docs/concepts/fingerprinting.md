@@ -128,7 +128,7 @@ non-negotiable principle:
 ### 1. The browser collects
 
 The TypeScript SDK runs in the page and gathers the 102 signals described
-in [Signals](/docs/concepts/signals/). Every collector emits a *plain* value with an
+in [Signals](/docs/reference/signals/). Every collector emits a *plain* value with an
 explicit type — it does **not** attempt to combine or score anything. The
 browser has no fingerprinting algorithm, no digest logic, and no
 decision-making. Where a raw signal would be too sensitive to transmit

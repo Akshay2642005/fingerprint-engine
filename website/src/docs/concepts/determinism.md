@@ -190,4 +190,4 @@ layer.
 
 See [Fingerprinting](/docs/concepts/fingerprinting/) for why computation being
 server-side is what makes a deterministic engine trustworthy, and
-[Signals](/docs/concepts/signals/) for what the engine is being deterministic *about*.
+[Signals](/docs/reference/signals/) for what the engine is being deterministic *about*.
