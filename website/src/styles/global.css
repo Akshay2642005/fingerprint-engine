@@ -477,6 +477,17 @@ article.doc a:hover { text-decoration: underline; }
 }
 .docs-sidebar a:hover { color: var(--accent); text-decoration: none; }
 .docs-sidebar a.here { color: var(--accent); }
+.docs-sidebar .sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 1px 0 8px 11px;
+  padding-left: 9px;
+  border-left: 1px solid var(--rule);
+}
+.docs-sidebar .sub a { font-size: 12.5px; padding: 2px 0; color: var(--mute-2); }
+.docs-sidebar .sub a:hover { color: var(--accent); }
+.docs-sidebar .sub a.here { color: var(--accent); }
 .docs-main { flex: 1; min-width: 0; }
 .docs-toc {
   flex: 0 0 190px;

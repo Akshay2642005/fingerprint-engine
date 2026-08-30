@@ -113,13 +113,13 @@ done
   --worker=127.0.0.1:8080 --worker=127.0.0.1:8081 --worker=127.0.0.1:8082
 ```
 
-In Docker, run N worker services (see [Self-host](./self-host.md)); the ingress
+In Docker, run N worker services (see [Self-host](/docs/start/self-host/)); the ingress
 reaches each by its service name through `FPKG_WORKERS`. Because the computation
 is invariant, the pool size is purely an infrastructure decision driven by
 throughput and availability — never algorithmic.
 
 ## Next steps
 
-- [Ingress](./ingress.md) — the HTTP front that feeds the worker pool.
-- [Self-host](./self-host.md) — a full compose file with the ingress and three workers.
-- [Guides: Worker CLI](../guides/worker-cli.md) — the complete flag reference and FPKG message-type mapping.
+- [Ingress](/docs/start/ingress/) — the HTTP front that feeds the worker pool.
+- [Self-host](/docs/start/self-host/) — a full compose file with the ingress and three workers.
+- [Guides: Worker CLI](/docs/guides/worker-cli/) — the complete flag reference and FPKG message-type mapping.

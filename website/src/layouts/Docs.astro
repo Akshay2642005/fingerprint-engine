@@ -1,6 +1,7 @@
 ---
 import Base from './Base.astro'
 import Mermaid from '../components/Mermaid.astro'
+import { getCollection } from 'astro:content'
 
 interface Props {
   title: string
@@ -13,6 +14,24 @@ interface Props {
 }
 
 const { title, description, canonicalPath, navKey = 'docs', category, crumbs = [], toc = [] } = Astro.props
+
+// Build the per-section page tree from the content collection so the sidebar can
+// show in-section navigation — the top-level nav alone hides every subpage.
+const allDocs = await getCollection('docs')
+const sections = new Map<string, { title: string; href: string; order: number }[]>()
+for (const d of allDocs) {
+  const segs = d.id.split('/')
+  const isReadme = segs[segs.length - 1].toLowerCase() === 'readme'
+  const slug = (isReadme ? segs.slice(0, -1) : segs).join('/')
+  const href = `/docs/${slug}/`
+  const cat = d.data.category
+  if (!sections.has(cat)) sections.set(cat, [])
+  sections.get(cat)!.push({ title: d.data.title, href, order: d.data.order ?? 999 })
+}
+for (const items of sections.values()) {
+  items.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title))
+}
+const here = Astro.url.pathname.replace(/\/+$/, '')
 
 const nav = [
   { label: 'Start', href: '/docs/start/', active: category === 'start' },
@@ -32,7 +51,18 @@ const nav = [
       <div class="sec">
         <div class="sec-label">Documentation</div>
         {nav.map((n) => (
-          <a href={n.href} class:list={{ here: n.active }}>{n.label}</a>
+          <Fragment>
+            <a href={n.href} class:list={{ here: n.active }}>{n.label}</a>
+            {n.active && sections.has(category) && (
+              <div class="sub">
+                {sections.get(category)!
+                  .filter((s) => s.href.replace(/\/+$/, '') !== `/docs/${category}`)
+                  .map((s) => (
+                    <a href={s.href} class:list={{ here: s.href.replace(/\/+$/, '') === here }}>{s.title}</a>
+                  ))}
+              </div>
+            )}
+          </Fragment>
         ))}
       </div>
       <div class="sec">

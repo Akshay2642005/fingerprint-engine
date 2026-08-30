@@ -108,7 +108,7 @@ lives at the decode/engine boundary, not in the encoder. This keeps encoding
 a pure model→bytes function while the engine, which owns the versioning
 policy, decides what it will accept.
 
-The FPKG envelope (see [FPKG Frame](../reference/fpkp-frame.md)) adds a
+The FPKG envelope (see [FPKG Frame](/docs/reference/fpkp-frame/)) adds a
 separate, outer envelope-version gate; the two are independent.
 
 ## JSON codec

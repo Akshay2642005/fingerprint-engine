@@ -179,7 +179,7 @@ A drained message is lost—the command prints its full frame summary first,
 so capture that output if you intend to replay the failed event. Any printed
 `digest`, `status`, and integrity verdict is exactly what the worker
 produced, which makes the DLQ both the failure signal and the reproduction
-input. See [Concepts: Determinism](../concepts/determinism.md) for why that
+input. See [Concepts: Determinism](/docs/concepts/determinism/) for why that
 makes DLQ events reproducible without the original browser.
 
 ## Operational summary
@@ -194,6 +194,6 @@ makes DLQ events reproducible without the original browser.
 - The same code path says PASS in the smoke test that the production worker
   uses to publish.
 
-Next: [Monitoring](./monitoring.md) covers wiring the worker's log stream to
+Next: [Monitoring](/docs/operating/monitoring/) covers wiring the worker's log stream to
 your observability stack and verifying each hop of the pipeline, including
 the AMQP events described here.

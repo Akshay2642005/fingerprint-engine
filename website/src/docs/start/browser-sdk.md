@@ -15,7 +15,7 @@ canonical fingerprint — that happens once, server-side, on a stateless Zig
 worker.
 
 This page is the practical getting-started path. For the full field tables and
-the byte-level contract, see [Guides: Browser SDK](../guides/browser-sdk.md).
+the byte-level contract, see [Guides: Browser SDK](/docs/guides/browser-sdk/).
 
 ## Install
 
@@ -38,7 +38,7 @@ import { configure, collect } from '@akshay2642005/fingerprint-sdk';
 configure({ ingressUrl: 'http://localhost:8080/v1/fingerprints' });
 ```
 
-When the stack runs locally (see [Local quickstart](./quickstart.md)), the
+When the stack runs locally (see [Local quickstart](/docs/start/quickstart/)), the
 ingress is on `http://localhost:8080/v1/fingerprints`. In production, point this
 at your deployed ingress host.
 
@@ -141,7 +141,7 @@ renderApp();
 
 ## Next steps
 
-- [Local quickstart](./quickstart.md) — run the stack and send your first package.
-- [Ingress](./ingress.md) — where this POST actually lands.
-- [Guides: Browser SDK](../guides/browser-sdk.md) — full integration example and middleware reference.
-- [Guides: Serialization](../guides/serialization.md) — the exact bytes `collect()` sends.
+- [Local quickstart](/docs/start/quickstart/) — run the stack and send your first package.
+- [Ingress](/docs/start/ingress/) — where this POST actually lands.
+- [Guides: Browser SDK](/docs/guides/browser-sdk/) — full integration example and middleware reference.
+- [Guides: Serialization](/docs/guides/serialization/) — the exact bytes `collect()` sends.
