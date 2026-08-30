@@ -121,4 +121,4 @@ digest for the identical package — so placement is arbitrary and safe. See
 
 - [Worker](/docs/start/worker/) — the computation side of the pool.
 - [Self-host](/docs/start/self-host/) — a full compose file with ingress + 3 workers.
-- [Guides: Serialization](/docs/guides/serialization/) — the FPKG frame the ingress and worker exchange.
+- [Guides: Serialization](/docs/internals/serialization/) — the FPKG frame the ingress and worker exchange.

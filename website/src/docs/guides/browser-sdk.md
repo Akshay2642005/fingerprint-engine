@@ -276,5 +276,5 @@ if (result.reply) {
 - `onSessionBlocked` is a push callback; `assertAllowed` is a pull gate.
   Neither is a substitute for server-side enforcement.
 - For the byte-level format of what `collect()` sends, read
-  [Serialization](/docs/guides/serialization/). For the transport that carries the
+  [Serialization](/docs/internals/serialization/). For the transport that carries the
   package to the worker, see [Worker CLI](/docs/guides/worker-cli/).

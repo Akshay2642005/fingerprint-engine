@@ -210,5 +210,5 @@ any request.
 
 - [Ingress](/docs/start/ingress/) — the full ingress flag and environment reference.
 - [Worker](/docs/start/worker/) — transports, AMQP publishing, and running many workers.
-- [Browser SDK](/docs/start/browser-sdk/) — configure the client to talk to this ingress.
+- [Browser SDK](/docs/guides/browser-sdk/) — configure the client to talk to this ingress.
 - [Guides: Docker Compose](/docs/guides/docker-compose/) — the single-worker variant and container-name DNS deep dive.

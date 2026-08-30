@@ -59,7 +59,7 @@ function collectCameraPermission(): Signal {
 When a signal *would* require reading something sensitive (rendering pixels
 or font enumeration), the collector reduces it to a fixed-size digest
 client-side before transmission, so only a hash — not the raw expression —
-ever leaves the device (see [Signals](/docs/concepts/signals/)).
+ever leaves the device (see [Signals](/docs/reference/signals/)).
 
 ## Why these boundaries exist
 
@@ -161,5 +161,5 @@ engine's computation is transparently auditable (see
 pure computation — is the whole of the engine's privacy contract.
 
 For the mechanics of what signals *are* collected and how they are hashed,
-see [Signals](/docs/concepts/signals/); for how the collected signals become scores,
+see [Signals](/docs/reference/signals/); for how the collected signals become scores,
 see [Scoring](/docs/concepts/scoring/).
