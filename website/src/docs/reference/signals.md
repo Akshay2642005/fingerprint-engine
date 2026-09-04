@@ -14,6 +14,38 @@ engine collects **102 signals across 21 categories**. The complete registry
 is the comptime-ordered `definitions` array in `src/model/definitions.zig`,
 keyed by the `FeatureID` enum in `src/model/feature.zig`.
 
+## What makes a signal safe to collect
+
+Fingerprinting is only useful — and only ethical — if the engine never sees
+raw, identifying data. Every signal is collected under three principles:
+
+- **Non-identifying by construction.** Collectors emit *plain* values — a hash,
+  a length, a normalized string — never the raw artifact. The canvas observer
+  reports a digest, not the rendered image; the WebGL observer reports the
+  renderer string, not the framebuffer.
+- **No PII fields.** No signal captures free text you type, page contents,
+  cookies, or credentials. The registry is a fixed, audited set of observables.
+- **Stable, not unique.** A signal's job is to separate *devices*, not *people*;
+  it must be reproducible for the same device across sessions, which is what
+  makes it a fingerprint rather than a tracking token.
+
+See [Concepts: Trust & Privacy](/docs/concepts/trust-privacy/) for the full
+privacy model.
+
+## How the engine uses signals
+
+Not every signal carries equal weight. Each definition carries a `weight`
+(fed into risk scoring) and `flags` that mark special handling — for example,
+whether the signal is stable, required, or excluded from the public
+fingerprint. The matching pipeline combines the canonicalized values (not raw
+features) with these weights to compute similarity, and the platform turns
+that similarity into a decision.
+
+Hashing is deterministic: the same browser on the same engine version always
+produces the same bytes, with no randomness in the encode path. The exact
+procedure and its guarantees live in
+[Concepts: Determinism](/docs/concepts/determinism/).
+
 Every definition carries five fields:
 
 | Field | Type | Meaning |
@@ -199,6 +231,6 @@ Each `FeatureValue` variant encodes to a fixed, little-endian wire shape:
 | `StringArray` / `BytesArray` | `u32` count LE + per-item `u32` length + bytes |
 | `IntegerArray` / `FloatArray` | `u32` count LE + per-item fixed 8-byte LE |
 
-See [Serialization](../internals/serialization.md) and
-[Hashing](../internals/hashing.md) for how these values reach the wire and
+See [Serialization](/docs/internals/serialization/) and
+[Hashing](/docs/internals/hashing/) for how these values reach the wire and
 the digest.

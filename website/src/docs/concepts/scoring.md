@@ -14,7 +14,7 @@ and to say how confident the picture is — the engine computes three
 quantities over the signal package: **risk**, **entropy**, and
 **similarity**. Each is itself deterministic, versioned, and derived from
 the same canonical signal set and its metadata (see
-[Signals](./signals.md)).
+[Signals](/docs/reference/signals/)).
 
 This page explains the three models and how they combine.
 
@@ -185,6 +185,6 @@ The platform then composes them: similarity tells it *who this likely is*,
 entropy tells it *how much to trust that*,
 risk tells it *whether to trust it at all*, and the digest keys cross-session
 matching. All three are deterministic and replayable, so a block decision can
-be re-derived exactly (see [Determinism](./determinism.md)), and all three
+be re-derived exactly (see [Determinism](/docs/concepts/determinism/)), and all three
 are computed server-side, keeping the browser out of every
-decision (see [Fingerprinting](./fingerprinting.md)).
+decision (see [Fingerprinting](/docs/concepts/fingerprinting/)).

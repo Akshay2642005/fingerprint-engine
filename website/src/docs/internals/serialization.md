@@ -108,7 +108,7 @@ lives at the decode/engine boundary, not in the encoder. This keeps encoding
 a pure model→bytes function while the engine, which owns the versioning
 policy, decides what it will accept.
 
-The FPKG envelope (see [FPKG Frame](../reference/fpkp-frame.md)) adds a
+The FPKG envelope (see [FPKG Frame](/docs/reference/fpkp-frame/)) adds a
 separate, outer envelope-version gate; the two are independent.
 
 ## JSON codec
@@ -131,3 +131,49 @@ collect (SDK)
 The decoded memory is caller/arena-owned; `decode` returns a
 `DecodedFingerprint` that must be `deinit`'d (v2 frees `sdk_version`, all
 feature values, and the feature slice).
+
+## Binary versus JSON codecs
+
+A `SignalPackage` can be encoded two ways, selected by the frame's `codec`
+byte. Both carry the same model; they differ only in representation.
+
+| Aspect            | Binary (`codec 1`, default)              | JSON (`codec 2`)                        |
+| ----------------- | --------------------------------------- | --------------------------------------- |
+| Size              | Compact — header + TLV records only     | Verbose — full key/value document       |
+| Consumers         | SDK → ingress → worker (the wire)       | Debugging, inspection, log pipelines    |
+| Determinism       | Byte-identical across platforms         | Stable key order, still canonical       |
+| Decoding support  | Full (v1 + v2)                          | Encode only today; decode lands later   |
+
+Binary is the production wire format: the SDK `encode`s it, the FPKG frame
+wraps it, and the worker `decode`s it in a single deterministic pass. JSON is
+emitted by `serialize` for human inspection and never crosses the engine
+boundary.
+
+```mermaid
+flowchart LR
+    subgraph body["SignalPackage v2 body"]
+        H["Header — FNGR + 12 bytes"]
+        T["TLV feature records"]
+        H --> T
+    end
+    F["FPKG envelope frame (SHA-256 integrity)"]
+    body -->|wrapped| F
+```
+
+## Serializer contract
+
+A correct implementation of `encode`/`decode` satisfies all of the following:
+
+- Every collected feature is emitted as **exactly one** TLV record — no gaps,
+  no duplicates.
+- Feature IDs are **stable** across runs for a given SDK version; a renamed or
+  removed signal reclaims its ID only on a breaking schema bump.
+- The header is exactly 16 bytes, and the FPKG frame's `body_length` equals
+  `16 + Σ(record lengths)`.
+- Unknown feature kinds fall back to a **stable canonical form** (for example,
+  stringified) so `decode` never panics on a value it does not recognise.
+- The same in-memory model encodes to **identical bytes** on every platform —
+  the digest is reproducible only because the bytes are.
+
+The encoder is a pure `model → bytes` function; the engine owns the version
+policy at the decode boundary (see [The version gate](#the-version-gate-at-the-engine-boundary)).

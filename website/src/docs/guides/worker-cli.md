@@ -73,7 +73,7 @@ messages:
 For the TCP transport, `--listen` sets the address the worker binds. The
 default is appropriate for localhost operation; in a Docker deployment you
 bind the container's external interface so the ingress can reach it — for
-example `--listen=0.0.0.0:8080`. See [Docker Compose](./docker-compose.md)
+example `--listen=0.0.0.0:8080`. See [Docker Compose](/docs/guides/docker-compose/)
 for the container wiring.
 
 For loopback, the listen address is not meaningful (the transport is
@@ -101,7 +101,7 @@ All of the `--amqp-*` options are only consulted when `--publish=amqp`:
 
 | Flag | Meaning |
 | ---- | ------- |
-| `--amqp-address=host:port` | The broker host and port. In Compose, this is `rabbitmq:5672` (the service name — see [Docker Compose](./docker-compose.md)). |
+| `--amqp-address=host:port` | The broker host and port. In Compose, this is `rabbitmq:5672` (the service name — see [Docker Compose](/docs/guides/docker-compose/)). |
 | `--amqp-user=user` | The AMQP username. |
 | `--amqp-password=pass` | The AMQP password. |
 | `--amqp-vhost=vhost` | The virtual host on the broker (often `/`). |
@@ -123,7 +123,7 @@ worker help
 ## How inbound FPKG message types map to engine operations
 
 The worker is FPKG-typed: every inbound frame declares a **message type** in
-its envelope header (see [Serialization](./serialization.md) for the frame
+its envelope header (see [Serialization](/docs/internals/serialization/) for the frame
 layout). The worker dispatches on that type at comptime, mapping each type to
 a specific engine operation. The mapping is:
 
@@ -155,7 +155,7 @@ u8 status | engine result
 
 This is exactly the shape that surfaces to the browser SDK as a `WorkerReply`.
 The `status` byte becomes `WorkerReply.status`, and the digest becomes
-`digestHex`. See [Browser SDK](./browser-sdk.md) for how the client consumes
+`digestHex`. See [Browser SDK](/docs/guides/browser-sdk/) for how the client consumes
 it. An unknown or unsupported schema version is rejected at the engine
 boundary and surfaces as a non-zero `status` rather than a malformed digest.
 
@@ -176,7 +176,7 @@ worker start \
 ```
 
 This is the command the worker container in
-[Docker Compose](./docker-compose.md) runs. To validate a new build of the
+[Docker Compose](/docs/guides/docker-compose/) runs. To validate a new build of the
 engine in isolation without a broker, use the loopback transport and
 `--publish=none`.
 
@@ -190,4 +190,4 @@ engine in isolation without a broker, use the loopback transport and
 - `signal_package → hash` is the canonical inbound path; every reply is
   `u8 status | engine result`.
 - For the FPKG frame that carries these messages, and the SignalPackage v2
-  body they wrap, see [Serialization](./serialization.md).
+  body they wrap, see [Serialization](/docs/internals/serialization/).

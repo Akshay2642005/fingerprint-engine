@@ -59,7 +59,7 @@ function collectCameraPermission(): Signal {
 When a signal *would* require reading something sensitive (rendering pixels
 or font enumeration), the collector reduces it to a fixed-size digest
 client-side before transmission, so only a hash — not the raw expression —
-ever leaves the device (see [Signals](./signals.md)).
+ever leaves the device (see [Signals](/docs/reference/signals/)).
 
 ## Why these boundaries exist
 
@@ -104,7 +104,7 @@ permissions, which keeps consent obligations proportionate.
 
 Degradation is transparent to the *platform*: it sees the coverage, and the
 risk model incorporates coverage and entropy deficits into its assessment
-(see [Scoring](./scoring.md)). A visitor in a hardened browser should not
+(see [Scoring](/docs/concepts/scoring/)). A visitor in a hardened browser should not
 be penalised as a fraudster *because* they hardened the browser; rather,
 the reduced coverage lowers the confidence of any decision, which is the
 honest and privacy-respecting outcome.
@@ -157,9 +157,9 @@ determinism and centralised computation ensure the browser never has to
 itself. Because the fingerprint is computed server-side from capability
 signals, the visitor's device is never a privacy choke-point, and the
 engine's computation is transparently auditable (see
-[Determinism](./determinism.md)). This dual stance — minimal collection,
+[Determinism](/docs/concepts/determinism/)). This dual stance — minimal collection,
 pure computation — is the whole of the engine's privacy contract.
 
 For the mechanics of what signals *are* collected and how they are hashed,
-see [Signals](./signals.md); for how the collected signals become scores,
-see [Scoring](./scoring.md).
+see [Signals](/docs/reference/signals/); for how the collected signals become scores,
+see [Scoring](/docs/concepts/scoring/).

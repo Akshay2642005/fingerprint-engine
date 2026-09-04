@@ -267,7 +267,7 @@ if (result.reply) {
 ## Key takeaways
 
 - The SDK **collects and transmits only**; the worker computes the
-  fingerprint. See [Concepts](../concepts/determinism.md) for why this split
+  fingerprint. See [Concepts](/docs/concepts/determinism/) for why this split
   is fundamental to the project's guarantees.
 - `packageId` is the 16-byte replay identity; `bytes`/`hex` are the exact
   serialized body; `reply` carries the authoritative digest.
@@ -276,5 +276,5 @@ if (result.reply) {
 - `onSessionBlocked` is a push callback; `assertAllowed` is a pull gate.
   Neither is a substitute for server-side enforcement.
 - For the byte-level format of what `collect()` sends, read
-  [Serialization](./serialization.md). For the transport that carries the
-  package to the worker, see [Worker CLI](./worker-cli.md).
+  [Serialization](/docs/internals/serialization/). For the transport that carries the
+  package to the worker, see [Worker CLI](/docs/guides/worker-cli/).

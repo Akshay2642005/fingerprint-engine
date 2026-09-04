@@ -77,7 +77,7 @@ Zig's `std.AutoHashMap` and similar structures do not promise a stable
 iteration order. The core never hashes a set by iterating a hash map.
 Instead, feature hashing is explicitly **ordered**: the hasher sorts
 features by `FeatureID` before hashing (see
-[architecture](../architecture.md) — Hashing Algorithm), so the byte stream
+[architecture](/docs/architecture/) — Hashing Algorithm), so the byte stream
 fed to SHA-256 is canonical regardless of how the features arrived or in
 what order they were collected. SHA-256 over a canonical, ordered byte
 stream is deterministic; SHA-256 over an unstable iteration order would not
@@ -188,6 +188,6 @@ layer.
 - Any change that shifts a golden digest must be reviewed as a
   **breaking contract change**, not a routine tweak.
 
-See [Fingerprinting](./fingerprinting.md) for why computation being
+See [Fingerprinting](/docs/concepts/fingerprinting/) for why computation being
 server-side is what makes a deterministic engine trustworthy, and
-[Signals](./signals.md) for what the engine is being deterministic *about*.
+[Signals](/docs/reference/signals/) for what the engine is being deterministic *about*.

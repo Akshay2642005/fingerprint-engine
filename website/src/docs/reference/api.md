@@ -281,4 +281,4 @@ Fuzz targets live in `tests/fuzz/` and run as part of the test suite:
 
 ## Security
 
-See [SECURITY.md](../SECURITY.md) for security policy and vulnerability reporting.
+See [SECURITY.md](/docs/security/) for security policy and vulnerability reporting.

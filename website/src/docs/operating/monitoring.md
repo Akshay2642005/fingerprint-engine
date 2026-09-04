@@ -135,7 +135,7 @@ confirms synchronously before considering the job complete:
 `publish confirmed` is the guarantee that the broker accepted and persisted
 the message. Its absence, or a `warn: worker: publish dropped: <error>`
 line, means that event never reached the exchange. See
-[AMQP Topology](./amqp-topology.md) for the routing-key and dead-letter
+[AMQP Topology](/docs/operating/amqp-topology/) for the routing-key and dead-letter
 consequences.
 
 ### Verifying with the broker directly
@@ -170,7 +170,7 @@ Options: `--count=N` to bound the drain, `--timeout-ms=0` to run until the
 queue is empty, and `--quiet` to silence connection chatter. Recall that the
 RabbitMQ container publishes port 5672 to the host, so this works straight
 from the repository root against a running `docker compose` stack. Full
-semantics on the [AMQP Topology](./amqp-topology.md) page.
+semantics on the [AMQP Topology](/docs/operating/amqp-topology/) page.
 
 ## Reproducing issues on a deterministic engine
 
@@ -206,7 +206,7 @@ own hash of the same bytes. Because the worker e2e tests pin the fixture
 digest as a compile-time constant, a division between "the worker agrees
 with the engine" and "the engine disagrees with the manifest" tells you
 instantly whether the anomaly is in the data, in a code version, or in the
-consumer. See [Concepts: Determinism](../concepts/determinism.md).
+consumer. See [Concepts: Determinism](/docs/concepts/determinism/).
 
 ## A monitoring baseline
 
@@ -225,5 +225,5 @@ For a production deployment:
 - Keep `zig build scripts -- amqp` and `zig build scripts -- worker request`
   as post-deploy smoke checks on every change to the message stream.
 
-Return to [Operating](./README.md) for the index, or
-[Deployment](./deployment.md) to rebuild and redeploy the stack.
+Return to [Operating](/docs/operating/) for the index, or
+[Deployment](/docs/operating/deployment/) to rebuild and redeploy the stack.

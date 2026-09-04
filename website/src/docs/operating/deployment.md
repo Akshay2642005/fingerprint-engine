@@ -239,6 +239,6 @@ cross-checks the returned digest against an in-process engine call; under
 `docker compose` the worker's published host port is 8081.
 
 Once those all pass, the stack is deployed. Move on to
-[AMQP Topology](./amqp-topology.md) to understand the message stream the
-fraud platform consumes, and [Monitoring](./monitoring.md) for the runbook
+[AMQP Topology](/docs/operating/amqp-topology/) to understand the message stream the
+fraud platform consumes, and [Monitoring](/docs/operating/monitoring/) for the runbook
 that keeps it observable.

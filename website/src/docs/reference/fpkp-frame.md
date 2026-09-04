@@ -53,7 +53,7 @@ The `message_type` field is the FPKG `MessageType` enum (`u8`):
 
 Unknown `message_type` tags are rejected as `InvalidMessageType`. The
 worker maps select inbound types to engine operations (see
-[Operations](./operations.md)); the outbound-only types
+[Operations](/docs/reference/operations/)); the outbound-only types
 (`diagnostics`, `fingerprint_computed`, `entropy_result`) are not dispatched
 as operations.
 
@@ -92,11 +92,33 @@ compares it against the header's field. The same algorithm is mirrored in
 anything else, so a worker can reject an unknown-envelope peer without
 misreading its payload. This is one of the two version gates (the other is
 the SignalPackage body schema version, at the engine boundary; see
-[Serialization](../internals/serialization.md)).
+[Serialization](/docs/internals/serialization/)).
 
 ## Worker reply
 
 A worker reply is an FPKG frame whose payload is `u8 status | engine
-result` — the first byte is the engine `Status` (see [Status](./status.md)).
+result` — the first byte is the engine `Status` (see [Status](/docs/reference/status/)).
 For a successful `hash`, that is `0` followed by the 32-byte digest, the
 `u16` feature count, and the `u16` schema version.
+
+## Payload body (SignalPackage)
+
+For `signal_package` and the result messages, the frame payload is the
+**SignalPackage**. Its `v2` body begins with this header — every integer is
+little-endian:
+
+```
+<-- header →|
+"FNGR"        [4]u8    magic
+schema        u16      body schema version = 2
+sdk_len       u16      sdk_version length (bytes)
+sdk_version   sdk_len  SDK version string
+collected_at  i64      collection timestamp (Unix ms)
+package_id    [16]u8   replay identity
+feature_count u16      number of features
+features      TLV×N    TLV-encoded features
+```
+
+The `features` field is a sequence of Tag-Length-Value records; see
+[Serialization](/docs/internals/serialization/) for the full body layout and
+the TLV feature encoding.

@@ -9,7 +9,7 @@ crumbs: ["start"]
 Fingerprint Engine is a deterministic, distributed browser fingerprinting
 engine. The **browser collects** signals, the **engine computes** the
 canonical fingerprint, and the **platform decides**. You will learn why this
-split matters in [Concepts](./concepts/), but first—let's collect a package.
+split matters in [Concepts](../concepts/), but first—let's collect a package.
 
 ## Install
 
@@ -45,11 +45,11 @@ stateless worker.
 
 These pages take you from zero to a running, scaled stack:
 
-- [Local quickstart](./start/quickstart.md) — run RabbitMQ + worker + ingress with one command and send your first package.
-- [Browser SDK](./start/browser-sdk.md) — install, configure, collect, and enforce fraud decisions.
-- [Ingress setup](./start/ingress.md) — the HTTP gateway: flags, env vars, and the worker pool.
-- [Worker setup](./start/worker.md) — transports, AMQP publishing, and running multiple workers.
-- [Self-host](./start/self-host.md) — a full compose file with the ingress and three workers.
+- [Local quickstart](./quickstart.md) — run RabbitMQ + worker + ingress with one command and send your first package.
+- [Browser SDK](/docs/guides/browser-sdk/) — install, configure, collect, and enforce fraud decisions.
+- [Ingress setup](./ingress.md) — the HTTP gateway: flags, env vars, and the worker pool.
+- [Worker setup](./worker.md) — transports, AMQP publishing, and running multiple workers.
+- [Self-host](./self-host.md) — a full compose file with the ingress and three workers.
 
 ## Read the reply
 
@@ -65,7 +65,7 @@ if (result.reply) {
 ```
 
 The `status` byte is the engine `Status` value (0 = ok). See
-[Reference: API](./reference/api/) for the full field table.
+[Reference: API](../reference/api/) for the full field table.
 
 ## Run the full stack locally
 
@@ -77,10 +77,10 @@ docker compose up
 
 This starts a RabbitMQ broker, the stateless Zig worker (connected to
 `rabbitmq:5672`), and the HTTP ingress (connected to `worker:8080`). See
-[Operating: Deployment](./operating/deployment/) for details.
+[Operating: Deployment](/docs/operating/deployment/) for details.
 
 ## Next steps
 
-- [Concepts](./concepts/) — why the browser/engine/platform split exists
-- [Guides](./guides/) — serialization, docker compose, worker CLI
-- [Reference](./reference/signals/) — the full 102-signal registry
+- [Concepts](../concepts/) — why the browser/engine/platform split exists
+- [Guides](../guides/) — serialization, docker compose, worker CLI
+- [Reference](../reference/signals/) — the full 102-signal registry
