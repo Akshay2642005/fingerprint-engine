@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
-current_epic: none (roadmap complete)
-active_story: none (v0.4.1 shipped; next milestone unplanned)
+current_epic: none (v1.0.0 roadmap defined in ROADMAP-v1.0.0.md; M6 not started)
+active_story: none (v0.4.1 shipped; next milestone M6 unplanned→planned)
 
 epics:
   e01-core-engine:

@@ -3,7 +3,7 @@
 Current: **v0.4.1** (2026-08-29) — patch release shipping the compose/Docker
 AMQP + DNS fix (PR #31); follows **v0.4.0** (2026-08-24), AMQP consumer + DLQ +
 full-stack compose. The full
-distributed-engine roadmap (M1–M5) is **complete**; the next milestone is unplanned
+distributed-engine roadmap (M1–M5) is **complete**. The next milestones (M6→M10, toward v1.0.0) are defined in [`specs/planning/ROADMAP-v1.0.0.md`](./ROADMAP-v1.0.0.md).
 (see `specs/planning/PHASES.yaml` → next_phase). This file
 replaces the pre-rework M1–M4 integration/quality plan (see
 `specs/archive/` for the superseded items).
@@ -17,6 +17,12 @@ replaces the pre-rework M1–M4 integration/quality plan (see
 | M3 — Production readiness | benchmarks, fuzz, docs, security | ✅ done |
 | M4 — Distributed rework | Zig 0.14.1, layered repo, engine/io/adapter/worker, AMQP, TS SDK, Docker | ✅ done (v0.2.0–v0.2.2) |
 | M5 — Platform integration | **ingress** + full-stack compose + AMQP consumer/DLQ + release surface | ✅ done (v0.4.0) |
+| M6 — API & determinism contract | Freeze wire + SDK; lock registry; cross-browser golden; event schema | ⏳ planned |
+| M7 — Durable event ledger (TigerBeetle-inspired store) | Our own Zig append-only store adapter; exactly-once; audit/replay | ⏳ planned |
+| M7.1 — Device ledger (optional, compute-only) | Append-only "seen this ID?" records; no matching in core | ⏳ planned |
+| M8 — Observability & ops | Prometheus metrics, `request_id` tracing, probes, chaos SLO | ⏳ planned |
+| M9 — Signal breadth, quality & SDK ergonomics | Confidence/entropy, anti-tamper, new categories; SDK wrappers/consent | ⏳ planned |
+| M10 — Platform integration (auth/api_key) | Platform owns auth/api_key/tenant; ledger feeds platform matching | ⏳ planned |
 
 ## M5 plan (delivered)
 
