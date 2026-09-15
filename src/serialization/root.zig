@@ -12,3 +12,9 @@ pub const jsonEncode = @import("json.zig").jsonEncode;
 /// the same digest for envelope validation.
 pub const integrityOf = @import("integrity.zig").integrityOf;
 pub const integrityValid = @import("integrity.zig").integrityValid;
+
+/// Pinned per-feature payload size limit: 4 KiB.
+/// Practical upper bound for a browser fingerprint feature value (longest:
+/// StringArray with many entries). If a feature exceeds this, the
+/// fixedBufferStream write will error.
+pub const max_feature_payload_size = @import("binary.zig").max_feature_payload_size;

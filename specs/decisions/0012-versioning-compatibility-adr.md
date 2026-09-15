@@ -38,7 +38,8 @@ precisely so the envelope can grow flags without a version bump.
 
 ### 2. Current wire ABI (byte-for-byte reference)
 
-Verified against source; a companion ABI pin test locks this table as
+Verified against source 2026-09-15; the companion ABI pin test
+(`tests/serialization/abi_pin_test.zig`, story `m6-abi-pin`) locks this table as
 compile-time constants so it cannot drift.
 
 | Layer | Layout (all little-endian) |
