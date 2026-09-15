@@ -145,9 +145,9 @@ ci_cd:
 handoff:
   next_skill: "elaborate-spec"
   note: |
-    Roadmap complete. All bugs BUG-001 through BUG-016 fixed; S1–S6 audit
-    backlog delivered; v0.4.0 shipped (AMQP consumer + DLQ, full-stack
-    compose, ingress GHCR image, cross-platform binaries). v0.4.1 patch
-    shipped the compose/Docker AMQP + DNS fix (worker/ingress resolve
-    'rabbitmq'/'worker' by name). 457 tests green. Next milestone unplanned —
-    needs product direction (see specs/planning/PHASES.yaml -> next_phase).
+    Distributed-engine roadmap complete (M1–M5); v0.4.1 shipped with the
+    Docker/AMQP DNS fix (PR #31). 457 tests green. The v1.0.0 path is defined
+    in specs/planning/ROADMAP-v1.0.0.md — M6 (API & determinism contract) is
+    active: ADR-012 (versioning/compatibility) drafted, ABI pin + registry lock
+    next. M7 re-scoped 2026-09-07 to the event envelope + platform ledger
+    contract (no Zig store, D-v1-4).

@@ -18,8 +18,8 @@ replaces the pre-rework M1–M4 integration/quality plan (see
 | M4 — Distributed rework | Zig 0.14.1, layered repo, engine/io/adapter/worker, AMQP, TS SDK, Docker | ✅ done (v0.2.0–v0.2.2) |
 | M5 — Platform integration | **ingress** + full-stack compose + AMQP consumer/DLQ + release surface | ✅ done (v0.4.0) |
 | M6 — API & determinism contract | Freeze wire + SDK; lock registry; cross-browser golden; event schema | ⏳ planned |
-| M7 — Durable event ledger (TigerBeetle-inspired store) | Our own Zig append-only store adapter; exactly-once; audit/replay | ⏳ planned |
-| M7.1 — Device ledger (optional, compute-only) | Append-only "seen this ID?" records; no matching in core | ⏳ planned |
+| M7 — Event envelope + platform ledger contract | Two-digest result + `collection_event` envelope on AMQP; platform Postgres/MongoDB ledger (idempotent on `package_id`); no Zig store (D-v1-4) | ⏳ planned |
+| M7.1 — Identity anchoring (platform, compute-only, optional) | Platform resolves `identity_id` from stable-core digest equality + core similarity; no matching in core | ⏳ planned |
 | M8 — Observability & ops | Prometheus metrics, `request_id` tracing, probes, chaos SLO | ⏳ planned |
 | M9 — Signal breadth, quality & SDK ergonomics | Confidence/entropy, anti-tamper, new categories; SDK wrappers/consent | ⏳ planned |
 | M10 — Platform integration (auth/api_key) | Platform owns auth/api_key/tenant; ledger feeds platform matching | ⏳ planned |

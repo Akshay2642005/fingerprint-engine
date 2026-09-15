@@ -1,11 +1,11 @@
 # Release Plan — Fingerprint Engine
 target_version: 0.4.1
-next_target: TBD
+next_target: 0.5.0
 note: |
-  The distributed-engine roadmap (M1–M5) is complete. v0.4.1 is the current
-  shipped release (patch: compose/Docker AMQP + DNS fix — PR #31). The next
-  milestone is unplanned — awaiting product direction (see
-  specs/planning/PHASES.yaml -> next_phase).
+  v0.4.1 is the current shipped release (patch: compose/Docker AMQP + DNS fix —
+  PR #31). The path to v1.0.0 is defined in specs/planning/ROADMAP-v1.0.0.md:
+  next cuts are v0.5.0 (M6, end of Month 1), v0.6.0 (M7, Month 2), v0.7.0
+  (Month 3), then v1.0.0.
 
 releases:
   v0.4.1:

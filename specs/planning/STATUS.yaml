@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
-current_epic: none (v1.0.0 roadmap defined in ROADMAP-v1.0.0.md; M6 not started)
-active_story: none (v0.4.1 shipped; next milestone M6 unplanned→planned)
+current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
+active_story: m6-wire-versioning (ADR-012 drafted; M6 week 1 in progress)
 
 epics:
   e01-core-engine:
