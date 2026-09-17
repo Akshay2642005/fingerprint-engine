@@ -60,7 +60,7 @@ A **frozen public contract** + **durable event record** + **operational maturity
 - Lock `FeatureID` 0–101; `flags`/`weight` governance doc.
 - **Capability negotiation**: SDK reports collected signal set; engine tolerates missing/extra (`definitions` lookup is tolerant).
 - **Cross-browser golden matrix**: headless Chromium/Firefox/WebKit collect → encode → compare digest bytes against a pinned golden; CI gate.
-- Define the **event envelope schema** (`collection_event`, one per collection): `package_id, session_id, fingerprint_id, core_digest, feature_count, core_feature_count, status, entropy, risk, sdk_version, canonicalized signals (JSON), schema_version`. `fingerprint_result` carries **two digests** (full + stable-core) per ADR-012's additive append-extend path (D-v1-5/D-v1-6).
+- Define the **event envelope schema** (`collection_event`, one per collection): `package_id, session_id, fingerprint_id, core_digest, feature_count, core_feature_count, status, entropy, risk, sdk_version, canonicalized signals (JSON), schema_version`. `fingerprint_result` carries **two digests** (full + stable-core) per ADR-012's additive append-extend path (D-v1-5/D-v1-6). Schema (field list + types) drafted in [ADR-013](decisions/0013-event-envelope-ledger-adr.md) (Week-1 D4), refined + grilled Week 5.
 - Lock the **stable-core subset** as registry `core` metadata (a reserved `FeatureFlags` bit, D-v1-7): selection rule + `core_version`, calibrated against the cross-browser golden matrix.
 
 ### M7 — Event envelope + platform ledger contract
@@ -134,7 +134,7 @@ tight.
 - Consumes `VISION.yaml` long-term goals; respects `SCOPE.yaml` out-of-scope.
 - No Zig storage adapter exists (D-v1-4): the event ledger is platform-side; the AMQP outbound envelope follows `architecture/tech-stack.md` adapter contract (`adapters depend inward`).
 - Security notes land in `security/SECURITY_PLAN.md` (refresh for HMAC/replay).
-- New ADRs required: versioning/compatibility (M6) — [ADR-012](decisions/0012-versioning-compatibility-adr.md) drafted; two-digest result + event envelope + ledger contract (ADR-013, Week 5).
+- New ADRs required: versioning/compatibility (M6) — [ADR-012](decisions/0012-versioning-compatibility-adr.md) drafted; two-digest result + event envelope + ledger contract — [ADR-013](decisions/0013-event-envelope-ledger-adr.md) (Week 5 full draft; Week-1 D4 skeleton drafted).
 
 ## Execution plan
 
