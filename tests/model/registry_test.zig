@@ -98,6 +98,37 @@ test "Registry.get for all 102 defined features" {
 }
 
 // ──────────────────────────────────────────────
+// Registry — tolerant lookup (m6-tolerant-lookup)
+// ──────────────────────────────────────────────
+
+// story: m6-tolerant-lookup
+test "Registry.lookup returns definition for each registered raw id" {
+    const all = features.Registry.all();
+    for (all) |def| {
+        const got = features.Registry.lookup(@intFromEnum(def.id));
+        try testing.expect(got != null);
+        try testing.expectEqual(def.id, got.?.id);
+    }
+}
+
+test "Registry.lookup returns null for Count sentinel raw id" {
+    try testing.expect(features.Registry.lookup(102) == null);
+}
+
+test "Registry.lookup returns null for out-of-range raw ids" {
+    // 0..101 are the 102 registered ids; 103 and above are unregistered.
+    try testing.expect(features.Registry.lookup(103) == null);
+    try testing.expect(features.Registry.lookup(255) == null);
+    try testing.expect(features.Registry.lookup(65535) == null);
+}
+
+test "Registry.lookup never errors — same pointer as get() for known ids" {
+    const def = features.Registry.get(features.FeatureID.CanvasHash);
+    const got = features.Registry.lookup(@intFromEnum(features.FeatureID.CanvasHash));
+    try testing.expectEqual(def, got.?);
+}
+
+// ──────────────────────────────────────────────
 // Registry — definition immutability
 // ──────────────────────────────────────────────
 

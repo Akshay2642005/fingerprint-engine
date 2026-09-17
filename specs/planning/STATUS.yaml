@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: m6-capability-negotiation (W2-D1 spec written; D2 tolerant lookup next)
+active_story: m6-capability-negotiation (W2-D2 tolerant lookup done; D3 tolerant decode next)
 
 epics:
   e01-core-engine:

@@ -2,6 +2,7 @@ const std = @import("std");
 
 const FeatureID = @import("model").FeatureID;
 const FeatureType = @import("model").FeatureType;
+const Registry = @import("model").Registry;
 const fingerprint = @import("model");
 const Feature = fingerprint.Feature;
 const FeatureValue = fingerprint.FeatureValue;
@@ -149,6 +150,7 @@ fn writeValuePayload(w: anytype, value: FeatureValue) !void {
 pub const DecodeError = error{
     InvalidMagic,
     InvalidPayload,
+    PayloadTooLarge,
     UnsupportedVersion,
     Truncated,
     OutOfMemory,
@@ -190,14 +192,24 @@ fn decodeV1(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerp
     const feature_count = std.mem.readInt(u16, &count_bytes, .little);
 
     const features_slice = try allocator.alloc(Feature, feature_count);
-    errdefer allocator.free(features_slice);
-
-    for (features_slice, 0..) |*feat, i| {
-        feat.* = decodeFeature(r, allocator) catch |err| {
-            for (0..i) |j| freeFeatureValue(allocator, features_slice[j].value);
-            return err;
-        };
+    var written: usize = 0;
+    errdefer {
+        for (features_slice[0..written]) |f| freeFeatureValue(allocator, f.value);
+        allocator.free(features_slice);
     }
+    var i: usize = 0;
+    while (i < feature_count) : (i += 1) {
+        const decoded = decodeFeature(r, allocator) catch |err| return err;
+        if (decoded) |feat| {
+            features_slice[written] = feat;
+            written += 1;
+        }
+    }
+
+    const features = if (written < feature_count)
+        try allocator.realloc(features_slice, written)
+    else
+        features_slice;
 
     return DecodedFingerprint{
         .fingerprint = Fingerprint{
@@ -206,7 +218,7 @@ fn decodeV1(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerp
                 .sdk_version = "",
                 .collected_at = 0,
             },
-            .features = features_slice,
+            .features = features,
         },
         .allocator = allocator,
     };
@@ -231,14 +243,24 @@ fn decodeV2(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerp
     const feature_count = std.mem.readInt(u16, &count_bytes, .little);
 
     const features_slice = try allocator.alloc(Feature, feature_count);
-    errdefer allocator.free(features_slice);
-
-    for (features_slice, 0..) |*feat, i| {
-        feat.* = decodeFeature(r, allocator) catch |err| {
-            for (0..i) |j| freeFeatureValue(allocator, features_slice[j].value);
-            return err;
-        };
+    var written: usize = 0;
+    errdefer {
+        for (features_slice[0..written]) |f| freeFeatureValue(allocator, f.value);
+        allocator.free(features_slice);
     }
+    var i: usize = 0;
+    while (i < feature_count) : (i += 1) {
+        const decoded = decodeFeature(r, allocator) catch |err| return err;
+        if (decoded) |feat| {
+            features_slice[written] = feat;
+            written += 1;
+        }
+    }
+
+    const features = if (written < feature_count)
+        try allocator.realloc(features_slice, written)
+    else
+        features_slice;
 
     return DecodedFingerprint{
         .fingerprint = Fingerprint{
@@ -248,13 +270,13 @@ fn decodeV2(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerp
                 .collected_at = collected_at,
                 .package_id = package_id,
             },
-            .features = features_slice,
+            .features = features,
         },
         .allocator = allocator,
     };
 }
 
-fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!Feature {
+fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!?Feature {
     const id_bytes = try readArray(r, 2);
     const id_int = std.mem.readInt(u16, &id_bytes, .little);
 
@@ -264,9 +286,18 @@ fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!Feature {
     const len_bytes = try readArray(r, 4);
     const payload_len = std.mem.readInt(u32, &len_bytes, .little);
 
+    // R-3: enforce per-feature payload size cap on decode (matches encode).
+    if (payload_len > max_feature_payload_size) return error.PayloadTooLarge;
+
     const payload = try allocator.alloc(u8, payload_len);
     defer allocator.free(payload);
     try readExact(r, payload);
+
+    // m6-tolerant-lookup: ids outside the shipped registry are silently skipped
+    // — the caller compacts the feature slice so the package still decodes
+    // (DESIGN §9.4.7). The payload is still drained so TLV framing holds.
+    // story: m6-tolerant-lookup
+    if (Registry.lookup(id_int) == null) return null;
 
     // BUG-009: validate enum tags from untrusted wire data before use.
     const feature_type = std.meta.intToEnum(FeatureType, type_tag) catch return error.InvalidPayload;
@@ -275,7 +306,7 @@ fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!Feature {
     var pr = pfbs.reader();
     const value = try readValuePayload(&pr, allocator, feature_type);
 
-    const feature_id = std.meta.intToEnum(FeatureID, id_int) catch return error.InvalidPayload;
+    const feature_id = std.meta.intToEnum(FeatureID, id_int) catch unreachable;
 
     return Feature{
         .id = feature_id,

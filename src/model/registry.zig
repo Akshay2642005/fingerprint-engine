@@ -8,13 +8,22 @@ const FeatureID = model.FeatureID;
 
 const feature_count = @typeInfo(FeatureID).@"enum".fields.len;
 const real_feature_count = feature_count - 1; // Exclude Count sentinel
-const lookup = buildLookupTable();
+const lookup_table = buildLookupTable();
 
 pub const Registry = struct {
     pub inline fn get(id: FeatureID) *const FeatureDefinition {
-        const def = lookup[@intFromEnum(id)].?;
+        const def = lookup_table[@intFromEnum(id)].?;
         std.debug.assert(def.name.len > 0);
         return def;
+    }
+    /// Tolerant lookup by raw wire id (m6-tolerant-lookup): returns the
+    /// definition for a registered id, or null when the id is not a feature
+    /// (out of range, or the Count sentinel). Never errors — decode uses this
+    /// to skip unknown ids instead of rejecting the package (DESIGN §9.4.7).
+    // story: m6-tolerant-lookup
+    pub inline fn lookup(raw_id: u16) ?*const FeatureDefinition {
+        if (raw_id >= feature_count) return null;
+        return lookup_table[raw_id];
     }
     pub inline fn all() []const FeatureDefinition {
         return &defs.definitions;
