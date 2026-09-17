@@ -479,20 +479,66 @@ test "decode rejects invalid FeatureType tag" {
     try testing.expectError(error.InvalidPayload, serialization.decode(&r, allocator));
 }
 
-test "decode rejects invalid FeatureID tag" {
+// m6-tolerant-lookup: unknown FeatureIDs are silently skipped; the package
+// decodes with zero or fewer features, never InvalidPayload.
+// story: m6-tolerant-lookup
+test "decode skips unknown FeatureID instead of rejecting" {
     const allocator = testing.allocator;
-    // FNGR magic | v1 | feature_count=1 | id=9999 (invalid) | type=0 (Boolean) | len=1 | value
-    const invalid_id = [_]u8{
-        'F', 'N', 'G', 'R', // magic
-        1, 0, // schema_version = 1
-        1, 0, // feature_count = 1
-        0x27, 0x27, // feature_id = 9999 (invalid FeatureID)
-        0, // type_tag = 0 (Boolean)
-        1, 0, 0, 0, // payload_len = 1
-        1, // payload: true
+    // FNGR magic | v1 | feature_count=1 | id=9999 (unknown) | type=0 (Boolean) | len=1 | value
+    const unknown_id = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0x27, 0x27,
+        0,
+        1, 0, 0, 0,
+        1,
     };
-
-    var fbs = std.io.fixedBufferStream(&invalid_id);
+    var fbs = std.io.fixedBufferStream(&unknown_id);
     var r = fbs.reader();
-    try testing.expectError(error.InvalidPayload, serialization.decode(&r, allocator));
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+test "decode skips Count sentinel (id=102) as unknown" {
+    const allocator = testing.allocator;
+    // FNGR magic | v1 | feature_count=1 | id=102 (Count sentinel) | type=0 (Boolean) | len=1 | value
+    const sentinel_id = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        102, 0,
+        0,
+        1, 0, 0, 0,
+        0,
+    };
+    var fbs = std.io.fixedBufferStream(&sentinel_id);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+test "decode compacts features: skips unknown ids, keeps known" {
+    const allocator = testing.allocator;
+    // v1 | feature_count=3: unknown(9999), Count(102), UserAgent(0 String "ab")
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        3, 0,
+        // unknown id 9999
+        0x27, 0x27, 0, 1, 0, 0, 0, 1,
+        // Count sentinel 102
+        102, 0, 0, 1, 0, 0, 0, 0,
+        // UserAgent (id=0) String "ab"
+        0, 0, 3, 6, 0, 0, 0, 2, 0, 0, 0, 'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 1), decoded.fingerprint.features.len);
+    try testing.expectEqual(features.FeatureID.UserAgent, decoded.fingerprint.features[0].id);
+    try testing.expectEqualStrings("ab", decoded.fingerprint.features[0].value.String);
 }
