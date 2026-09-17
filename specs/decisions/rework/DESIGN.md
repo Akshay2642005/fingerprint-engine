@@ -563,6 +563,54 @@ back as the HTTP response. No RabbitMQ on this path.
   `hash`/`compute` exports, no base64 blob — the canonical path stays
   server-side. The same scan is unit-tested in `tests/build/`.
 
+<!-- // story: m6-capability-negotiation -->
+
+#### 9.4.7 Capability negotiation & tolerant decode (M6)
+
+The SDK enumerates the signal set it actually collected into the package so
+the worker can distinguish "not collected" from "collected but undecodable".
+Layering: the SDK decides what to encode; the worker never guesses. Specified
+under ADR-012 (adopted); this is the wire + tolerance contract.
+
+**Capability tail (additive, optional).** The SignalPackage v2 body gains an
+optional trailing section appended after `features TLV×N` (append-at-tail only;
+
+```
+features TLV ×N
+signals_count u16 | signals u16 ×count     ← optional capability tail
+```
+
+- schema_version stays `2` — an old SDK simply omits the tail; a 1.0 decoder
+  that does not know it tolerates the trailing bytes (skip-by-length).
+- Producer rule: ids sorted ascending and deduplicated (deterministic bytes).
+- Presence is inferred from remaining bytes after `feature_count` features are
+  read: leftover bytes are the tail (`signals_count`, then `count` u16 ids).
+  Absent ≡ empty is accepted until availability fusion ships platform-side.
+- The tail is metadata: it is **not** hashed into the canonical digest, so
+  worker results are byte-identical whether or not a package carries it.
+
+**Tolerance policy (per-feature, deterministic).** Same bytes in → same
+skip/drop set out:
+
+| Case | Behavior |
+|------|----------|
+| Unknown `FeatureID` (outside the shipped registry) | skip the feature by `payload_len` — no lookup error, no panic |
+| Unknown `FeatureType` value | skip the feature |
+| Known id, value shorter/malformed for its type (e.g. `Integer` payload < 8 B) | feature **dropped** (unavailable); the attempted set remains visible via the `signals` tail |
+| Non-canonical Boolean payload | feature dropped (R-4 stays strict for canonical payloads; a stray byte marks it unavailable instead of killing the package) |
+| Feature payload above the R-3 4 KiB cap | reject (unchanged; cap enforced on decode) |
+
+**Stays loud (package-level).** Bad magic, unsupported schema/envelope
+versions, unknown codec, non-zero reserved bits, and stream exhaustion (Eof)
+still reject the whole package. FPKG integrity gates body truncation before
+decode in the real pipeline, so decode-level stream truncation is not
+recoverable and must not be silently accepted.
+
+**Engine acceptance.** Missing and extra ids (relative to `signals_count`) are
+both accepted; no cross-check between the tail and the decoded feature set at
+v0.5.0. Tolerant lookup (`Registry.lookup`) and tolerant decode land in
+Week-2 D2/D3; SDK emission lands in Week-2 D4.
+
 ## 10. Docker
 
 `deploy/Dockerfile.worker` — multi-stage:

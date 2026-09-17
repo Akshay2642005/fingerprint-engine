@@ -49,6 +49,7 @@ compile-time constants so it cannot drift.
 | `Codec` (u8) | binary=1, json=2; values fixed, append-only |
 | SignalPackage v1 body | `FNGR` · schema u16 · feature_count u16 · features TLV×N |
 | SignalPackage v2 body | `FNGR` · schema u16 · sdk_version_len u16 · sdk_version · collected_at i64 · package_id [16]u8 · feature_count u16 · features TLV×N |
+| SignalPackage v2 body (+ capability tail) | `… features TLV×N` · `signals_count u16` · `signals u16×N` — optional trailing section (W2-4, additive; schema stays 2; old SDKs omit it; presence by remaining bytes) |
 | Feature TLV | id u16 · type u8 · payload_len u32 · payload (cap 4 KiB per feature, R-3) |
 | `FeatureValue` payload | Boolean 1 B (strict 0/1, R-4) · Integer i64 · Float u64 bits · String/Bytes u32 len + bytes · arrays count-prefixed (u32), all LE |
 | HTTP (ingress) | request head cap 16 KiB; request headers `x-fpkg-schema-version`, `x-fpkg-sdk-version`, `x-fpkg-package-id`, `x-fpkg-integrity` (CORS-allow-listed); reply = worker frame in body + `x-fpkg-message-type` response header |
@@ -65,6 +66,7 @@ it already understands.
 | New `Codec` value appended | Additive | reject loudly (`InvalidCodec`) | encoder selects it per package |
 | `signal_package` schema bump (v3) | Breaking (body) | must ship **dual-decode** v2+v3 in the same release; keep v2 persist format | select codec via feature-detect before encoding |
 | Additive body extension inside current schema | Additive | skip-by-length; synthesized fields must be documented (v1-decode precedent, ADR-004) | read new fields only when present |
+| Capability tail (`signals` list) appended to v2 body | Additive | 1.0 consumer ignores trailing bytes (skip-by-length) | SDK always emits (sorted, deduped); engine tolerates absence; metadata, not hashed |
 | Envelope reserved bit/flags (R-5 field) | Additive | non-zero → `InvalidReserved` until the flag is published with a fallback | define semantics + fallback in the release notes |
 | New env. version (u16 ≠ 1) | Breaking | `UnsupportedVersion` (correct) | dual-decode both remember v1/v2 precedent |
 | New `FeatureID` appended | Additive | tolerant lookup skips unknown ids (companion task: lookup returns null, never errors) | registry lock guarantees ids are never renumbered or reclaimed |
