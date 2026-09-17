@@ -1,14 +1,20 @@
 const std = @import("std");
-const fingerprint = @import("model");
-const codec = @import("codec.zig");
 
+const FeatureID = @import("model").FeatureID;
+const FeatureType = @import("model").FeatureType;
+const fingerprint = @import("model");
 const Feature = fingerprint.Feature;
 const FeatureValue = fingerprint.FeatureValue;
 const Fingerprint = fingerprint.Fingerprint;
 const FingerprintMetadata = fingerprint.FingerprintMetadata;
 
-const FeatureType = @import("model").FeatureType;
-const FeatureID = @import("model").FeatureID;
+const codec = @import("codec.zig");
+
+/// Pinned per-feature payload size limit: 4 KiB.
+/// Practical upper bound for a browser fingerprint feature value (longest:
+/// StringArray with many entries). If a feature exceeds this, the
+/// fixedBufferStream write will error.
+pub const max_feature_payload_size = 4096;
 
 /// Binary format magic bytes: "FNGR"
 const MAGIC = [_]u8{ 'F', 'N', 'G', 'R' };
@@ -88,7 +94,7 @@ fn encodeFeature(w: anytype, feat: Feature) !void {
     // R-3: payload cap per feature — 4 KiB covers any practical browser
     // fingerprint value (longest: StringArray with many entries). If a
     // feature exceeds this, the fixedBufferStream write will error.
-    var payload_buf: [4096]u8 = undefined;
+    var payload_buf: [max_feature_payload_size]u8 = undefined;
     var pfbs = std.io.fixedBufferStream(&payload_buf);
     var pw = pfbs.writer();
     try writeValuePayload(&pw, feat.value);

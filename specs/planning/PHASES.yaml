@@ -76,11 +76,9 @@ next_phase:
   status: planning
   recommended_skill: elaborate-spec
   note: |
-    The 2026-08-08 audit backlog (specs/quality/audits/2026-08-08.md) S1–S6 is
-    fully delivered (S5 AMQP consumer + DLQ; S6 full-stack compose + release
-    surface) and v0.4.0 shipped; the compose/Docker AMQP + DNS fix shipped as
-    v0.4.1. No next milestone is defined yet. The distributed-engine roadmap
-    is complete; forward scope needs product direction (see
-    specs/product/VISION.yaml). Candidates previously marked out-of-scope:
-    server matching engine (Go fraud platform, separate repo), native SDK/C
-    ABI (D10), PyPI crates (dropped).
+    The distributed-engine roadmap (M1–M5, delivered to v0.4.1) is complete.
+    The path to v1.0.0 (M6 → M8 + platform ledger, 16 weeks, releases
+    v0.5.0 → v0.6.0 → v0.7.0) is defined in specs/planning/ROADMAP-v1.0.0.md.
+    M6 (API & determinism contract) is the active milestone; ADR-012
+    (versioning & compatibility) is drafted. Server matching / workspace / AI
+    agents remain in the Go fraud platform (separate repo).
