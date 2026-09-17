@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: m6-wire-versioning (ADR-012 drafted; M6 week 1 in progress)
+active_story: m6-wire-versioning (done — ADR-012 adopted 2026-09-17, ABI pin + registry lock merged; next: m6-capability-negotiation, Week-2 D1)
 
 epics:
   e01-core-engine:

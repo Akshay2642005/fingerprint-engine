@@ -6,6 +6,10 @@ note: |
   PR #31). The path to v1.0.0 is defined in specs/planning/ROADMAP-v1.0.0.md:
   next cuts are v0.5.0 (M6, end of Month 1), v0.6.0 (M7, Month 2), v0.7.0
   (Month 3), then v1.0.0.
+  Cadence 2026-09-17 (Week-1 D5): no v0.4.x patch cut planned — nothing
+  user-facing has landed since v0.4.1; patch cuts are reserved for
+  regressions/bugfixes before a milestone cut. Next cut is v0.5.0
+  (end of Week 4, Sep 28 – Oct 2).
 
 releases:
   v0.4.1:

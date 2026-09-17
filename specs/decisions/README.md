@@ -18,6 +18,9 @@ first.
 | [ADR-008](0008-browser-sdk-wasm-native.md) | Hand-written TS SDK; WASM infra-only; no native SDK | Adopted |
 | [ADR-009](0009-fraud-platform-boundary.md) | Go platform owns rules/matching/UI; engine publishes events | Adopted |
 | [ADR-010](0010-ingress-executable.md) | HTTP ingress as a separate executable | Adopted (planned) |
+| [ADR-011](0011-shared-cli-components.md) | Shared CLI folder with combined + component binaries | Adopted |
+| [ADR-012](0012-versioning-compatibility-adr.md) | Versioning & compatibility contract (wire ABI + SDK) | Adopted |
+| [ADR-013](0013-event-envelope-ledger-adr.md) | Per-collection event envelope + platform ledger contract | Proposed |
 
 ## Rules
 

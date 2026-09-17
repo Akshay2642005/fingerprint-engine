@@ -2,7 +2,7 @@
 
 # ADR-012 — Versioning and compatibility contract (wire ABI + SDK)
 
-- **Status:** Proposed (drafted for review; merge after grill)
+- **Status:** Adopted (2026-09-17)
 - **Source:** `src/io/frame.zig`, `src/serialization/binary.zig`, `src/serialization/codec.zig`, `src/cmd/ingress/http.zig`, ADR-004
 - **Extends:** ADR-004 (FPKG envelope + SignalPackage v2 + integrity). Does not supersede it.
 

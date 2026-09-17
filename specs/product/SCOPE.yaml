@@ -3,7 +3,7 @@
 name: Fingerprint Engine
 version: 0.4.1
 engine_phases: 1-11 (complete) + rework/distributed-engine (complete)
-current_milestone: "Distributed engine — v0.4.1 (patch: compose AMQP/DNS fix)"
+current_milestone: "M6 — API & determinism contract (target v0.5.0; wire frozen at 1.0)"
 
 targets:
   - browser: "TypeScript signal-collection SDK — collects signals, packages them (SignalPackage v2), POSTs to the ingress. Never computes the canonical fingerprint."
@@ -25,6 +25,9 @@ milestones:
     priority: done
   - name: "M5 — Platform integration"
     description: "Ingress + worker deployment, AMQP consumer e2e, fraud-platform (Go) integration — out of repo where applicable"
+    priority: done
+  - name: "M6 — API & determinism contract"
+    description: "Wire ABI frozen at 1.0 (ADR-012 adopted, ABI pin test, FeatureID 0–101 locked); capability negotiation + tolerant decode; cross-browser golden matrix; event envelope schema (ADR-013); TS SDK API freeze. Target v0.5.0."
     priority: next
 
 principles:

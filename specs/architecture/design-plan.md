@@ -23,14 +23,19 @@ this file summarizes the current design state and points at the details.
 
 ## Planned additions (backlog, in order)
 
-| # | Design | Doc |
-|---|--------|-----|
-| S1 | BUG-001 fix + tcp idle timeouts + graceful shutdown | `specs/quality/audits/2026-08-08.md` |
-| S2 | Version single-source-of-truth via `b.addOptions()` | `specs/quality/audits/2026-08-08.md` |
-| S3 | `src/log.zig` leaf logger, `--log-level`/`--log-format`, `--quiet` | `specs/architecture/logging.md` |
-| S4 | HTTP ingress executable + Dockerfile + GHCR + compose + e2e | `specs/architecture/ingress.md` |
-| S5 | AMQP push consumer + dead-letter queue | `specs/quality/audits/2026-08-08.md` |
-| S6 | Full-stack compose + release surface for the ingress image | `specs/quality/audits/2026-08-08.md` |
+S1–S6 (audit slices, 2026-08-08) are all **delivered** (shipped v0.3.0/v0.4.0/v0.4.1);
+new M6/M7 rows appended below.
+
+| # | Design | Doc | Status |
+|---|--------|-----|--------|
+| S1 | BUG-001 fix + tcp idle timeouts + graceful shutdown | `specs/quality/audits/2026-08-08.md` | delivered |
+| S2 | Version single-source-of-truth via `b.addOptions()` | `specs/quality/audits/2026-08-08.md` | delivered |
+| S3 | `src/log.zig` leaf logger, `--log-level`/`--log-format`, `--quiet` | `specs/architecture/logging.md` | delivered |
+| S4 | HTTP ingress executable + Dockerfile + GHCR + compose + e2e | `specs/architecture/ingress.md` | delivered |
+| S5 | AMQP push consumer + dead-letter queue | `specs/quality/audits/2026-08-08.md`, `specs/planning/S5-amqp-consumer-dlq.md` | delivered |
+| S6 | Full-stack compose + release surface for the ingress image | `specs/quality/audits/2026-08-08.md`, `specs/planning/S6-compose-release-surface.md` | delivered |
+| S7 | M6 wire freeze — ADR-012 adopted + ABI pin test + FeatureID registry lock | `specs/decisions/0012-versioning-compatibility-adr.md`, `tests/serialization/abi_pin_test.zig` | in progress (M6) |
+| S8 | M7 collection_event envelope + platform ledger (two-digest result) | `specs/decisions/0013-event-envelope-ledger-adr.md` | planned (M7/Week 5) |
 
 ## Design principles (unchanged from rework)
 
