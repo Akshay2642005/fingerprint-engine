@@ -539,6 +539,224 @@ test "decode compacts features: skips unknown ids, keeps known" {
     const decoded = try serialization.decode(&r, allocator);
     defer decoded.deinit();
     try testing.expectEqual(@as(usize, 1), decoded.fingerprint.features.len);
+     try testing.expectEqual(features.FeatureID.UserAgent, decoded.fingerprint.features[0].id);
+     try testing.expectEqualStrings("ab", decoded.fingerprint.features[0].value.String);
+}
+
+// ── m6-tolerant-decode: short/malformed values and non-canonical booleans → drop ──
+
+// story: m6-tolerant-decode
+test "decode drops non-canonical boolean (byte=2)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=Boolean | payload_len=1 | value=2
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        1, 0, 0, 0,
+        2,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short Integer (4 bytes instead of 8)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=Integer | payload_len=4 | 4 bytes
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        1, 0, 0, 0,
+        4, 0, 0, 0,
+        0, 0, 0, 0,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short String (declared len=5, 2 bytes provided)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=String | payload_len=6 | u32 len=5 + 2 bytes
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        3, 0, 0, 0,
+        6, 0, 0, 0,
+        5, 0, 0, 0,
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short StringArray (count=3, only 1 item present)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=StringArray | payload_len=10 | count=3, 1 item
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        5, 0, 0, 0,
+        10, 0, 0, 0,
+        3, 0, 0, 0,
+        2, 0, 0, 0,
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short Float (4 bytes instead of 8)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=Float | payload_len=4 | 4 bytes
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        2, 0, 0, 0,
+        4, 0, 0, 0,
+        0, 0, 0, 0,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short Bytes (declared len=5, 2 bytes provided)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=Bytes | payload_len=6 | u32 len=5 + 2 bytes
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        4, 0, 0, 0,
+        6, 0, 0, 0,
+        5, 0, 0, 0,
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short IntegerArray (count=3, only 1 element present)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=IntegerArray | payload_len=12 | count=3, 1 element
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        6, 0, 0, 0,
+        12, 0, 0, 0,
+        3, 0, 0, 0,
+        1, 0, 0, 0, 0, 0, 0, 0,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short FloatArray (count=3, only 1 element present)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=FloatArray | payload_len=12 | count=3, 1 element
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        7, 0, 0, 0,
+        12, 0, 0, 0,
+        3, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short BytesArray (count=3, only 1 item present)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=BytesArray | payload_len=10 | count=3, 1 item
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        8, 0, 0, 0,
+        10, 0, 0, 0,
+        3, 0, 0, 0,
+        2, 0, 0, 0,
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode compacts: drops malformed value, keeps valid" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=2: non-canonical Boolean (dropped), UserAgent String "ab" (kept)
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        2, 0,
+        // Feature 1: non-canonical Boolean (dropped)
+        0, 0,       // id=0
+        0,          // type=Boolean
+        1, 0, 0, 0, // payload_len=1
+        2,          // value=2 (non-canonical)
+        // Feature 2: UserAgent String "ab" (kept)
+        0, 0,       // id=0
+        3,          // type=String
+        6, 0, 0, 0, // payload_len=6
+        2, 0, 0, 0, // string len=2
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 1), decoded.fingerprint.features.len);
     try testing.expectEqual(features.FeatureID.UserAgent, decoded.fingerprint.features[0].id);
     try testing.expectEqualStrings("ab", decoded.fingerprint.features[0].value.String);
 }
