@@ -304,22 +304,29 @@ fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!?Feature 
 
     var pfbs = std.io.fixedBufferStream(payload);
     var pr = pfbs.reader();
-    const value = try readValuePayload(&pr, allocator, feature_type);
-
-    const feature_id = std.meta.intToEnum(FeatureID, id_int) catch unreachable;
-
-    return Feature{
-        .id = feature_id,
-        .value = value,
+    // story: m6-tolerant-decode
+    const value = readValuePayload(&pr, allocator, feature_type) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return null,
     };
+    const feature_id = std.meta.intToEnum(FeatureID, id_int) catch unreachable;
+    return if (value) |v| Feature{ .id = feature_id, .value = v } else null;
 }
 
-fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) DecodeError!FeatureValue {
-    switch (tag) {
+// story: m6-tolerant-decode
+fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) DecodeError!?FeatureValue {
+    // Tolerant decode (m6-tolerant-decode): short/malformed payloads and
+    // non-canonical booleans never fail the package. readArray/readExact/readU32
+    // map all read failure to error.Truncated, which decodeFeature converts to a
+    // dropped feature; OutOfMemory still propagates. errdefer frees interim
+    // allocations on every error/Truncated path; only OutOfMemory is allowed to
+    // escape as an error, and null (drop) never fires errdefers that would leak.
+    return switch (tag) {
         .Boolean => {
-            const byte = (try readArray(r, 1))[0];
-            // R-4: reject non-canonical booleans — payload must be exactly 1 byte.
-            if (byte != 0 and byte != 1) return error.InvalidPayload;
+            const bytes = try readArray(r, 1);
+            const byte = bytes[0];
+            // Non-canonical boolean payloads are dropped (tolerant).
+            if (byte != 0 and byte != 1) return null;
             return FeatureValue{ .Boolean = byte == 1 };
         },
         .Integer => {
@@ -334,24 +341,32 @@ fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) 
         .String => {
             const len = try readU32(r);
             const bytes = try allocator.alloc(u8, len);
+            errdefer allocator.free(bytes);
             try readExact(r, bytes);
             return FeatureValue{ .String = bytes };
         },
         .Bytes => {
             const len = try readU32(r);
             const bytes = try allocator.alloc(u8, len);
+            errdefer allocator.free(bytes);
             try readExact(r, bytes);
             return FeatureValue{ .Bytes = bytes };
         },
         .StringArray => {
             const count = try readU32(r);
             var items = try allocator.alloc([]const u8, count);
-            errdefer allocator.free(items);
+            var allocated: usize = 0;
+            errdefer {
+                for (items[0..allocated]) |it| allocator.free(it);
+                allocator.free(items);
+            }
             for (0..count) |i| {
                 const item_len = try readU32(r);
                 const item = try allocator.alloc(u8, item_len);
+                errdefer allocator.free(item);
                 try readExact(r, item);
                 items[i] = item;
+                allocated += 1;
             }
             return FeatureValue{ .StringArray = items };
         },
@@ -378,16 +393,22 @@ fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) 
         .BytesArray => {
             const count = try readU32(r);
             var items = try allocator.alloc([]const u8, count);
-            errdefer allocator.free(items);
+            var allocated: usize = 0;
+            errdefer {
+                for (items[0..allocated]) |it| allocator.free(it);
+                allocator.free(items);
+            }
             for (0..count) |i| {
                 const item_len = try readU32(r);
                 const item = try allocator.alloc(u8, item_len);
+                errdefer allocator.free(item);
                 try readExact(r, item);
                 items[i] = item;
+                allocated += 1;
             }
             return FeatureValue{ .BytesArray = items };
         },
-    }
+    };
 }
 
 fn readU32(r: anytype) DecodeError!u32 {
