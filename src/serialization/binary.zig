@@ -88,6 +88,20 @@ fn encodeV2Body(w: anytype, fp: Fingerprint) !void {
     try encodeV1Body(w, fp);
 }
 
+/// Appends the ADR-012 capability tail to a v2 body:
+/// `signals_count u16 | signals u16 ×count`, after `features TLV×N`
+/// (DESIGN §9.4.7). `ids` must already be sorted ascending and deduplicated
+/// (producer rule; package.ts derives the same set from collected signals).
+/// The tail is metadata: it is **not** hashed into the canonical digest, and
+/// a decoder that does not know it tolerates the trailing bytes
+/// (skip-by-length). The engine never emits it — only SDKs do.
+/// story: m6-sdk-signals
+pub fn encodeCapabilityTail(w: anytype, ids: []const u16) !void {
+    std.debug.assert(ids.len <= std.math.maxInt(u16));
+    try w.writeInt(u16, @as(u16, @intCast(ids.len)), .little);
+    for (ids) |id| try w.writeInt(u16, id, .little);
+}
+
 fn encodeFeature(w: anytype, feat: Feature) !void {
     try w.writeInt(u16, @intFromEnum(feat.id), .little);
     try w.writeByte(@intFromEnum(feat.value.valueType()));

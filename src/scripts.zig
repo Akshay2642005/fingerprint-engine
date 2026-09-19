@@ -760,6 +760,29 @@ fn generateSignalPackageV2(alloc: std.mem.Allocator) !void {
     var buf: [512]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
     try serialization.encode(fbs.writer(), fp);
+
+    // ADR-012 capability tail (DESIGN §9.4.7): the fixture is the SDK
+    // stand-in, so it carries the same tail the browser SDK emits today —
+    // feature ids as `signals_count u16 | signals u16 ×count`, sorted
+    // ascending and deduplicated. The tail is metadata (not hashed), so the
+    // engine digest stays pinned to the pre-tail value.
+    // story: m6-sdk-signals
+    const ids = try alloc.alloc(u16, fp.features.len);
+    defer alloc.free(ids);
+    for (fp.features, 0..) |feat, i| ids[i] = @intFromEnum(feat.id);
+    std.mem.sort(u16, ids, {}, struct {
+        fn lessThan(_: void, a: u16, b: u16) bool {
+            return a < b;
+        }
+    }.lessThan);
+    var uniq_len: usize = 0;
+    for (ids) |id| {
+        if (uniq_len == 0 or ids[uniq_len - 1] != id) {
+            ids[uniq_len] = id;
+            uniq_len += 1;
+        }
+    }
+    try serialization.encodeCapabilityTail(fbs.writer(), ids[0..uniq_len]);
     const bytes = fbs.getWritten();
 
     var file = try std.fs.cwd().createFile(F.path, .{});

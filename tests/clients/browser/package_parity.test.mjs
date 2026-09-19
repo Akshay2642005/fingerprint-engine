@@ -89,4 +89,56 @@ test("wire layout: magic, schema, header fields, TLV framing", () => {
 		new TextDecoder().decode(bytes.subarray(headerLen + 13, headerLen + 15)),
 		"ab",
 	);
+
+	// Second feature TLV: id 9 (u16), type 0 = Boolean (u8), payload_len 1
+	// (u32), payload `01` — starts right after the first TLV (13 bytes).
+	assert.equal(view.getUint16(headerLen + 15, true), 9, "second feature id");
+	assert.equal(view.getUint8(headerLen + 17), 0, "second feature type");
+	assert.equal(view.getUint32(headerLen + 18, true), 1, "second payload length");
+	assert.equal(view.getUint8(headerLen + 22), 1, "second payload byte");
+
+	// ADR-012 capability tail follows the last TLV (DESIGN §9.4.7):
+	// signals_count(2) | ids 0, 9 — always emitted, little-endian u16s.
+	// story: m6-sdk-signals
+	const tailOff = headerLen + 23;
+	assert.equal(
+		view.getUint16(tailOff, true),
+		2,
+		"capability tail signals count",
+	);
+	assert.equal(view.getUint16(tailOff + 2, true), 0, "capability tail first id");
+	assert.equal(view.getUint16(tailOff + 4, true), 9, "capability tail second id");
+	assert.equal(bytes.byteLength, tailOff + 6, "capability tail ends the package");
+});
+
+test("capability tail: sorted ascending, deduplicated", () => {
+	const signals = [
+		{ id: 11, type: FeatureType.Integer, value: 8 },
+		{ id: 0, type: FeatureType.String, value: "a" },
+		{ id: 11, type: FeatureType.Integer, value: 9 },
+		{ id: 9, type: FeatureType.Boolean, value: true },
+	];
+	const bytes = encodeSignalPackage(signals, {
+		sdkVersion: "0.2.0",
+		collectedAt: 123,
+		packageId: new Uint8Array(16),
+	});
+
+	// Tail: signals_count 3 | ids 0, 9, 11 (u16 little-endian).
+	assert.deepEqual(
+		Buffer.from(bytes.subarray(bytes.length - 8)),
+		Buffer.from([3, 0, 0, 0, 9, 0, 11, 0]),
+	);
+});
+
+test("capability tail: empty signal set still emits a count", () => {
+	const bytes = encodeSignalPackage([], {
+		sdkVersion: "0.2.0",
+		collectedAt: 123,
+		packageId: new Uint8Array(16),
+	});
+	assert.deepEqual(
+		Buffer.from(bytes.subarray(bytes.length - 2)),
+		Buffer.from([0, 0]),
+	);
 });

@@ -552,7 +552,9 @@ test "worker: --log-level=debug emits the request flow trace (S3b)" {
     // The flow trace spans the request lifecycle; the line prefix contract is
     // `worker: <verb> ...` (specs/architecture/logging.md, F-2).
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: got job type=signal_package") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail codec=binary payload_len=84") != null);
+    // Fixture size includes the ADR-012 capability tail (DESIGN §9.4.7) —
+    // story: m6-sdk-signals.
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail codec=binary payload_len=92") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: processing job") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job done status=ok") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail result_len=36") != null);
@@ -1025,7 +1027,9 @@ test "ingress: --log-level=debug emits the request flow trace (S3b)" {
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: connection accepted from 127.0.0.1:") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: post /") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: signal received from client, forwarding to worker") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: forwarding to worker (84 payload bytes)") != null);
+    // Fixture size includes the ADR-012 capability tail (DESIGN §9.4.7) —
+    // story: m6-sdk-signals.
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: forwarding to worker (92 payload bytes)") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: connected to worker 0 (127.0.0.1:") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: forwarding signal package to worker 0 (127.0.0.1:") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: reply from worker 0 (127.0.0.1:") != null);
