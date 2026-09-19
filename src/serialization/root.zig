@@ -3,6 +3,7 @@ pub const schema_version_v1 = @import("codec.zig").schema_version_v1;
 pub const schema_version_v2 = @import("codec.zig").schema_version_v2;
 
 pub const encode = @import("binary.zig").encode;
+pub const encodeCapabilityTail = @import("binary.zig").encodeCapabilityTail;
 pub const decode = @import("binary.zig").decode;
 pub const DecodedFingerprint = @import("binary.zig").DecodedFingerprint;
 pub const jsonEncode = @import("json.zig").jsonEncode;
