@@ -18,6 +18,9 @@ Browser → Collectors → SignalPackage v2 → Ingress → Workers → Fraud pl
   network, locale, battery, media, speech, permissions, capabilities, input, metadata.
 - **Versioned wire format** — binary SignalPackage v2 body with replay identity
   (`package_id`), `sdk_version`, and `collected_at` preserved on the wire.
+  The body ends with an optional capability tail (`u16 count` + sorted, deduped
+  signal ids) describing which signals it carries; older decoders tolerate it
+  via skip-by-length, so the tail never changes the canonical digest.
 - **Deterministic packaging** — serializer mirrors the engine's binary codec byte-for-byte
   (cross-checked by a golden parity test in CI).
 - **Integrity headers** — every request carries `x-fpkg-*` metadata plus a SHA-256

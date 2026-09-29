@@ -3,6 +3,7 @@ const testing = std.testing;
 const features = @import("model");
 const fingerprint = @import("model");
 const serialization = @import("serialization");
+const core = @import("core");
 
 // ──────────────────────────────────────────────
 // Binary Serialization — Encode header
@@ -759,4 +760,62 @@ test "decode compacts: drops malformed value, keeps valid" {
     try testing.expectEqual(@as(usize, 1), decoded.fingerprint.features.len);
     try testing.expectEqual(features.FeatureID.UserAgent, decoded.fingerprint.features[0].id);
     try testing.expectEqualStrings("ab", decoded.fingerprint.features[0].value.String);
+}
+
+// story: m6-regression-fixtures
+test "v2: capability tail is ignored on decode and digest is unchanged" {
+    const allocator = testing.allocator;
+    const fp = fingerprint.Fingerprint{
+        .metadata = fingerprint.FingerprintMetadata{
+            .schema_version = 2,
+            .sdk_version = "0.4.1",
+            .collected_at = 1700000000123,
+            .package_id = test_package_id,
+        },
+        .features = &.{
+            fingerprint.Feature{ .id = features.FeatureID.UserAgent, .value = fingerprint.FeatureValue{ .String = "Mozilla/5.0" } },
+            fingerprint.Feature{ .id = features.FeatureID.CookieEnabled, .value = fingerprint.FeatureValue{ .Boolean = true } },
+            fingerprint.Feature{ .id = features.FeatureID.HardwareConcurrency, .value = fingerprint.FeatureValue{ .Integer = 8 } },
+        },
+    };
+
+    // The same fingerprint serialized twice: bare, and with the ADR-012
+    // capability tail appended after the feature TLVs (DESIGN §9.4.7).
+    var buf_a: [512]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf_a);
+    try serialization.encode(fbs.writer(), fp);
+    const without_tail = fbs.getWritten();
+
+    var buf_b: [512]u8 = undefined;
+    var fbs2 = std.io.fixedBufferStream(&buf_b);
+    try serialization.encode(fbs2.writer(), fp);
+    try serialization.encodeCapabilityTail(fbs2.writer(), &.{ 0, 9, 11 });
+    const with_tail = fbs2.getWritten();
+    try testing.expectEqual(@as(usize, without_tail.len + 8), with_tail.len);
+
+    var fs_a = std.io.fixedBufferStream(without_tail);
+    var r1 = fs_a.reader();
+    const d1 = try serialization.decode(&r1, allocator);
+    defer d1.deinit();
+    var fs_b = std.io.fixedBufferStream(with_tail);
+    var r2 = fs_b.reader();
+    const d2 = try serialization.decode(&r2, allocator);
+    defer d2.deinit();
+
+    // Skip-by-length: the decoder reads feature_count features and ignores
+    // the trailing bytes, so both decode to the identical feature set.
+    try testing.expectEqual(@as(usize, 3), d1.fingerprint.features.len);
+    try testing.expectEqual(@as(usize, 3), d2.fingerprint.features.len);
+    for (d1.fingerprint.features, d2.fingerprint.features) |a, b| {
+        try testing.expectEqual(a.id, b.id);
+        try testing.expectEqualDeep(a.value, b.value);
+    }
+
+    // The tail is metadata, not hashed: identical canonical feature buffers
+    // produce byte-identical digests with or without it.
+    var digest1: [32]u8 = undefined;
+    var digest2: [32]u8 = undefined;
+    core.hashing.hashFingerprintBuffer(d1.fingerprint.features, &digest1);
+    core.hashing.hashFingerprintBuffer(d2.fingerprint.features, &digest2);
+    try testing.expectEqualSlices(u8, &digest1, &digest2);
 }
