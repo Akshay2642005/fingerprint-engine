@@ -84,6 +84,24 @@ jobs:
         run: npm test
         working-directory: src/clients/browser
 
+  browser-matrix:
+    name: Browser Matrix (design)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify runner design doc exists
+        run: test -f specs/quality/browser-matrix-design.md
+
+      - name: Report runner status (skeleton — real assertions land in D3)
+        run: |
+          if [ -d tests/browser-matrix ]; then
+            echo "runner present — assertions pending (D2/D3)"
+          else
+            echo "runner not yet built (D2) — skeleton green"
+          fi
+
   wasm-build:
     name: WASM Build
     runs-on: ubuntu-latest
