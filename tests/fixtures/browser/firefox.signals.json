@@ -79,22 +79,22 @@
 		{
 			"id": 17,
 			"type": "Integer",
-			"value": 1366
+			"value": 1280
 		},
 		{
 			"id": 18,
 			"type": "Integer",
-			"value": 768
+			"value": 720
 		},
 		{
 			"id": 19,
 			"type": "Integer",
-			"value": 1366
+			"value": 1280
 		},
 		{
 			"id": 20,
 			"type": "Integer",
-			"value": 692
+			"value": 720
 		},
 		{
 			"id": 21,
@@ -129,7 +129,7 @@
 		{
 			"id": 27,
 			"type": "Integer",
-			"value": 805
+			"value": 720
 		},
 		{
 			"id": 28,
