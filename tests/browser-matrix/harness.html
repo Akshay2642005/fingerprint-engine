@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>browser-matrix harness (W3-D2)</title>
+</head>
+<body>
+<script type="module">
+import { collectSignals } from "/dist/collectors/index.js";
+
+function toHex(bytes) {
+	let out = "";
+	for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, "0");
+	return out;
+}
+
+// Playwright serializes evaluate() results as JSON — Uint8Array would not
+// survive, so byte payloads are hex-encoded in-page (same convention as the
+// committed snapshot JSON: byte values as lowercase hex strings).
+function encodeValue(value) {
+	if (value instanceof Uint8Array) return toHex(value);
+	if (Array.isArray(value) && value.length > 0 && value[0] instanceof Uint8Array) {
+		return value.map(toHex);
+	}
+	return value;
+}
+
+try {
+	const signals = await collectSignals();
+	window.__fpSignals = signals.map((s) => ({ id: s.id, type: s.type, value: encodeValue(s.value) }));
+	window.__fpError = null;
+} catch (err) {
+	window.__fpError = String(err && err.stack ? err.stack : err);
+} finally {
+	window.__fpReady = true;
+}
+</script>
+</body>
+</html>

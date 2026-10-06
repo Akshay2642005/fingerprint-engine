@@ -1,0 +1,407 @@
+{
+	"schema_version": 2,
+	"sdk_version": "0.4.1",
+	"collected_at": 1700000000123,
+	"package_id": "0102030405060708090a0b0c0d0e0f10",
+	"signals": [
+		{
+			"id": 0,
+			"type": "String",
+			"value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15"
+		},
+		{
+			"id": 1,
+			"type": "String",
+			"value": "en-US"
+		},
+		{
+			"id": 2,
+			"type": "StringArray",
+			"value": [
+				"en-US"
+			]
+		},
+		{
+			"id": 3,
+			"type": "String",
+			"value": "MacIntel"
+		},
+		{
+			"id": 4,
+			"type": "String",
+			"value": "Apple Computer, Inc."
+		},
+		{
+			"id": 5,
+			"type": "String",
+			"value": "Gecko"
+		},
+		{
+			"id": 6,
+			"type": "String",
+			"value": "20030107"
+		},
+		{
+			"id": 7,
+			"type": "String",
+			"value": "Netscape"
+		},
+		{
+			"id": 8,
+			"type": "String",
+			"value": "5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.6 Safari/605.1.15"
+		},
+		{
+			"id": 9,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 10,
+			"type": "String",
+			"value": "unspecified"
+		},
+		{
+			"id": 11,
+			"type": "Integer",
+			"value": 8
+		},
+		{
+			"id": 12,
+			"type": "Integer",
+			"value": 0
+		},
+		{
+			"id": 14,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 17,
+			"type": "Integer",
+			"value": 1280
+		},
+		{
+			"id": 18,
+			"type": "Integer",
+			"value": 720
+		},
+		{
+			"id": 19,
+			"type": "Integer",
+			"value": 1280
+		},
+		{
+			"id": 20,
+			"type": "Integer",
+			"value": 720
+		},
+		{
+			"id": 21,
+			"type": "Integer",
+			"value": 24
+		},
+		{
+			"id": 22,
+			"type": "Integer",
+			"value": 24
+		},
+		{
+			"id": 23,
+			"type": "Float",
+			"value": 1
+		},
+		{
+			"id": 24,
+			"type": "Integer",
+			"value": 1280
+		},
+		{
+			"id": 25,
+			"type": "Integer",
+			"value": 720
+		},
+		{
+			"id": 26,
+			"type": "Integer",
+			"value": 1280
+		},
+		{
+			"id": 27,
+			"type": "Integer",
+			"value": 720
+		},
+		{
+			"id": 28,
+			"type": "String",
+			"value": "landscape-primary"
+		},
+		{
+			"id": 67,
+			"type": "String",
+			"value": "en-US"
+		},
+		{
+			"id": 68,
+			"type": "String",
+			"value": "UTC"
+		},
+		{
+			"id": 69,
+			"type": "Integer",
+			"value": 0
+		},
+		{
+			"id": 70,
+			"type": "String",
+			"value": "en-US"
+		},
+		{
+			"id": 47,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 48,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 49,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 50,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 51,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 77,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 78,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 86,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 87,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 88,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 89,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 90,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 91,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 92,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 93,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 94,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 95,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 52,
+			"type": "String",
+			"value": "prompt"
+		},
+		{
+			"id": 53,
+			"type": "String",
+			"value": "prompt"
+		},
+		{
+			"id": 54,
+			"type": "String",
+			"value": "prompt"
+		},
+		{
+			"id": 55,
+			"type": "String",
+			"value": "prompt"
+		},
+		{
+			"id": 35,
+			"type": "Bytes",
+			"value": "876ced7e27009c7ad8125ab5f37ca435e3a19490715e62d83ce45e62fcb2016a"
+		},
+		{
+			"id": 36,
+			"type": "String",
+			"value": "Apple Inc."
+		},
+		{
+			"id": 37,
+			"type": "String",
+			"value": "Apple GPU"
+		},
+		{
+			"id": 38,
+			"type": "String",
+			"value": "WebGL 1.0"
+		},
+		{
+			"id": 40,
+			"type": "StringArray",
+			"value": [
+				"ANGLE_instanced_arrays",
+				"EXT_blend_minmax",
+				"EXT_clip_control",
+				"EXT_color_buffer_half_float",
+				"EXT_depth_clamp",
+				"EXT_float_blend",
+				"EXT_frag_depth",
+				"EXT_polygon_offset_clamp",
+				"EXT_shader_texture_lod",
+				"EXT_texture_compression_bptc",
+				"EXT_texture_compression_rgtc",
+				"EXT_texture_filter_anisotropic",
+				"EXT_texture_mirror_clamp_to_edge",
+				"EXT_sRGB",
+				"KHR_parallel_shader_compile",
+				"OES_element_index_uint",
+				"OES_fbo_render_mipmap",
+				"OES_standard_derivatives",
+				"OES_texture_float",
+				"OES_texture_float_linear",
+				"OES_texture_half_float",
+				"OES_texture_half_float_linear",
+				"OES_vertex_array_object",
+				"WEBGL_blend_func_extended",
+				"WEBGL_color_buffer_float",
+				"WEBGL_compressed_texture_astc",
+				"WEBGL_compressed_texture_etc",
+				"WEBGL_compressed_texture_etc1",
+				"WEBGL_compressed_texture_pvrtc",
+				"WEBKIT_WEBGL_compressed_texture_pvrtc",
+				"WEBGL_compressed_texture_s3tc",
+				"WEBGL_compressed_texture_s3tc_srgb",
+				"WEBGL_debug_renderer_info",
+				"WEBGL_debug_shaders",
+				"WEBGL_depth_texture",
+				"WEBGL_draw_buffers",
+				"WEBGL_lose_context",
+				"WEBGL_multi_draw",
+				"WEBGL_polygon_mode"
+			]
+		},
+		{
+			"id": 41,
+			"type": "String",
+			"value": "{\"maxTextureSize\":16384,\"maxViewportDims\":{\"0\":16384,\"1\":16384},\"maxCombinedTextureUnits\":32}"
+		},
+		{
+			"id": 43,
+			"type": "Bytes",
+			"value": "3921c9256ac3ba559b425a1f1a818521e844c524aa6d227ce17024c8d463b9c2"
+		},
+		{
+			"id": 44,
+			"type": "Bytes",
+			"value": "f469eb497851a34bd3f29d84f4183239f2f68b47b9d0bbe11c7c1972157c8afa"
+		},
+		{
+			"id": 59,
+			"type": "StringArray",
+			"value": [
+				"video/mp4; codecs=\"avc1.42E01E\"",
+				"video/mp4; codecs=\"avc1.640028\"",
+				"video/webm; codecs=\"vp8\"",
+				"video/webm; codecs=\"vp9\"",
+				"video/webm; codecs=\"av01.0.08M.08\"",
+				"video/mp4; codecs=\"av01.0.04M.08\"",
+				"audio/mp4; codecs=\"mp4a.40.2\"",
+				"audio/webm; codecs=\"opus\"",
+				"audio/ogg; codecs=\"vorbis\"",
+				"audio/mp3; codecs=\"mp3\"",
+				"audio/wav; codecs=\"1\"",
+				"audio/mp4; codecs=\"mp4a.40.02\"",
+				"audio/flac"
+			]
+		},
+		{
+			"id": 60,
+			"type": "StringArray",
+			"value": [
+				"video/mp4",
+				"video/webm",
+				"video/quicktime",
+				"video/x-msvideo"
+			]
+		},
+		{
+			"id": 61,
+			"type": "StringArray",
+			"value": [
+				"audio/mpeg",
+				"audio/mp4",
+				"audio/webm",
+				"audio/ogg",
+				"audio/wav",
+				"audio/flac",
+				"audio/aac"
+			]
+		},
+		{
+			"id": 76,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 96,
+			"type": "String",
+			"value": "en-US|MacIntel"
+		},
+		{
+			"id": 97,
+			"type": "Boolean",
+			"value": true
+		},
+		{
+			"id": 98,
+			"type": "Boolean",
+			"value": true
+		}
+	]
+}
