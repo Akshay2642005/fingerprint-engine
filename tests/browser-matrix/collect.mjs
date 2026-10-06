@@ -1,21 +1,27 @@
 // Cross-browser golden matrix runner (W3-D2, m6-browser-runner).
 //
 // Launches Playwright x Chromium/Firefox/WebKit headless with a fixed
-// context (viewport 1280x720, locale en-US, timezone UTC), collects real
-// signals via the SDK deep-imported from dist/, and writes one snapshot
-// JSON per engine mirroring tests/fixtures/fingerprints/
-// signal-package-v2.signals.json.
+// context (viewport 1280x720, locale en-US, timezone UTC; screen/outer dims
+// pinned to the viewport via init script because Firefox otherwise reports
+// the host display), collects real signals via the SDK deep-imported from
+// dist/, and writes one snapshot JSON per engine mirroring
+// tests/fixtures/fingerprints/signal-package-v2.signals.json.
 //
 // Snapshots committed here are PROVISIONAL: local macOS runs are
 // informational only (fonts/GPU differ from the pinned CI image). D3's
 // workflow_dispatch capture flow re-captures snapshots+pins in CI as the
 // source of truth (specs/quality/browser-matrix-design.md).
 //
+// Local runs write to tests/browser-matrix/captures/ (git-ignored) by
+// default so merely running the collector never overwrites the committed
+// goldens. Promote to fixtures explicitly:
+//   node collect.mjs --out=tests/fixtures/browser
+//
 // Usage: node collect.mjs [--engines=chromium,firefox,webkit]
 //                          [--repeats=3] [--out=<dir>] [--strict]
 import { createServer } from "node:http";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join, dirname, extname } from "node:path";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from "node:fs";
+import { join, dirname, extname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, firefox, webkit } from "playwright";
 
@@ -26,12 +32,41 @@ const distDir = join(repoRoot, "src", "clients", "browser", "dist");
 const ENGINES = { chromium, firefox, webkit };
 
 // Fixed context — locale/timezone baked into snapshots (D2 default).
+// Screen/outer dims are pinned to the viewport via PIN_SCREEN_SCRIPT:
+// Playwright's viewport fixes innerWidth/innerHeight only, and Firefox
+// reports the host display for screen.* (1366x768 on the author's machine),
+// so display changes would otherwise alter golden signals.
+const VIEWPORT = { width: 1280, height: 720 };
 const CONTEXT_OPTS = {
-	viewport: { width: 1280, height: 720 },
+	viewport: VIEWPORT,
 	deviceScaleFactor: 1,
 	locale: "en-US",
 	timezoneId: "UTC",
 };
+
+// Runs before page scripts on every navigation. Best-effort: if a property
+// refuses redefinition in some engine, collection still proceeds with real
+// values (and the N-repeat report shows it).
+const PIN_SCREEN_SCRIPT = `(() => {
+	try {
+		const w = ${VIEWPORT.width}, h = ${VIEWPORT.height};
+		const pin = (obj, props) => {
+			for (const [k, v] of Object.entries(props)) {
+				try {
+					Object.defineProperty(obj, k, { get: () => v, configurable: true });
+				} catch { /* keep host value */ }
+			}
+		};
+		pin(window.screen, {
+			width: w, height: h, availWidth: w, availHeight: h,
+			colorDepth: 24, pixelDepth: 24,
+		});
+		if (window.screen.orientation) {
+			pin(window.screen.orientation, { type: "landscape-primary", angle: 0 });
+		}
+		pin(window, { outerWidth: w, outerHeight: h });
+	} catch { /* keep host values */ }
+})();`;
 
 // Committed snapshots use fixed replay identity — the digest covers only
 // the canonicalized feature buffer, so this never affects pins (W2-D5).
@@ -80,7 +115,14 @@ function startServer() {
 		}
 		if (url.pathname.startsWith("/dist/")) {
 			const file = join(distDir, url.pathname.slice("/dist/".length));
-			if (!file.startsWith(distDir) || !existsSync(file)) {
+			// Boundary-safe containment: a raw prefix check accepts
+			// siblings like dist-evil/, so compare the relative path.
+			const rel = relative(distDir, file);
+			let isFile = false;
+			try {
+				isFile = statSync(file).isFile();
+			} catch { /* missing — 404 below */ }
+			if (rel === "" || rel.startsWith("..") || !isFile) {
 				res.writeHead(404).end("not found");
 				return;
 			}
@@ -125,6 +167,7 @@ async function collectOnce(engine, port) {
 	const browser = await engine.launch();
 	try {
 		const context = await browser.newContext(CONTEXT_OPTS);
+		await context.addInitScript({ content: PIN_SCREEN_SCRIPT });
 		const page = await context.newPage();
 		await page.goto(`http://127.0.0.1:${port}/harness.html`);
 		await page.waitForFunction(() => window.__fpReady === true, null, { timeout: 60000 });
@@ -149,7 +192,11 @@ async function main() {
 	// sdk_version tracks the real package version (deterministic per commit).
 	const sdkVersion = JSON.parse(readFileSync(join(repoRoot, "src", "clients", "browser", "package.json"), "utf8")).version;
 
-	const outDir = opts.out || join(repoRoot, "tests", "fixtures", "browser");
+	// Default out is the git-ignored local captures dir: running the
+	// collector must never silently overwrite the committed goldens.
+	// Pass --out=tests/fixtures/browser to promote a run to fixtures.
+	const outDir = opts.out || join(here, "captures");
+	const promoting = Boolean(opts.out);
 	mkdirSync(outDir, { recursive: true });
 
 	const server = await startServer();

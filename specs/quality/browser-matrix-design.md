@@ -46,6 +46,8 @@ never affects the pin (W2-D5).
   headless with fixed viewport/locale/timezone, collects via
   `collectSignals` in-page, serializes, hashes → assert equals the pin, and
   emits a per-signal diff against the committed snapshot (D4's raw material).
+  The harness also pins `screen.*`/outer dims to the viewport via init
+  script (Firefox otherwise reports the host display).
 
 ## Environment rules
 
