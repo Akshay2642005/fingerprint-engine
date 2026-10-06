@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: m6-browser-runner (W3-D1 runner design merged; D2 build the runner next)
+active_story: m6-golden-digest-ci (W3-D2 runner merged; D3 hash subcommand + pins + CI gating next)
 
 epics:
   e01-core-engine:
