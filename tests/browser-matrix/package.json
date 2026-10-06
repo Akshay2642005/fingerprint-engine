@@ -1,0 +1,13 @@
+{
+	"name": "browser-matrix-runner",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Cross-browser golden matrix runner (W3-D2, m6-browser-runner). Collects real signals via Playwright x Chromium/Firefox/WebKit.",
+	"type": "module",
+	"scripts": {
+		"collect": "node collect.mjs"
+	},
+	"devDependencies": {
+		"playwright": "1.63.0"
+	}
+}
