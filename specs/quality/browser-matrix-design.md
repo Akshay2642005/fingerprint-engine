@@ -91,14 +91,17 @@ CI is the golden source of truth; local macOS captures are informational.
 
 1. Merge the PR that adds/updates the runner, snapshots, or `pins.json`.
 2. Actions → **Golden Capture** → *Run workflow* → pick `develop`.
-   The run installs the same pins as `browser-matrix` (ubuntu-24.04, Zig
-   0.14.1, Node 22, Brave 1.97.56, Playwright lockfile), collects 3 × 3
-   repeats, writes `pins.json` (`provisional: false`), verifies Layer 1
-   against the new pins, and auto-commits fixtures + pins back to the
-   branch (`chore(golden): …`).
-3. GITHUB_TOKEN pushes do not trigger CI — dispatch the **CI** workflow
-   manually (workflow_dispatch) or open the next PR to see the gate
-   verify the authoritative pins.
+   Until `workflow_dispatch` registers (it needs this file on the default
+   branch, which lands at v0.5.0), push an **empty commit to `develop`**
+   whose subject contains `[golden-capture]` — the job guard on the push
+   trigger runs the capture. Either way the run installs the same pins as
+   `browser-matrix` (ubuntu-24.04, Zig 0.14.1, Node 22, Brave 1.97.56,
+   Playwright lockfile), collects 3 × 3 repeats, writes `pins.json`
+   (`provisional: false`), verifies Layer 1 against the new pins, and
+   auto-commits fixtures + pins back to the branch (`chore(golden): …`).
+3. GITHUB_TOKEN pushes do not trigger CI — see the authoritative pins
+   verified by pushing any follow-up commit to `develop` (e.g. the STATUS
+   docs update) or by opening the next PR.
 4. Re-run the capture on: Playwright lockfile bump (pin-reset event),
    Brave version bump, runner-image change, or any intended signal-set
    change. The commit diff of `pins.json` records the reset.

@@ -1,11 +1,18 @@
 # Golden capture — the source of truth for the browser matrix (W3-D3,
 # m6-golden-digest-ci).
 #
-# Manual dispatch on a branch (default: develop). Re-collects snapshots in
-# all 3 engines on the pinned image, replays them through the SDK + engine
-# hash, writes tests/fixtures/browser/pins.json (provisional: false), and
-# commits fixtures + pins back to the dispatched branch. Subsequent PRs gate
-# on those pins via the `browser-matrix` job in ci.yml.
+# Two triggers:
+#   1. workflow_dispatch with a branch input (primary interface — becomes
+#      available once master carries this file, at v0.5.0).
+#   2. Push fallback: any push to develop runs the job guard, which only
+#      proceeds when the pushed commit subject contains [golden-capture].
+#      Used until workflow_dispatch registers (it needs the default branch).
+#
+# The run re-collects snapshots in all 3 engines on the pinned image,
+# replays them through the SDK + engine hash, writes
+# tests/fixtures/browser/pins.json (provisional: false), and commits
+# fixtures + pins back to the target branch. Subsequent PRs gate on those
+# pins via the `browser-matrix` job in ci.yml.
 #
 # Keep the env/toolchain pins here identical to ci.yml's browser-matrix job
 # — the gate must verify on the same image the pins were captured on
@@ -24,6 +31,12 @@ on:
         description: Branch to capture and commit onto
         required: true
         default: develop
+  # Fallback trigger: workflow_dispatch only registers from the default
+  # branch (master), which we don't touch before v0.5.0. Push an empty
+  # commit whose subject contains [golden-capture] to develop to run a
+  # capture; every other develop push skips the job below.
+  push:
+    branches: [develop]
 
 permissions:
   contents: write
@@ -39,12 +52,17 @@ env:
 jobs:
   capture:
     name: Capture snapshots + pins
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[golden-capture]')
     runs-on: ubuntu-24.04
+    env:
+      # Dispatch sets the target branch via input; the push fallback
+      # captures onto the branch that was pushed (develop).
+      TARGET_BRANCH: ${{ inputs.branch || github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ env.TARGET_BRANCH }}
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -110,7 +128,7 @@ jobs:
             echo "No changes — committed fixtures already match this image."
           else
             git commit -m "chore(golden): browser matrix capture on ubuntu-24.04"
-            git push origin "HEAD:${{ inputs.branch }}"
+            git push origin "HEAD:$TARGET_BRANCH"
           fi
 
       - name: Upload capture artifacts

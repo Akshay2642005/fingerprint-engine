@@ -15,8 +15,10 @@ on:
     branches: [develop, master]
   pull_request:
     branches: [develop, master]
-  # Manual re-run (e.g. right after a golden-capture auto-commit, which
-  # GITHUB_TOKEN pushes do not trigger automatically).
+  # Manual re-run. NOTE: registers only once the default branch (master)
+  # carries this trigger — until v0.5.0, verify CI by pushing a commit to
+  # develop or opening a PR (golden-capture auto-commits use GITHUB_TOKEN,
+  # which never triggers CI on its own).
   workflow_dispatch:
 
 env:
