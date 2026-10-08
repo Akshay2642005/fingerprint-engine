@@ -1,0 +1,124 @@
+# Golden capture — the source of truth for the browser matrix (W3-D3,
+# m6-golden-digest-ci).
+#
+# Manual dispatch on a branch (default: develop). Re-collects snapshots in
+# all 3 engines on the pinned image, replays them through the SDK + engine
+# hash, writes tests/fixtures/browser/pins.json (provisional: false), and
+# commits fixtures + pins back to the dispatched branch. Subsequent PRs gate
+# on those pins via the `browser-matrix` job in ci.yml.
+#
+# Keep the env/toolchain pins here identical to ci.yml's browser-matrix job
+# — the gate must verify on the same image the pins were captured on
+# (specs/quality/browser-matrix-design.md, "Environment rules").
+#
+# Note: GITHUB_TOKEN pushes do not trigger CI automatically. After the
+# auto-commit, either open/dispatch a PR, or run the CI workflow manually
+# (workflow_dispatch) to see the gate verify the new pins.
+
+name: Golden Capture
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to capture and commit onto
+        required: true
+        default: develop
+
+permissions:
+  contents: write
+
+env:
+  ZIG_VERSION: 0.14.1
+  BRAVE_VERSION: 1.97.56
+  # sha256 of brave-browser-1.97.56-linux-amd64.zip (release asset)
+  BRAVE_SHA256: 8acac76eae35942e30cc63e05adc772f632ad87be8a5ffb3d8a6e280380584ec
+  GOLDEN_RUNNER_IMAGE: ubuntu-24.04
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
+
+jobs:
+  capture:
+    name: Capture snapshots + pins
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install TS SDK dependencies
+        run: npm install
+        working-directory: src/clients/browser
+
+      - name: Build TS SDK dist
+        run: zig build clients:browser
+
+      - name: Install runner dependencies
+        run: npm ci
+        working-directory: tests/browser-matrix
+
+      - name: Install Playwright browsers (Firefox + WebKit only)
+        run: npx playwright install --with-deps firefox webkit
+        working-directory: tests/browser-matrix
+
+      - name: Install Chromium-family system deps (for Brave)
+        run: npx playwright install-deps chromium
+        working-directory: tests/browser-matrix
+
+      # .deb would need brave-keyring (not shipped as a release asset); the
+      # zip is self-contained. sha256 pins the exact binary; FP_BRAVE points
+      # collect.mjs at it (lazy resolve, see resolveBrave()).
+      - name: Install Brave (Chromium-family engine — never Chrome/Chromium)
+        run: |
+          curl -fsSL -o /tmp/brave.zip "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser-${BRAVE_VERSION}-linux-amd64.zip"
+          echo "${BRAVE_SHA256}  /tmp/brave.zip" | sha256sum -c -
+          mkdir -p "$HOME/brave"
+          unzip -q /tmp/brave.zip -d "$HOME/brave"
+          chmod +x "$HOME/brave/brave"
+          echo "FP_BRAVE=$HOME/brave/brave" >> "$GITHUB_ENV"
+          "$HOME/brave/brave" --version
+
+      - name: Collect snapshots (3 engines × 3 repeats)
+        shell: bash   # bash + pipefail: don't mask a collect failure via tee
+        run: node tests/browser-matrix/collect.mjs --out=tests/fixtures/browser --repeats=3 | tee collect.log
+
+      - name: Write authoritative pins.json
+        run: |
+          VERSIONS=$(grep '^BROWSER_VERSIONS ' collect.log | sed 's/^BROWSER_VERSIONS //')
+          DIGESTS=$(node tests/browser-matrix/hash-verify.mjs --print | grep '^PIN_JSON ' | sed 's/^PIN_JSON //')
+          node tests/browser-matrix/write-pins.mjs "$VERSIONS" "$DIGESTS"
+
+      - name: Verify Layer 1 against the new pins
+        run: node tests/browser-matrix/hash-verify.mjs --check
+
+      - name: Commit capture to dispatched branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/fixtures/browser
+          if git diff --cached --quiet; then
+            echo "No changes — committed fixtures already match this image."
+          else
+            git commit -m "chore(golden): browser matrix capture on ubuntu-24.04"
+            git push origin "HEAD:${{ inputs.branch }}"
+          fi
+
+      - name: Upload capture artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-capture
+          path: |
+            tests/fixtures/browser/
+            collect.log
+          retention-days: 30

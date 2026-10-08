@@ -15,6 +15,9 @@ on:
     branches: [develop, master]
   pull_request:
     branches: [develop, master]
+  # Manual re-run (e.g. right after a golden-capture auto-commit, which
+  # GITHUB_TOKEN pushes do not trigger automatically).
+  workflow_dispatch:
 
 env:
   ZIG_VERSION: 0.14.1
@@ -85,8 +88,15 @@ jobs:
         working-directory: src/clients/browser
 
   browser-matrix:
-    name: Browser Matrix (design)
-    runs-on: ubuntu-latest
+    name: Browser Matrix
+    # Pinned image — must match golden-capture.yml exactly: the pins are
+    # captured on this image and Layer 2 re-collects on it (design doc,
+    # "Environment rules").
+    runs-on: ubuntu-24.04
+    env:
+      BRAVE_VERSION: 1.97.56
+      # sha256 of brave-browser-1.97.56-linux-amd64.zip (release asset)
+      BRAVE_SHA256: 8acac76eae35942e30cc63e05adc772f632ad87be8a5ffb3d8a6e280380584ec
 
     steps:
       - uses: actions/checkout@v4
@@ -94,13 +104,90 @@ jobs:
       - name: Verify runner design doc exists
         run: test -f specs/quality/browser-matrix-design.md
 
-      - name: Report runner status (skeleton — real assertions land in D3)
+      - name: Check pin manifest
+        id: pins
         run: |
-          if [ -d tests/browser-matrix ]; then
-            echo "runner present — assertions pending (D2/D3)"
+          if [ -f tests/fixtures/browser/pins.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
           else
-            echo "runner not yet built (D2) — skeleton green"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::pins.json absent — golden capture pending; matrix gate skipped (run golden-capture workflow)"
           fi
+
+      - name: Setup Zig
+        if: steps.pins.outputs.present == 'true'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Setup Node.js
+        if: steps.pins.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install TS SDK dependencies
+        if: steps.pins.outputs.present == 'true'
+        run: npm install
+        working-directory: src/clients/browser
+
+      - name: Build TS SDK dist
+        if: steps.pins.outputs.present == 'true'
+        run: zig build clients:browser
+
+      - name: "Layer 1: replay committed snapshots through SDK + engine hash"
+        if: steps.pins.outputs.present == 'true'
+        run: node tests/browser-matrix/hash-verify.mjs --check
+
+      - name: Install runner dependencies
+        if: steps.pins.outputs.present == 'true'
+        run: npm ci
+        working-directory: tests/browser-matrix
+
+      - name: Install Playwright browsers (Firefox + WebKit only)
+        if: steps.pins.outputs.present == 'true'
+        run: npx playwright install --with-deps firefox webkit
+        working-directory: tests/browser-matrix
+
+      - name: Install Chromium-family system deps (for Brave)
+        if: steps.pins.outputs.present == 'true'
+        run: npx playwright install-deps chromium
+        working-directory: tests/browser-matrix
+
+      # .deb would need brave-keyring (not shipped as a release asset); the
+      # zip is self-contained. sha256 pins the exact binary; FP_BRAVE points
+      # collect.mjs at it (lazy resolve, see resolveBrave()).
+      - name: Install Brave (Chromium-family engine — never Chrome/Chromium)
+        if: steps.pins.outputs.present == 'true'
+        run: |
+          curl -fsSL -o /tmp/brave.zip "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser-${BRAVE_VERSION}-linux-amd64.zip"
+          echo "${BRAVE_SHA256}  /tmp/brave.zip" | sha256sum -c -
+          mkdir -p "$HOME/brave"
+          unzip -q /tmp/brave.zip -d "$HOME/brave"
+          chmod +x "$HOME/brave/brave"
+          echo "FP_BRAVE=$HOME/brave/brave" >> "$GITHUB_ENV"
+          "$HOME/brave/brave" --version
+
+      - name: "Layer 2: live collection (3 engines × 3 repeats)"
+        if: steps.pins.outputs.present == 'true'
+        run: node tests/browser-matrix/collect.mjs --repeats=3
+
+      - name: "Layer 2: live digest vs pins (warn-only while provisional)"
+        if: steps.pins.outputs.present == 'true'
+        run: node tests/browser-matrix/hash-verify.mjs --check --live --snapshots=tests/browser-matrix/captures
+
+      - name: "Layer 2: per-signal diff artifact (D4 raw material)"
+        if: always() && steps.pins.outputs.present == 'true'
+        run: node tests/browser-matrix/diff-snapshots.mjs --out=browser-matrix-diff.md
+
+      - name: Upload diff artifact
+        if: always() && steps.pins.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-matrix-diff
+          path: browser-matrix-diff.md
+          retention-days: 30
+          if-no-files-found: ignore
 
   wasm-build:
     name: WASM Build

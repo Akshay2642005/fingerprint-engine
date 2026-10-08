@@ -43,6 +43,14 @@ const usage =
     \\    engine's hash of it — the digest the worker e2e tests pin as a
     \\    compile-time constant. Run from the repository root.
     \\
+    \\  zig build scripts -- hash <file.bin>
+    \\    Hash a SignalPackage v2 body with the engine's in-process hash op
+    \\    (same code path as `generate fixture` / `worker request`) and print
+    \\    `digest: <64-hex>` plus feature count and schema version. Exits
+    \\    non-zero if the package fails to decode or hash. Layer 1 of the
+    \\    browser golden matrix uses this to pin per-engine digests
+    \\    (specs/quality/browser-matrix-design.md).
+    \\
     \\  zig build scripts -- docker build-worker [--tag=name]
     \\    Build the worker container image (deploy/Dockerfile.worker);
     \\    defaults to the fingerprint-worker:<version> tag.
@@ -132,6 +140,11 @@ pub fn main() !void {
 
     if (std.mem.eql(u8, subcommand, "generate")) {
         try generate(alloc, args);
+        return;
+    }
+
+    if (std.mem.eql(u8, subcommand, "hash")) {
+        try hashCommand(alloc, args);
         return;
     }
 
@@ -746,6 +759,47 @@ fn generate(alloc: std.mem.Allocator, args: []const []const u8) !void {
     }
     log.scripts.err("unknown fixture '{s}'\n\n{s}", .{ fixture_name, usage });
     std.process.exit(1);
+}
+
+/// hash <file.bin> — Layer 1 of the browser golden matrix: hash a
+/// SignalPackage v2 body with the engine's in-process hash op and print the
+/// digest. Identical engine path to `generate fixture` and `worker request`
+/// (Request{.operation=.hash} + arena scratch), so a snapshot re-serialized
+/// by the TS SDK and hashed here proves SDK↔engine byte agreement.
+fn hashCommand(alloc: std.mem.Allocator, args: []const []const u8) !void {
+    const path = if (args.len > 2) args[2] else "";
+    if (path.len == 0 or std.mem.startsWith(u8, path, "-")) {
+        log.scripts.err("usage: zig build scripts -- hash <file.bin>", .{});
+        std.process.exit(1);
+    }
+
+    const payload = std.fs.cwd().readFileAlloc(alloc, path, 1 << 20) catch |err| {
+        log.scripts.err("hash: cannot read '{s}': {s}", .{ path, @errorName(err) });
+        std.process.exit(1);
+    };
+    defer alloc.free(payload);
+
+    var result_buf: [128]u8 = undefined;
+    var response = engine.Response.init(.hash, &result_buf);
+    const request = engine.Request{ .operation = .hash, .codec = .binary, .payload = payload };
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    try engine.process(&request, &response, arena.allocator());
+
+    const stdout = std.io.getStdOut().writer();
+    if (response.status != .ok) {
+        log.scripts.err("hash: {s} failed: {s}", .{ path, @tagName(response.status) });
+        std.process.exit(1);
+    }
+    const slice = response.slice();
+    if (slice.len < 36) {
+        log.scripts.err("hash: unexpected response length {d}", .{slice.len});
+        std.process.exit(1);
+    }
+    const feature_count = std.mem.readInt(u16, slice[32..34], .little);
+    const schema_version = std.mem.readInt(u16, slice[34..36], .little);
+    try stdout.print("digest: {s}\n", .{std.fmt.bytesToHex(slice[0..32], .lower)});
+    try stdout.print("features: {d}  schema: {d}\n", .{ feature_count, schema_version });
 }
 
 /// Serializes the canonical v2 signal package, writes it under
