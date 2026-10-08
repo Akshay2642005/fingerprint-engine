@@ -7,7 +7,7 @@
 		{
 			"id": 0,
 			"type": "String",
-			"value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0"
+			"value": "Mozilla/5.0 (X11; Linux x86_64; rv:155.0) Gecko/20100101 Firefox/155.0"
 		},
 		{
 			"id": 1,
@@ -24,7 +24,7 @@
 		{
 			"id": 3,
 			"type": "String",
-			"value": "MacIntel"
+			"value": "Linux x86_64"
 		},
 		{
 			"id": 4,
@@ -49,7 +49,7 @@
 		{
 			"id": 8,
 			"type": "String",
-			"value": "5.0 (Macintosh)"
+			"value": "5.0 (X11)"
 		},
 		{
 			"id": 9,
@@ -64,7 +64,7 @@
 		{
 			"id": 11,
 			"type": "Integer",
-			"value": 10
+			"value": 4
 		},
 		{
 			"id": 12,
@@ -264,70 +264,17 @@
 		{
 			"id": 35,
 			"type": "Bytes",
-			"value": "bd8b4ddff588c90e0ef408fae801c0af66b08db3ea4fbe9a92909bc432c2e54e"
-		},
-		{
-			"id": 36,
-			"type": "String",
-			"value": "Apple"
-		},
-		{
-			"id": 37,
-			"type": "String",
-			"value": "Apple M1, or similar"
-		},
-		{
-			"id": 38,
-			"type": "String",
-			"value": "WebGL 1.0"
-		},
-		{
-			"id": 40,
-			"type": "StringArray",
-			"value": [
-				"ANGLE_instanced_arrays",
-				"EXT_blend_minmax",
-				"EXT_color_buffer_half_float",
-				"EXT_depth_clamp",
-				"EXT_float_blend",
-				"EXT_frag_depth",
-				"EXT_shader_texture_lod",
-				"EXT_sRGB",
-				"EXT_texture_compression_rgtc",
-				"EXT_texture_filter_anisotropic",
-				"OES_element_index_uint",
-				"OES_fbo_render_mipmap",
-				"OES_standard_derivatives",
-				"OES_texture_float",
-				"OES_texture_float_linear",
-				"OES_texture_half_float",
-				"OES_texture_half_float_linear",
-				"OES_vertex_array_object",
-				"WEBGL_color_buffer_float",
-				"WEBGL_compressed_texture_s3tc",
-				"WEBGL_compressed_texture_s3tc_srgb",
-				"WEBGL_debug_renderer_info",
-				"WEBGL_debug_shaders",
-				"WEBGL_depth_texture",
-				"WEBGL_draw_buffers",
-				"WEBGL_lose_context",
-				"WEBGL_provoking_vertex"
-			]
-		},
-		{
-			"id": 41,
-			"type": "String",
-			"value": "{\"maxTextureSize\":8192,\"maxViewportDims\":{\"0\":16384,\"1\":16384},\"maxCombinedTextureUnits\":80}"
+			"value": "44612a2b20ad32621913b480f70fbca79eae9caf9f5c35eb83db856fe87dec9f"
 		},
 		{
 			"id": 43,
 			"type": "Bytes",
-			"value": "a1a96c1fa0c409da331984073deec47703b09f81e79e39129b28a9b0db04db35"
+			"value": "768026cd350a1ed895f7265e7f0572087c44c10d9868f99dc1ee8da26b500f34"
 		},
 		{
 			"id": 44,
 			"type": "Bytes",
-			"value": "f469eb497851a34bd3f29d84f4183239f2f68b47b9d0bbe11c7c1972157c8afa"
+			"value": "487144c1e9cdc4d65d92f14a4336737e86a4d01608db3a4fd15463aa98008259"
 		},
 		{
 			"id": 59,
@@ -380,7 +327,7 @@
 		{
 			"id": 96,
 			"type": "String",
-			"value": "en-US|MacIntel"
+			"value": "en-US|Linux x86_64"
 		},
 		{
 			"id": 97,

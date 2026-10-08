@@ -7,7 +7,7 @@
 		{
 			"id": 0,
 			"type": "String",
-			"value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+			"value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
 		},
 		{
 			"id": 1,
@@ -24,7 +24,7 @@
 		{
 			"id": 3,
 			"type": "String",
-			"value": "MacIntel"
+			"value": "Linux x86_64"
 		},
 		{
 			"id": 4,
@@ -49,7 +49,7 @@
 		{
 			"id": 8,
 			"type": "String",
-			"value": "5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36"
+			"value": "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
 		},
 		{
 			"id": 9,
@@ -64,7 +64,7 @@
 		{
 			"id": 11,
 			"type": "Integer",
-			"value": 10
+			"value": 4
 		},
 		{
 			"id": 12,
@@ -274,17 +274,17 @@
 		{
 			"id": 35,
 			"type": "Bytes",
-			"value": "f99443850a14cb2ef6957972a023a1ec48fe6a8e40d98676b60605bce0207a16"
+			"value": "754de579bc840bafe424f959dafcda5bc2dcae6650e1d33f002122b53546eab2"
 		},
 		{
 			"id": 36,
 			"type": "String",
-			"value": "Google Inc. (Apple)"
+			"value": "Google Inc. (Google)"
 		},
 		{
 			"id": 37,
 			"type": "String",
-			"value": "ANGLE (Apple, ANGLE Metal Renderer: Apple M5, Unspecified Version)"
+			"value": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
 		},
 		{
 			"id": 38,
@@ -300,7 +300,6 @@
 				"EXT_clip_control",
 				"EXT_color_buffer_half_float",
 				"EXT_depth_clamp",
-				"EXT_disjoint_timer_query",
 				"EXT_float_blend",
 				"EXT_frag_depth",
 				"EXT_polygon_offset_clamp",
@@ -310,7 +309,6 @@
 				"EXT_texture_filter_anisotropic",
 				"EXT_texture_mirror_clamp_to_edge",
 				"EXT_sRGB",
-				"KHR_parallel_shader_compile",
 				"OES_element_index_uint",
 				"OES_fbo_render_mipmap",
 				"OES_standard_derivatives",
@@ -319,12 +317,10 @@
 				"OES_texture_half_float",
 				"OES_texture_half_float_linear",
 				"OES_vertex_array_object",
-				"WEBGL_blend_func_extended",
 				"WEBGL_color_buffer_float",
 				"WEBGL_compressed_texture_astc",
 				"WEBGL_compressed_texture_etc",
 				"WEBGL_compressed_texture_etc1",
-				"WEBGL_compressed_texture_pvrtc",
 				"WEBGL_compressed_texture_s3tc",
 				"WEBGL_compressed_texture_s3tc_srgb",
 				"WEBGL_debug_renderer_info",
@@ -339,17 +335,17 @@
 		{
 			"id": 41,
 			"type": "String",
-			"value": "{\"maxTextureSize\":16384,\"maxViewportDims\":{\"0\":16384,\"1\":16384},\"maxCombinedTextureUnits\":32}"
+			"value": "{\"maxTextureSize\":8192,\"maxViewportDims\":{\"0\":8192,\"1\":8192},\"maxCombinedTextureUnits\":64}"
 		},
 		{
 			"id": 43,
 			"type": "Bytes",
-			"value": "7b865ed664fdbfdf4faeb38c9d20fde3b5e7e16a97bd65e8b9684ee3a9fde595"
+			"value": "d78feaf0be25dad78e327ca52862bc310ada49b0aed45722f8b7095450df47b1"
 		},
 		{
 			"id": 44,
 			"type": "Bytes",
-			"value": "b6e977eb8647b91c1e476a0e0c070131da1915ceb1efe086435c4f3d407c25a3"
+			"value": "487144c1e9cdc4d65d92f14a4336737e86a4d01608db3a4fd15463aa98008259"
 		},
 		{
 			"id": 71,
@@ -372,7 +368,6 @@
 			"value": [
 				"video/mp4; codecs=\"avc1.42E01E\"",
 				"video/mp4; codecs=\"avc1.640028\"",
-				"video/mp4; codecs=\"hev1.1.6.L93.B0\"",
 				"video/webm; codecs=\"vp8\"",
 				"video/webm; codecs=\"vp9\"",
 				"video/webm; codecs=\"av01.0.08M.08\"",
@@ -416,7 +411,7 @@
 		{
 			"id": 96,
 			"type": "String",
-			"value": "en-US|MacIntel"
+			"value": "en-US|Linux x86_64"
 		},
 		{
 			"id": 97,

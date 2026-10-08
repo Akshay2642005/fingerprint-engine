@@ -24,7 +24,7 @@
 		{
 			"id": 3,
 			"type": "String",
-			"value": "MacIntel"
+			"value": "Linux x86_64"
 		},
 		{
 			"id": 4,
@@ -64,7 +64,7 @@
 		{
 			"id": 11,
 			"type": "Integer",
-			"value": 8
+			"value": 4
 		},
 		{
 			"id": 12,
@@ -264,7 +264,7 @@
 		{
 			"id": 35,
 			"type": "Bytes",
-			"value": "876ced7e27009c7ad8125ab5f37ca435e3a19490715e62d83ce45e62fcb2016a"
+			"value": "1b8ea90e04b3e9dc4f1c1d800b2e0a3d06f07cf40c2aebbab73c21b9c057aabe"
 		},
 		{
 			"id": 36,
@@ -293,7 +293,6 @@
 				"EXT_float_blend",
 				"EXT_frag_depth",
 				"EXT_polygon_offset_clamp",
-				"EXT_shader_texture_lod",
 				"EXT_texture_compression_bptc",
 				"EXT_texture_compression_rgtc",
 				"EXT_texture_filter_anisotropic",
@@ -313,33 +312,29 @@
 				"WEBGL_compressed_texture_astc",
 				"WEBGL_compressed_texture_etc",
 				"WEBGL_compressed_texture_etc1",
-				"WEBGL_compressed_texture_pvrtc",
-				"WEBKIT_WEBGL_compressed_texture_pvrtc",
 				"WEBGL_compressed_texture_s3tc",
 				"WEBGL_compressed_texture_s3tc_srgb",
 				"WEBGL_debug_renderer_info",
 				"WEBGL_debug_shaders",
-				"WEBGL_depth_texture",
 				"WEBGL_draw_buffers",
 				"WEBGL_lose_context",
-				"WEBGL_multi_draw",
-				"WEBGL_polygon_mode"
+				"WEBGL_multi_draw"
 			]
 		},
 		{
 			"id": 41,
 			"type": "String",
-			"value": "{\"maxTextureSize\":16384,\"maxViewportDims\":{\"0\":16384,\"1\":16384},\"maxCombinedTextureUnits\":32}"
+			"value": "{\"maxTextureSize\":16384,\"maxViewportDims\":{\"0\":16384,\"1\":16384},\"maxCombinedTextureUnits\":64}"
 		},
 		{
 			"id": 43,
 			"type": "Bytes",
-			"value": "3921c9256ac3ba559b425a1f1a818521e844c524aa6d227ce17024c8d463b9c2"
+			"value": "00e676c021a323d5ec6b4d0066a64fe0982d38c4541e0a84f10a5b5329fbab3f"
 		},
 		{
 			"id": 44,
 			"type": "Bytes",
-			"value": "f469eb497851a34bd3f29d84f4183239f2f68b47b9d0bbe11c7c1972157c8afa"
+			"value": "487144c1e9cdc4d65d92f14a4336737e86a4d01608db3a4fd15463aa98008259"
 		},
 		{
 			"id": 59,
@@ -347,9 +342,11 @@
 			"value": [
 				"video/mp4; codecs=\"avc1.42E01E\"",
 				"video/mp4; codecs=\"avc1.640028\"",
+				"video/mp4; codecs=\"hev1.1.6.L93.B0\"",
 				"video/webm; codecs=\"vp8\"",
 				"video/webm; codecs=\"vp9\"",
 				"video/webm; codecs=\"av01.0.08M.08\"",
+				"video/ogg; codecs=\"theora\"",
 				"video/mp4; codecs=\"av01.0.04M.08\"",
 				"audio/mp4; codecs=\"mp4a.40.2\"",
 				"audio/webm; codecs=\"opus\"",
@@ -366,8 +363,10 @@
 			"value": [
 				"video/mp4",
 				"video/webm",
+				"video/ogg",
 				"video/quicktime",
-				"video/x-msvideo"
+				"video/x-msvideo",
+				"video/x-matroska"
 			]
 		},
 		{
@@ -386,12 +385,22 @@
 		{
 			"id": 76,
 			"type": "Boolean",
-			"value": true
+			"value": false
+		},
+		{
+			"id": 79,
+			"type": "StringArray",
+			"value": [
+				"awb",
+				"kal",
+				"rms",
+				"slt"
+			]
 		},
 		{
 			"id": 96,
 			"type": "String",
-			"value": "en-US|MacIntel"
+			"value": "en-US|Linux x86_64"
 		},
 		{
 			"id": 97,

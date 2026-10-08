@@ -1,28 +1,28 @@
 {
 	"schema": 1,
-	"provisional": true,
-	"note": "Local capture — informational only. The golden-capture workflow (workflow_dispatch) re-captures snapshots+pins on the pinned CI image; that run is the source of truth (specs/quality/browser-matrix-design.md).",
+	"provisional": false,
+	"note": "Captured on the pinned CI image — authoritative (specs/quality/browser-matrix-design.md).",
 	"playwright_version": "1.63.0",
-	"captured_at": 1791427850097,
-	"runner": "local macOS (aarch64)",
+	"captured_at": 1791430908121,
+	"runner": "ubuntu-24.04",
 	"engines": {
 		"chromium": {
-			"browser": "brave-154.1.96.61",
+			"browser": "brave-155.1.97.56 unknown",
 			"browser_family": "chromium",
-			"digest": "7e8c4345b4076a3dbbfea148e89529d33f30a415a6b523693779cb8b397b0f17",
+			"digest": "b5e0b281674acffb818f616cb8a7ce34ae9595671d86f64e91c51691be800eb1",
 			"signal_count": 71
 		},
 		"firefox": {
 			"browser": "155.0",
 			"browser_family": "firefox",
-			"digest": "cfa0ce738ea3988c706a69e38ee4148f1fb9c8918e092d1c0498e2910ebde4f8",
-			"signal_count": 66
+			"digest": "b06659a8385546796f76e9d92cdfe179a3980e30c6222bd188b3109c1decfffa",
+			"signal_count": 61
 		},
 		"webkit": {
 			"browser": "26.6",
 			"browser_family": "webkit",
-			"digest": "88cd75c855fb61ba5f1a051c4aa073960b0d9c0021c5be3fec11ea1a2d84edc3",
-			"signal_count": 66
+			"digest": "06cc54103ccc82b62ac604e9bf9dae980d670453824c7c2d5320755d3c189a67",
+			"signal_count": 67
 		}
 	}
 }
