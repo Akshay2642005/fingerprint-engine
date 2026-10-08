@@ -95,6 +95,8 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       BRAVE_VERSION: 1.97.56
+      # sha256 of brave-browser-1.97.56-linux-amd64.zip (release asset)
+      BRAVE_SHA256: 8acac76eae35942e30cc63e05adc772f632ad87be8a5ffb3d8a6e280380584ec
 
     steps:
       - uses: actions/checkout@v4
@@ -152,13 +154,19 @@ jobs:
         run: npx playwright install-deps chromium
         working-directory: tests/browser-matrix
 
+      # .deb would need brave-keyring (not shipped as a release asset); the
+      # zip is self-contained. sha256 pins the exact binary; FP_BRAVE points
+      # collect.mjs at it (lazy resolve, see resolveBrave()).
       - name: Install Brave (Chromium-family engine — never Chrome/Chromium)
         if: steps.pins.outputs.present == 'true'
         run: |
-          curl -fsSL -o /tmp/brave.deb "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser_${BRAVE_VERSION}_amd64.deb"
-          sudo apt-get update -q
-          sudo apt-get install -y /tmp/brave.deb
-          brave-browser --version
+          curl -fsSL -o /tmp/brave.zip "https://github.com/brave/brave-browser/releases/download/v${BRAVE_VERSION}/brave-browser-${BRAVE_VERSION}-linux-amd64.zip"
+          echo "${BRAVE_SHA256}  /tmp/brave.zip" | sha256sum -c -
+          mkdir -p "$HOME/brave"
+          unzip -q /tmp/brave.zip -d "$HOME/brave"
+          chmod +x "$HOME/brave/brave"
+          echo "FP_BRAVE=$HOME/brave/brave" >> "$GITHUB_ENV"
+          "$HOME/brave/brave" --version
 
       - name: "Layer 2: live collection (3 engines × 3 repeats)"
         if: steps.pins.outputs.present == 'true'
