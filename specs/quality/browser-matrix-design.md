@@ -22,9 +22,22 @@ expected (UA, platform, GPU) and triaged in D4/D5.
   surface — the runner deep-imports `dist/index.js` and
   `dist/collectors/index.js` (W4 freezes the public API).
 - Snapshots: `tests/fixtures/browser/{chromium,firefox,webkit}.signals.json`.
-- Pin manifest: `tests/fixtures/browser/pins.json` —
-  `{ engine, playwright_version, digest, signal_count, captured_at }` per
-  engine.
+- Pin manifest: `tests/fixtures/browser/pins.json` — `{ schema, provisional,
+  note, playwright_version, captured_at, runner, engines: { <engine>:
+  { browser, browser_family, digest, signal_count } } }`. `provisional:
+  true` marks a local (non-authoritative) capture; the golden-capture
+  workflow rewrites it to `false`.
+- Chromium-family executable: the locally installed **Brave**, never
+  Chrome/Chromium (policy — no `playwright install chromium`). The runner
+  keeps `chromium` as the engine-class key; `FP_BRAVE=/path/to/brave`
+  overrides auto-detection. Brave is used because its shields *hide* the
+  connection family (signals 62–66) that drifted in vanilla Chromium
+  (`ConnectionDownlink` 10→9.9→9.4), and its session-scoped
+  fingerprinting randomization is pinned via a persistent profile
+  (`tests/browser-matrix/.profiles/`, git-ignored) plus the
+  `brave.profile.managed_default_content_settings.brave_fingerprinting_v2
+  = 1` pref — without that seed, HardwareConcurrency/DeviceMemory/
+  CanvasHash/AudioHash re-randomize every launch.
 
 ## Snapshot schema
 
@@ -62,10 +75,38 @@ never affects the pin (W2-D5).
 
 - D1: `browser-matrix` skeleton — verifies the design doc exists; green
   trivially before fixtures/runner exist.
-- D3: real assertions for both layers; gates `develop`/`master` PRs.
+- D3 (shipped): `browser-matrix` on `ubuntu-24.04` gates PRs —
+  pins-absent → green "capture pending"; pins-present → **Layer 1** strict
+  (`hash-verify --check`) + **Layer 2** live collect → `hash-verify
+  --check --live` (digest mismatch fails; while `provisional: true` the
+  live comparison is warn-only) + per-signal diff uploaded as the
+  `browser-matrix-diff` artifact.
 - D3 fallback (provisional exclusion list): if CI shows run-to-run noise,
   gate on the stable subset documented here and formalized in D5 — drift
   stays visible via the diff artifact, never silently dropped.
+
+## Capture runbook (D3)
+
+CI is the golden source of truth; local macOS captures are informational.
+
+1. Merge the PR that adds/updates the runner, snapshots, or `pins.json`.
+2. Actions → **Golden Capture** → *Run workflow* → pick `develop`.
+   The run installs the same pins as `browser-matrix` (ubuntu-24.04, Zig
+   0.14.1, Node 22, Brave 1.97.56, Playwright lockfile), collects 3 × 3
+   repeats, writes `pins.json` (`provisional: false`), verifies Layer 1
+   against the new pins, and auto-commits fixtures + pins back to the
+   branch (`chore(golden): …`).
+3. GITHUB_TOKEN pushes do not trigger CI — dispatch the **CI** workflow
+   manually (workflow_dispatch) or open the next PR to see the gate
+   verify the authoritative pins.
+4. Re-run the capture on: Playwright lockfile bump (pin-reset event),
+   Brave version bump, runner-image change, or any intended signal-set
+   change. The commit diff of `pins.json` records the reset.
+
+Risks: GitHub may roll the `ubuntu-24.04` image between capture and gate
+(fonts/GPU libs), and Layer 2 can surface engine run-to-run noise — both
+land in the D3 fallback above (stable subset in D5), never as a silent
+pin change.
 
 ## Non-goals
 

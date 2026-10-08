@@ -1,0 +1,28 @@
+{
+	"schema": 1,
+	"provisional": true,
+	"note": "Local capture — informational only. The golden-capture workflow (workflow_dispatch) re-captures snapshots+pins on the pinned CI image; that run is the source of truth (specs/quality/browser-matrix-design.md).",
+	"playwright_version": "1.63.0",
+	"captured_at": 1791427850097,
+	"runner": "local macOS (aarch64)",
+	"engines": {
+		"chromium": {
+			"browser": "brave-154.1.96.61",
+			"browser_family": "chromium",
+			"digest": "7e8c4345b4076a3dbbfea148e89529d33f30a415a6b523693779cb8b397b0f17",
+			"signal_count": 71
+		},
+		"firefox": {
+			"browser": "155.0",
+			"browser_family": "firefox",
+			"digest": "cfa0ce738ea3988c706a69e38ee4148f1fb9c8918e092d1c0498e2910ebde4f8",
+			"signal_count": 66
+		},
+		"webkit": {
+			"browser": "26.6",
+			"browser_family": "webkit",
+			"digest": "88cd75c855fb61ba5f1a051c4aa073960b0d9c0021c5be3fec11ea1a2d84edc3",
+			"signal_count": 66
+		}
+	}
+}

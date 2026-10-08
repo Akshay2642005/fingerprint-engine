@@ -3,5 +3,7 @@ zig-out/
 **node_modules/
 **/dist/
 tests/browser-matrix/captures/
+tests/browser-matrix/.profiles/
+collect.log
 src/clients/browser/src/generated/
 .DS_Store
