@@ -1,6 +1,9 @@
+// story: m6-signal-triage
 // Per-signal diff between live captures and committed snapshots (W3-D3;
 // D4's raw material). Never gates by itself — drift stays visible as an
 // uploaded artifact (browser-matrix-design.md, D3 fallback rule).
+// D4: counts drifted *signals* (not diff lines), so the report header and
+// total match the triage unit in specs/quality/signal-determinism-matrix.md.
 //
 // Usage: node diff-snapshots.mjs [--live=dir] [--golden=dir] [--out=file]
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
@@ -42,28 +45,35 @@ for (const engine of ENGINES) {
 	const liveById = new Map(live.signals.map((s) => [s.id, s]));
 	const goldenById = new Map(golden.signals.map((s) => [s.id, s]));
 	const drift = [];
+	let driftedSignals = 0;
 
 	for (const [id, g] of goldenById) {
 		const l = liveById.get(id);
 		if (!l) {
 			drift.push(`- ${nameOf(id)} (id ${id}): MISSING in live (golden has ${JSON.stringify(g.value)?.slice(0, 80)})`);
+			driftedSignals++;
 		} else if (JSON.stringify(l.value) !== JSON.stringify(g.value) || l.type !== g.type) {
 			drift.push(`- ${nameOf(id)} (id ${id}, ${g.type}):`);
 			drift.push(`    golden: ${JSON.stringify(g.value)?.slice(0, 120)}`);
 			drift.push(`    live:   ${JSON.stringify(l.value)?.slice(0, 120)}`);
+			driftedSignals++;
 		}
 	}
 	for (const [id, l] of liveById) {
 		if (!goldenById.has(id)) {
 			drift.push(`- ${nameOf(id)} (id ${id}): NEW in live (not in golden) ${JSON.stringify(l.value)?.slice(0, 80)}`);
+			driftedSignals++;
 		}
 	}
 
-	totalDrift += drift.length;
-	lines.push(`## ${engine}: ${drift.length === 0 ? "no drift vs committed snapshot" : `${drift.length} drifted entries`}`);
+	totalDrift += driftedSignals;
+	lines.push(`## ${engine}: ${driftedSignals === 0 ? "no drift vs committed snapshot" : `${driftedSignals} drifted signals`}`);
 	lines.push(...drift, "");
 }
 
+// Total is part of the report itself so the saved artifact (the triage
+// input) and stdout agree, not just the console.
+lines.push(`total drifted signals: ${totalDrift}`);
 const report = lines.join("\n");
 console.log(report);
 if (opts.out) {

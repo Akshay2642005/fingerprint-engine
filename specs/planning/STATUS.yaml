@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: m6-signal-triage (W3-D3 done — golden capture authoritative on ubuntu-24.04, PRs now gate strictly; D4 per-signal diff triage next)
+active_story: m6-signal-triage (W3-D4 done — per-signal determinism matrix published in specs/quality/signal-determinism-matrix.md: CI 3x3 + local Brave 10x10 stable, 38 cross-env diffs classified; no run-to-run drift. D5 determinism contract + stable-core subset next)
 
 epics:
   e01-core-engine:
