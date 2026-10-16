@@ -184,12 +184,14 @@ anchors**, while excluding entropy-optional noise and the `condition` class
 (which genuinely changes). This draft input was **finalized in W3-D5**; the
 authoritative contract is `signal-determinism-contract.md`.
 
-- **Core (locked, 26 features)**: durable device/host anchors — Canvas/Audio/
+- **Core (locked, 24 features)**: durable device/host anchors — Canvas/Audio/
   Fonts/WebGL/GPU (35, 37, 39, 43, 44, 80–82), CPU/RAM (11, 13, 16, 30–32),
   MaxTouchPoints (12), Platform (3), Locale profile (1, 2), Timezone (68),
-  physical display (21–23), codec surface (59–61), voices (79).
+  physical bit-depth (21, 22), codec surface (59–61).
 - **Excluded — `condition`** (52–55, 62–66, 71–73): must not feed a drift digest.
 - **Excluded — geometry** (17–20, 24–28): flip on resize/fullscreen.
+- **Excluded — zoom / load race** (`DevicePixelRatio` 23, `SpeechSynthesisVoices`
+  79): DPR scales with page zoom; the voice list can be empty on first collect.
 - **Excluded — update-drift** (0, 8, 45, 46, capability booleans 86–95): a
   browser update flips them without the device changing.
 

@@ -107,7 +107,7 @@ test "DevicePixelRatio definition is stable_required screen float with weight 45
         features.FeatureCategory.Screen,
         features.FeatureType.Float,
         45,
-        features.FeatureFlags.stable_required_core,
+        features.FeatureFlags.stable_required,
         "Device Pixel Ratio",
         "Browser device pixel ratio.",
     );

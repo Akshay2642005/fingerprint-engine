@@ -246,9 +246,29 @@ test "durable device anchors are in the core subset" {
         features.FeatureID.Language,
         features.FeatureID.Timezone,
         features.FeatureID.ColorDepth,
-        features.FeatureID.DevicePixelRatio,
     };
     for (anchors) |id| {
         try testing.expect(features.Registry.isCore(id));
     }
+}
+
+test "zoom- and load-fragile signals are excluded from the core subset" {
+    // DevicePixelRatio tracks browser zoom (not just display scale); the voice
+    // list can be empty on the first collection and settle later. Neither is
+    // durable under normal use, so neither anchors the core.
+    const fragile = [_]features.FeatureID{
+        features.FeatureID.DevicePixelRatio,
+        features.FeatureID.SpeechSynthesisVoices,
+    };
+    for (fragile) |id| {
+        try testing.expect(!features.Registry.isCore(id));
+    }
+}
+
+test "core subset is pinned by a signature and a version (two-key change)" {
+    // Editing `core_subset` without updating this pin (and bumping
+    // `core_version`) fails here — the subset cannot change silently.
+    try testing.expectEqual(@as(u64, 0x9bad1a389f5f6a2e), features.Registry.core_signature);
+    try testing.expectEqual(@as(u16, 1), features.Registry.core_version);
+    try testing.expectEqual(@as(usize, 24), features.Registry.coreCount());
 }

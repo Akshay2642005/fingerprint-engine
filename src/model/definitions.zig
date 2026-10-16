@@ -28,7 +28,7 @@ pub const definitions = [_]model.FeatureDefinition{
     .{ .id = .AvailableHeight, .category = .Screen, .value_type = .Integer, .weight = 50, .flags = .stable_required, .name = "Available Height", .description = "Available screen height." },
     .{ .id = .ColorDepth, .category = .Screen, .value_type = .Integer, .weight = 35, .flags = .stable_required_core, .name = "Color Depth", .description = "Screen color depth in bits." },
     .{ .id = .PixelDepth, .category = .Screen, .value_type = .Integer, .weight = 35, .flags = .stable_required_core, .name = "Pixel Depth", .description = "Screen pixel depth in bits." },
-    .{ .id = .DevicePixelRatio, .category = .Screen, .value_type = .Float, .weight = 45, .flags = .stable_required_core, .name = "Device Pixel Ratio", .description = "Browser device pixel ratio." },
+    .{ .id = .DevicePixelRatio, .category = .Screen, .value_type = .Float, .weight = 45, .flags = .stable_required, .name = "Device Pixel Ratio", .description = "Browser device pixel ratio." },
     .{ .id = .InnerWidth, .category = .Screen, .value_type = .Integer, .weight = 45, .flags = .stable_required, .name = "Inner Width", .description = "Browser viewport inner width." },
     .{ .id = .InnerHeight, .category = .Screen, .value_type = .Integer, .weight = 45, .flags = .stable_required, .name = "Inner Height", .description = "Browser viewport inner height." },
     .{ .id = .OuterWidth, .category = .Screen, .value_type = .Integer, .weight = 40, .flags = .stable_required, .name = "Outer Width", .description = "Browser window outer width." },
@@ -114,7 +114,7 @@ pub const definitions = [_]model.FeatureDefinition{
     .{ .id = .SubtleCrypto, .category = .Crypto, .value_type = .Boolean, .weight = 25, .flags = .stable_required, .name = "Subtle Crypto", .description = "Whether SubtleCrypto is available." },
 
     // ── Speech (79) ──────────────────────────────────────────────────
-    .{ .id = .SpeechSynthesisVoices, .category = .Speech, .value_type = .StringArray, .weight = 35, .flags = .stable_entropy_core, .name = "Speech Synthesis Voices", .description = "Available speech synthesis voices." },
+    .{ .id = .SpeechSynthesisVoices, .category = .Speech, .value_type = .StringArray, .weight = 35, .flags = .stable_entropy, .name = "Speech Synthesis Voices", .description = "Available speech synthesis voices." },
 
     // ── GPU (80-82) ──────────────────────────────────────────────────
     .{ .id = .GPUVendor, .category = .GPU, .value_type = .String, .weight = 70, .flags = .stable_entropy_core, .name = "GPU Vendor", .description = "GPU vendor (from canvas/WebGL)." },
@@ -156,8 +156,9 @@ pub const definitions = [_]model.FeatureDefinition{
 /// hashed into `core_digest` — the drift gate that answers "did this device's
 /// stable core change?" without replaying signals. Distinct from the `stable`
 /// validation tier: battery, connection and window geometry are `stable` yet
-/// transient, so they are excluded here. Selection rule + exclusion rationale:
-/// specs/quality/signal-determinism-contract.md.
+/// transient, so they are excluded here, as are `DevicePixelRatio` (browser
+/// zoom) and `SpeechSynthesisVoices` (first-load presence race). Selection
+/// rule + exclusion rationale: specs/quality/signal-determinism-contract.md.
 pub const core_subset = [_]model.FeatureID{
     .Language,
     .Languages,
@@ -168,7 +169,6 @@ pub const core_subset = [_]model.FeatureID{
     .DeviceRam,
     .ColorDepth,
     .PixelDepth,
-    .DevicePixelRatio,
     .CpuCores,
     .CpuArchitecture,
     .PlatformArchitecture,
@@ -181,7 +181,6 @@ pub const core_subset = [_]model.FeatureID{
     .MediaFormats,
     .AudioFormats,
     .Timezone,
-    .SpeechSynthesisVoices,
     .GPUVendor,
     .GPURenderer,
     .GPUDriverVersion,
@@ -193,6 +192,25 @@ pub const core_subset = [_]model.FeatureID{
 /// device drift). The lock guard below fails the build if the `.core` flags and
 /// `core_subset` disagree — the forcing function to bump this constant.
 pub const core_version: u16 = 1;
+
+/// FNV-1a signature of `core_subset` (the id sequence). The test suite pins
+/// this constant: any edit to `core_subset` breaks the pin and forces a
+/// deliberate **two-key** update — change the pinned signature *and* bump
+/// `core_version`. It complements `core_version` (it makes a silent subset
+/// change impossible; the version is what consumers compare).
+pub const core_signature: u64 = computeCoreSignature();
+
+fn computeCoreSignature() u64 {
+    var h: u64 = 0xcbf29ce484222325;
+    for (core_subset) |id| {
+        const v: u64 = @intFromEnum(id);
+        h ^= v & 0xff;
+        h *%= 0x100000001b3;
+        h ^= (v >> 8) & 0xff;
+        h *%= 0x100000001b3;
+    }
+    return h;
+}
 
 comptime {
     @setEvalBranchQuota(100_000);

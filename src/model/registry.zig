@@ -49,6 +49,9 @@ pub const Registry = struct {
     /// Revision of the stable-core subset definition (bump when the subset
     /// changes; see `definitions.core_version`).
     pub const core_version: u16 = defs.core_version;
+    /// Pinned FNV-1a signature of `core_subset` (see `definitions.core_signature`);
+    /// the test suite asserts this so a subset edit cannot slip in silently.
+    pub const core_signature: u64 = defs.core_signature;
 };
 
 fn buildLookupTable() [feature_count]?*const FeatureDefinition {
