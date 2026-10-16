@@ -42,6 +42,8 @@ specs/
 | `planning/RELEASES.yaml` | Per-release records (v0.1.0 → v0.4.1) and superseded plans | Current |
 | `planning/SESSION.yaml` | Session state — active flow, git, modules, CI, handoff | Current |
 | `quality/TEST_PLAN.md` | Test layers, pinned goldens, planned additions | Current |
+| `quality/browser-matrix-design.md` | W3 cross-browser golden runner design + two-layer contract | Current |
+| `quality/signal-determinism-matrix.md` | W3-D4 per-signal determinism triage (M6 stable-core input) | Current |
 | `quality/BUGS.yaml` | Confirmed bug tracker (BUG-001 … BUG-003) | Open |
 | `quality/audits/` | Repository audits (`2026-08-08.md` — bugs, gaps, features) | Current |
 | `quality/verifications/` | Manual verification / UAT checklists per milestone | Current |
