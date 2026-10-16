@@ -139,3 +139,116 @@ test "Registry.all returns const slice — definitions are immutable" {
         try testing.expect(def.weight >= 0);
     }
 }
+
+// ──────────────────────────────────────────────
+// Registry — stable-core subset (D-v1-7 / m6-signal-contract)
+// ──────────────────────────────────────────────
+
+test "core_version is a positive revision" {
+    try testing.expectEqual(@as(u16, 1), features.Registry.core_version);
+}
+
+test "core subset is non-empty and matches the flagged-feature count" {
+    const subset = features.Registry.coreSubset();
+    try testing.expect(subset.len > 0);
+    try testing.expectEqual(subset.len, features.Registry.coreCount());
+
+    var flagged: usize = 0;
+    for (features.Registry.all()) |def| {
+        if (def.isCore()) flagged += 1;
+    }
+    try testing.expectEqual(subset.len, flagged);
+}
+
+test "every core_subset entry is flagged .core and not sensitive" {
+    for (features.Registry.coreSubset()) |id| {
+        const def = features.Registry.get(id);
+        try testing.expect(def.isCore());
+        try testing.expect(!def.isSensitive());
+    }
+}
+
+test "no metadata feature is in the core subset" {
+    for (features.Registry.all()) |def| {
+        if (def.category == features.FeatureCategory.Metadata) {
+            try testing.expect(!def.isCore());
+        }
+    }
+}
+
+test "window geometry is excluded from the core subset" {
+    // These flip on window resize / fullscreen, so they must never anchor the
+    // stable core (design: specs/quality/signal-determinism-contract.md).
+    const geometry = [_]features.FeatureID{
+        features.FeatureID.InnerWidth,
+        features.FeatureID.InnerHeight,
+        features.FeatureID.OuterWidth,
+        features.FeatureID.OuterHeight,
+        features.FeatureID.ScreenWidth,
+        features.FeatureID.ScreenHeight,
+        features.FeatureID.AvailableWidth,
+        features.FeatureID.AvailableHeight,
+    };
+    for (geometry) |id| {
+        try testing.expect(!features.Registry.isCore(id));
+    }
+}
+
+test "transient condition signals are excluded from the core subset" {
+    // Battery, network and permission state vary with condition, not device.
+    const condition = [_]features.FeatureID{
+        features.FeatureID.BatteryLevel,
+        features.FeatureID.BatteryCharging,
+        features.FeatureID.BatteryChargingTime,
+        features.FeatureID.ConnectionType,
+        features.FeatureID.ConnectionEffectiveType,
+        features.FeatureID.ConnectionDownlink,
+        features.FeatureID.ConnectionRtt,
+        features.FeatureID.ConnectionSaveData,
+        features.FeatureID.NotificationPermission,
+    };
+    for (condition) |id| {
+        try testing.expect(!features.Registry.isCore(id));
+    }
+}
+
+test "update-drift UA surface is excluded from the core subset" {
+    // A browser update flips these without the device changing.
+    const update_drift = [_]features.FeatureID{
+        features.FeatureID.UserAgent,
+        features.FeatureID.AppVersion,
+        features.FeatureID.OSVersion,
+    };
+    for (update_drift) |id| {
+        try testing.expect(!features.Registry.isCore(id));
+    }
+}
+
+test "core subset is in strictly ascending FeatureID order" {
+    const subset = features.Registry.coreSubset();
+    var prev: i32 = -1;
+    for (subset) |id| {
+        const current = @intFromEnum(id);
+        try testing.expect(current > prev);
+        prev = current;
+    }
+}
+
+test "durable device anchors are in the core subset" {
+    const anchors = [_]features.FeatureID{
+        features.FeatureID.CanvasHash,
+        features.FeatureID.WebGLRenderer,
+        features.FeatureID.AudioHash,
+        features.FeatureID.FontsHash,
+        features.FeatureID.HardwareConcurrency,
+        features.FeatureID.DeviceMemory,
+        features.FeatureID.Platform,
+        features.FeatureID.Language,
+        features.FeatureID.Timezone,
+        features.FeatureID.ColorDepth,
+        features.FeatureID.DevicePixelRatio,
+    };
+    for (anchors) |id| {
+        try testing.expect(features.Registry.isCore(id));
+    }
+}

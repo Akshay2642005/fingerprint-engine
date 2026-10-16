@@ -176,20 +176,27 @@ one environment, all 72 signals are stable.
    wall-clock dependency (BUG-010 fix); canvas/fonts/WebGL depend only on the
    GPU/font set, which is fixed per environment.
 
-## Input to W3-D5 (stable-core subset)
+## Input to W3-D5 (stable-core subset) — resolved
 
-The stable-core digest (`core_digest`, D-v1-5/D-v1-7) should select signals that
-are **stable across repeated sessions on one device** — the `stable` and `env`
-classes — while excluding entropy/render signals (which are also device-stable
-but expensive/optional) and the `condition` class (which genuinely changes):
+The stable-core digest (`core_digest`, D-v1-5/D-v1-7) selects signals that are
+**stable across repeated sessions on one device** and are **device/host
+anchors**, while excluding entropy-optional noise and the `condition` class
+(which genuinely changes). This draft input was **finalized in W3-D5**; the
+authoritative contract is `signal-determinism-contract.md`.
 
-- **Strong candidates** (`stable`): capability + config signals — 1, 2, 4–7, 9,
-  10, 14, 47–51, 67–70, 77, 78, 86–95, 97, 98.
-- **Exclude from core** (`condition`): 52–55, 62–66, 71–73 — must not feed a
-  drift digest.
-- **Decide in D5** (`device`/`env`): 0, 3, 8, 11–28, 35–44, 59–61, 76, 79, 96 —
-  device-stable but heavier; the `core` registry flag (a reserved
-  `FeatureFlags` bit) formalizes the final list.
+- **Core (locked, 26 features)**: durable device/host anchors — Canvas/Audio/
+  Fonts/WebGL/GPU (35, 37, 39, 43, 44, 80–82), CPU/RAM (11, 13, 16, 30–32),
+  MaxTouchPoints (12), Platform (3), Locale profile (1, 2), Timezone (68),
+  physical display (21–23), codec surface (59–61), voices (79).
+- **Excluded — `condition`** (52–55, 62–66, 71–73): must not feed a drift digest.
+- **Excluded — geometry** (17–20, 24–28): flip on resize/fullscreen.
+- **Excluded — update-drift** (0, 8, 45, 46, capability booleans 86–95): a
+  browser update flips them without the device changing.
+
+The matrix's earlier draft leaned toward the `stable` capability class as
+"strong candidates"; D5 **reverses that emphasis** — the core is the device
+anchor set, and capability booleans drop out as update-drift. See
+`signal-determinism-contract.md` §"Reconciliation".
 
 ## Reproduction
 

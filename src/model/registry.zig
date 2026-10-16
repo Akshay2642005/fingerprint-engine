@@ -31,6 +31,24 @@ pub const Registry = struct {
     pub inline fn count() usize {
         return defs.definitions.len;
     }
+    /// Stable-core membership (D-v1-7 / story m6-signal-contract).
+    pub inline fn isCore(id: FeatureID) bool {
+        return get(id).flags.core;
+    }
+    /// The durable subset hashed into `core_digest`, in registry order.
+    ///
+    /// The returned slice is `defs.core_subset` (the locked definition), not a
+    /// scan of the `.core` flags — a comptime guard in `definitions.zig` proves
+    /// the two agree.
+    pub inline fn coreSubset() []const FeatureID {
+        return &defs.core_subset;
+    }
+    pub inline fn coreCount() usize {
+        return defs.core_subset.len;
+    }
+    /// Revision of the stable-core subset definition (bump when the subset
+    /// changes; see `definitions.core_version`).
+    pub const core_version: u16 = defs.core_version;
 };
 
 fn buildLookupTable() [feature_count]?*const FeatureDefinition {

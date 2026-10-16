@@ -29,7 +29,7 @@ test "Language definition is stable_required navigator string with weight 40" {
         features.FeatureCategory.Navigator,
         features.FeatureType.String,
         40,
-        features.FeatureFlags.stable_required,
+        features.FeatureFlags.stable_required_core,
         "Language",
         "Primary browser language.",
     );
@@ -43,7 +43,7 @@ test "Languages definition is stable_required string array with weight 50" {
         features.FeatureCategory.Navigator,
         features.FeatureType.StringArray,
         50,
-        features.FeatureFlags.stable_required,
+        features.FeatureFlags.stable_required_core,
         "Languages",
         "Preferred browser languages.",
     );
@@ -61,7 +61,7 @@ test "Platform definition is stable_required platform string with weight 70" {
         features.FeatureCategory.Platform,
         features.FeatureType.String,
         70,
-        features.FeatureFlags.stable_required,
+        features.FeatureFlags.stable_required_core,
         "Platform",
         "Browser platform identifier.",
     );
@@ -107,7 +107,7 @@ test "DevicePixelRatio definition is stable_required screen float with weight 45
         features.FeatureCategory.Screen,
         features.FeatureType.Float,
         45,
-        features.FeatureFlags.stable_required,
+        features.FeatureFlags.stable_required_core,
         "Device Pixel Ratio",
         "Browser device pixel ratio.",
     );
@@ -125,7 +125,7 @@ test "CanvasHash definition is critical canvas bytes with weight 100" {
         features.FeatureCategory.Canvas,
         features.FeatureType.Bytes,
         100,
-        features.FeatureFlags.critical,
+        features.FeatureFlags.critical_core,
         "Canvas Hash",
         "SHA-256 hash of rendered canvas.",
     );
@@ -157,7 +157,7 @@ test "WebGLRenderer definition is critical WebGL string with weight 90" {
         features.FeatureCategory.WebGL,
         features.FeatureType.String,
         90,
-        features.FeatureFlags.critical,
+        features.FeatureFlags.critical_core,
         "WebGL Renderer",
         "GPU renderer string.",
     );
@@ -171,7 +171,7 @@ test "WebGLHash definition is critical WebGL bytes with weight 100" {
         features.FeatureCategory.WebGL,
         features.FeatureType.Bytes,
         100,
-        features.FeatureFlags.critical,
+        features.FeatureFlags.critical_core,
         "WebGL Hash",
         "Hashed WebGL fingerprint.",
     );
@@ -221,7 +221,7 @@ test "HardwareConcurrency definition is stable_entropy hardware integer with wei
         features.FeatureCategory.Hardware,
         features.FeatureType.Integer,
         50,
-        features.FeatureFlags.stable_entropy,
+        features.FeatureFlags.stable_entropy_core,
         "Hardware Concurrency",
         "Number of logical CPU cores.",
     );
@@ -235,7 +235,7 @@ test "DeviceMemory definition is stable_entropy hardware float with weight 40" {
         features.FeatureCategory.Hardware,
         features.FeatureType.Float,
         40,
-        features.FeatureFlags.stable_entropy,
+        features.FeatureFlags.stable_entropy_core,
         "Device Memory",
         "Approximate device RAM in GB.",
     );
@@ -295,7 +295,7 @@ test "ColorDepth definition is stable_required screen integer with weight 35" {
         features.FeatureCategory.Screen,
         features.FeatureType.Integer,
         35,
-        features.FeatureFlags.stable_required,
+        features.FeatureFlags.stable_required_core,
         "Color Depth",
         "Screen color depth in bits.",
     );
@@ -309,7 +309,7 @@ test "PixelDepth definition is stable_required screen integer with weight 35" {
         features.FeatureCategory.Screen,
         features.FeatureType.Integer,
         35,
-        features.FeatureFlags.stable_required,
+        features.FeatureFlags.stable_required_core,
         "Pixel Depth",
         "Screen pixel depth in bits.",
     );
@@ -341,7 +341,7 @@ test "AudioHash definition is critical audio bytes with weight 95" {
         features.FeatureCategory.Audio,
         features.FeatureType.Bytes,
         95,
-        features.FeatureFlags.critical,
+        features.FeatureFlags.critical_core,
         "Audio Hash",
         "Hash of rendered audio fingerprint.",
     );
@@ -355,7 +355,7 @@ test "FontsHash definition is critical fonts bytes with weight 95" {
         features.FeatureCategory.Fonts,
         features.FeatureType.Bytes,
         95,
-        features.FeatureFlags.critical,
+        features.FeatureFlags.critical_core,
         "Fonts Hash",
         "Hash of installed fonts fingerprint.",
     );
@@ -521,7 +521,7 @@ test "Timezone definition is stable_required timezone string with weight 40" {
         features.FeatureCategory.Timezone,
         features.FeatureType.String,
         40,
-        features.FeatureFlags.stable_required,
+        features.FeatureFlags.stable_required_core,
         "Timezone",
         "IANA timezone identifier.",
     );

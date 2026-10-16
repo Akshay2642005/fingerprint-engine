@@ -78,8 +78,8 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 457
-  unit_tests: 434
+  total_tests: 488
+  unit_tests: 465
   integration_tests: 23
   status: all_green
   fuzz_targets: 3
@@ -153,7 +153,9 @@ handoff:
     authoritative on ubuntu-24.04, PRs gate strictly, and the per-signal
     determinism matrix is published (specs/quality/signal-determinism-matrix.md:
     CI 3x3 + local Brave 10x10 stable, 38 cross-env diffs classified, no
-    run-to-run drift). Next: W3-D5 — fix/exclude volatile signals, write the
-    determinism contract, and lock the stable-core subset (registry `core`
-    flag). M7 re-scoped 2026-09-07 to the event envelope + platform ledger
-    contract (no Zig store, D-v1-4).
+    run-to-run drift), and W3-D5 is done: the determinism contract
+    (specs/quality/signal-determinism-contract.md) plus the locked stable-core
+    subset (registry `core` flag + `core_version = 1` + comptime lock guard, 26
+    features). 488 tests green. Next: Week 4 — TS SDK public API freeze
+    (surface doc, deprecation policy, contract tests). M7 re-scoped 2026-09-07
+    to the event envelope + platform ledger contract (no Zig store, D-v1-4).

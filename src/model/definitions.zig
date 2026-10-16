@@ -1,11 +1,12 @@
+const std = @import("std");
 const model = @import("feature.zig");
 
 pub const definitions = [_]model.FeatureDefinition{
     // ── Navigator (0-16) ──────────────────────────────────────────────
     .{ .id = .UserAgent, .category = .Navigator, .value_type = .String, .weight = 90, .flags = .critical, .name = "User Agent", .description = "Browser user agent string." },
-    .{ .id = .Language, .category = .Navigator, .value_type = .String, .weight = 40, .flags = .stable_required, .name = "Language", .description = "Primary browser language." },
-    .{ .id = .Languages, .category = .Navigator, .value_type = .StringArray, .weight = 50, .flags = .stable_required, .name = "Languages", .description = "Preferred browser languages." },
-    .{ .id = .Platform, .category = .Platform, .value_type = .String, .weight = 70, .flags = .stable_required, .name = "Platform", .description = "Browser platform identifier." },
+    .{ .id = .Language, .category = .Navigator, .value_type = .String, .weight = 40, .flags = .stable_required_core, .name = "Language", .description = "Primary browser language." },
+    .{ .id = .Languages, .category = .Navigator, .value_type = .StringArray, .weight = 50, .flags = .stable_required_core, .name = "Languages", .description = "Preferred browser languages." },
+    .{ .id = .Platform, .category = .Platform, .value_type = .String, .weight = 70, .flags = .stable_required_core, .name = "Platform", .description = "Browser platform identifier." },
     .{ .id = .Vendor, .category = .Navigator, .value_type = .String, .weight = 30, .flags = .stable_required, .name = "Vendor", .description = "Browser vendor string." },
     .{ .id = .Product, .category = .Navigator, .value_type = .String, .weight = 25, .flags = .stable_required, .name = "Product", .description = "Browser product string." },
     .{ .id = .ProductSub, .category = .Navigator, .value_type = .String, .weight = 20, .flags = .stable_required, .name = "Product Sub", .description = "Browser product sub-version." },
@@ -13,21 +14,21 @@ pub const definitions = [_]model.FeatureDefinition{
     .{ .id = .AppVersion, .category = .Navigator, .value_type = .String, .weight = 30, .flags = .stable_required, .name = "App Version", .description = "Browser application version." },
     .{ .id = .CookieEnabled, .category = .Navigator, .value_type = .Boolean, .weight = 20, .flags = .stable_required, .name = "Cookie Enabled", .description = "Whether cookies are enabled." },
     .{ .id = .DoNotTrack, .category = .Navigator, .value_type = .String, .weight = 15, .flags = .stable_required, .name = "Do Not Track", .description = "Do Not Track setting." },
-    .{ .id = .HardwareConcurrency, .category = .Hardware, .value_type = .Integer, .weight = 50, .flags = .stable_entropy, .name = "Hardware Concurrency", .description = "Number of logical CPU cores." },
-    .{ .id = .MaxTouchPoints, .category = .Hardware, .value_type = .Integer, .weight = 40, .flags = .stable_entropy, .name = "Max Touch Points", .description = "Maximum touch points supported." },
-    .{ .id = .DeviceMemory, .category = .Hardware, .value_type = .Float, .weight = 40, .flags = .stable_entropy, .name = "Device Memory", .description = "Approximate device RAM in GB." },
+    .{ .id = .HardwareConcurrency, .category = .Hardware, .value_type = .Integer, .weight = 50, .flags = .stable_entropy_core, .name = "Hardware Concurrency", .description = "Number of logical CPU cores." },
+    .{ .id = .MaxTouchPoints, .category = .Hardware, .value_type = .Integer, .weight = 40, .flags = .stable_entropy_core, .name = "Max Touch Points", .description = "Maximum touch points supported." },
+    .{ .id = .DeviceMemory, .category = .Hardware, .value_type = .Float, .weight = 40, .flags = .stable_entropy_core, .name = "Device Memory", .description = "Approximate device RAM in GB." },
     .{ .id = .PdfViewerEnabled, .category = .Navigator, .value_type = .Boolean, .weight = 15, .flags = .stable_required, .name = "PDF Viewer Enabled", .description = "Whether PDF viewer is enabled." },
     .{ .id = .VendorSub, .category = .Navigator, .value_type = .String, .weight = 20, .flags = .stable_required, .name = "Vendor Sub", .description = "Browser vendor sub-string." },
-    .{ .id = .DeviceRam, .category = .Hardware, .value_type = .Integer, .weight = 35, .flags = .stable_entropy, .name = "Device RAM", .description = "Device RAM in GB (navigator.deviceMemory)." },
+    .{ .id = .DeviceRam, .category = .Hardware, .value_type = .Integer, .weight = 35, .flags = .stable_entropy_core, .name = "Device RAM", .description = "Device RAM in GB (navigator.deviceMemory)." },
 
     // ── Screen (17-28) ────────────────────────────────────────────────
     .{ .id = .ScreenWidth, .category = .Screen, .value_type = .Integer, .weight = 60, .flags = .stable_required, .name = "Screen Width", .description = "Primary screen width." },
     .{ .id = .ScreenHeight, .category = .Screen, .value_type = .Integer, .weight = 60, .flags = .stable_required, .name = "Screen Height", .description = "Primary screen height." },
     .{ .id = .AvailableWidth, .category = .Screen, .value_type = .Integer, .weight = 50, .flags = .stable_required, .name = "Available Width", .description = "Available screen width." },
     .{ .id = .AvailableHeight, .category = .Screen, .value_type = .Integer, .weight = 50, .flags = .stable_required, .name = "Available Height", .description = "Available screen height." },
-    .{ .id = .ColorDepth, .category = .Screen, .value_type = .Integer, .weight = 35, .flags = .stable_required, .name = "Color Depth", .description = "Screen color depth in bits." },
-    .{ .id = .PixelDepth, .category = .Screen, .value_type = .Integer, .weight = 35, .flags = .stable_required, .name = "Pixel Depth", .description = "Screen pixel depth in bits." },
-    .{ .id = .DevicePixelRatio, .category = .Screen, .value_type = .Float, .weight = 45, .flags = .stable_required, .name = "Device Pixel Ratio", .description = "Browser device pixel ratio." },
+    .{ .id = .ColorDepth, .category = .Screen, .value_type = .Integer, .weight = 35, .flags = .stable_required_core, .name = "Color Depth", .description = "Screen color depth in bits." },
+    .{ .id = .PixelDepth, .category = .Screen, .value_type = .Integer, .weight = 35, .flags = .stable_required_core, .name = "Pixel Depth", .description = "Screen pixel depth in bits." },
+    .{ .id = .DevicePixelRatio, .category = .Screen, .value_type = .Float, .weight = 45, .flags = .stable_required_core, .name = "Device Pixel Ratio", .description = "Browser device pixel ratio." },
     .{ .id = .InnerWidth, .category = .Screen, .value_type = .Integer, .weight = 45, .flags = .stable_required, .name = "Inner Width", .description = "Browser viewport inner width." },
     .{ .id = .InnerHeight, .category = .Screen, .value_type = .Integer, .weight = 45, .flags = .stable_required, .name = "Inner Height", .description = "Browser viewport inner height." },
     .{ .id = .OuterWidth, .category = .Screen, .value_type = .Integer, .weight = 40, .flags = .stable_required, .name = "Outer Width", .description = "Browser window outer width." },
@@ -36,29 +37,29 @@ pub const definitions = [_]model.FeatureDefinition{
 
     // ── Hardware (29-34) ───────────────────────────────────────────────
     .{ .id = .CpuClass, .category = .Hardware, .value_type = .String, .weight = 40, .flags = .stable_entropy, .name = "CPU Class", .description = "Browser CPU architecture class." },
-    .{ .id = .CpuCores, .category = .Hardware, .value_type = .Integer, .weight = 45, .flags = .stable_entropy, .name = "CPU Cores", .description = "Physical CPU cores (if available)." },
-    .{ .id = .CpuArchitecture, .category = .Hardware, .value_type = .String, .weight = 40, .flags = .stable_entropy, .name = "CPU Architecture", .description = "CPU architecture identifier." },
-    .{ .id = .PlatformArchitecture, .category = .Hardware, .value_type = .String, .weight = 35, .flags = .stable_entropy, .name = "Platform Architecture", .description = "Platform architecture (32/64-bit)." },
+    .{ .id = .CpuCores, .category = .Hardware, .value_type = .Integer, .weight = 45, .flags = .stable_entropy_core, .name = "CPU Cores", .description = "Physical CPU cores (if available)." },
+    .{ .id = .CpuArchitecture, .category = .Hardware, .value_type = .String, .weight = 40, .flags = .stable_entropy_core, .name = "CPU Architecture", .description = "CPU architecture identifier." },
+    .{ .id = .PlatformArchitecture, .category = .Hardware, .value_type = .String, .weight = 35, .flags = .stable_entropy_core, .name = "Platform Architecture", .description = "Platform architecture (32/64-bit)." },
     .{ .id = .HardwareAcceleration, .category = .Hardware, .value_type = .Boolean, .weight = 30, .flags = .stable_entropy, .name = "Hardware Acceleration", .description = "Whether hardware acceleration is enabled." },
     .{ .id = .TouchSupport, .category = .Hardware, .value_type = .Boolean, .weight = 35, .flags = .stable_entropy, .name = "Touch Support", .description = "Whether touch is supported." },
 
     // ── Canvas (35) ────────────────────────────────────────────────────
-    .{ .id = .CanvasHash, .category = .Canvas, .value_type = .Bytes, .weight = 100, .flags = .critical, .name = "Canvas Hash", .description = "SHA-256 hash of rendered canvas." },
+    .{ .id = .CanvasHash, .category = .Canvas, .value_type = .Bytes, .weight = 100, .flags = .critical_core, .name = "Canvas Hash", .description = "SHA-256 hash of rendered canvas." },
 
     // ── WebGL (36-42) ──────────────────────────────────────────────────
     .{ .id = .WebGLVendor, .category = .WebGL, .value_type = .String, .weight = 80, .flags = .stable_entropy, .name = "WebGL Vendor", .description = "WebGL vendor string." },
-    .{ .id = .WebGLRenderer, .category = .WebGL, .value_type = .String, .weight = 90, .flags = .critical, .name = "WebGL Renderer", .description = "GPU renderer string." },
+    .{ .id = .WebGLRenderer, .category = .WebGL, .value_type = .String, .weight = 90, .flags = .critical_core, .name = "WebGL Renderer", .description = "GPU renderer string." },
     .{ .id = .WebGLVersion, .category = .WebGL, .value_type = .String, .weight = 60, .flags = .stable_entropy, .name = "WebGL Version", .description = "WebGL version string." },
-    .{ .id = .WebGLHash, .category = .WebGL, .value_type = .Bytes, .weight = 100, .flags = .critical, .name = "WebGL Hash", .description = "Hashed WebGL fingerprint." },
+    .{ .id = .WebGLHash, .category = .WebGL, .value_type = .Bytes, .weight = 100, .flags = .critical_core, .name = "WebGL Hash", .description = "Hashed WebGL fingerprint." },
     .{ .id = .WebGLExtensions, .category = .WebGL, .value_type = .StringArray, .weight = 70, .flags = .stable_entropy, .name = "WebGL Extensions", .description = "Supported WebGL extensions." },
     .{ .id = .WebGLParameters, .category = .WebGL, .value_type = .String, .weight = 65, .flags = .stable_entropy, .name = "WebGL Parameters", .description = "Key WebGL parameters (JSON)." },
     .{ .id = .WebGLShaderPrecision, .category = .WebGL, .value_type = .String, .weight = 60, .flags = .stable_entropy, .name = "WebGL Shader Precision", .description = "Shader precision formats." },
 
     // ── Audio (43) ─────────────────────────────────────────────────────
-    .{ .id = .AudioHash, .category = .Audio, .value_type = .Bytes, .weight = 95, .flags = .critical, .name = "Audio Hash", .description = "Hash of rendered audio fingerprint." },
+    .{ .id = .AudioHash, .category = .Audio, .value_type = .Bytes, .weight = 95, .flags = .critical_core, .name = "Audio Hash", .description = "Hash of rendered audio fingerprint." },
 
     // ── Fonts (44) ─────────────────────────────────────────────────────
-    .{ .id = .FontsHash, .category = .Fonts, .value_type = .Bytes, .weight = 95, .flags = .critical, .name = "Fonts Hash", .description = "Hash of installed fonts fingerprint." },
+    .{ .id = .FontsHash, .category = .Fonts, .value_type = .Bytes, .weight = 95, .flags = .critical_core, .name = "Fonts Hash", .description = "Hash of installed fonts fingerprint." },
 
     // ── Platform (45-46) ──────────────────────────────────────────────
     .{ .id = .OperatingSystem, .category = .Platform, .value_type = .String, .weight = 75, .flags = .stable_required, .name = "Operating System", .description = "Operating system identifier." },
@@ -81,9 +82,9 @@ pub const definitions = [_]model.FeatureDefinition{
     .{ .id = .AudioInputDevices, .category = .Media, .value_type = .StringArray, .weight = 30, .flags = .{ .stable = true }, .name = "Audio Input Devices", .description = "Available audio input devices." },
     .{ .id = .AudioOutputDevices, .category = .Media, .value_type = .StringArray, .weight = 25, .flags = .{ .stable = true }, .name = "Audio Output Devices", .description = "Available audio output devices." },
     .{ .id = .VideoInputDevices, .category = .Media, .value_type = .StringArray, .weight = 30, .flags = .{ .stable = true }, .name = "Video Input Devices", .description = "Available video input devices." },
-    .{ .id = .SupportedCodecs, .category = .Media, .value_type = .StringArray, .weight = 50, .flags = .stable_entropy, .name = "Supported Codecs", .description = "Supported media codecs." },
-    .{ .id = .MediaFormats, .category = .Media, .value_type = .StringArray, .weight = 45, .flags = .stable_entropy, .name = "Media Formats", .description = "Supported media formats." },
-    .{ .id = .AudioFormats, .category = .Media, .value_type = .StringArray, .weight = 45, .flags = .stable_entropy, .name = "Audio Formats", .description = "Supported audio formats." },
+    .{ .id = .SupportedCodecs, .category = .Media, .value_type = .StringArray, .weight = 50, .flags = .stable_entropy_core, .name = "Supported Codecs", .description = "Supported media codecs." },
+    .{ .id = .MediaFormats, .category = .Media, .value_type = .StringArray, .weight = 45, .flags = .stable_entropy_core, .name = "Media Formats", .description = "Supported media formats." },
+    .{ .id = .AudioFormats, .category = .Media, .value_type = .StringArray, .weight = 45, .flags = .stable_entropy_core, .name = "Audio Formats", .description = "Supported audio formats." },
 
     // ── Network (62-66) ──────────────────────────────────────────────
     .{ .id = .ConnectionType, .category = .Network, .value_type = .String, .weight = 45, .flags = .{ .stable = true }, .name = "Connection Type", .description = "Network connection type." },
@@ -94,7 +95,7 @@ pub const definitions = [_]model.FeatureDefinition{
 
     // ── Locale & Timezone (67-70) ────────────────────────────────────
     .{ .id = .Locale, .category = .Locale, .value_type = .String, .weight = 35, .flags = .stable_required, .name = "Locale", .description = "Browser locale string." },
-    .{ .id = .Timezone, .category = .Timezone, .value_type = .String, .weight = 40, .flags = .stable_required, .name = "Timezone", .description = "IANA timezone identifier." },
+    .{ .id = .Timezone, .category = .Timezone, .value_type = .String, .weight = 40, .flags = .stable_required_core, .name = "Timezone", .description = "IANA timezone identifier." },
     .{ .id = .TimezoneOffset, .category = .Timezone, .value_type = .Integer, .weight = 35, .flags = .stable_required, .name = "Timezone Offset", .description = "UTC offset in minutes." },
     .{ .id = .DateTimeFormat, .category = .Locale, .value_type = .String, .weight = 30, .flags = .stable_required, .name = "Date Time Format", .description = "Default date/time format locale." },
 
@@ -113,12 +114,12 @@ pub const definitions = [_]model.FeatureDefinition{
     .{ .id = .SubtleCrypto, .category = .Crypto, .value_type = .Boolean, .weight = 25, .flags = .stable_required, .name = "Subtle Crypto", .description = "Whether SubtleCrypto is available." },
 
     // ── Speech (79) ──────────────────────────────────────────────────
-    .{ .id = .SpeechSynthesisVoices, .category = .Speech, .value_type = .StringArray, .weight = 35, .flags = .stable_entropy, .name = "Speech Synthesis Voices", .description = "Available speech synthesis voices." },
+    .{ .id = .SpeechSynthesisVoices, .category = .Speech, .value_type = .StringArray, .weight = 35, .flags = .stable_entropy_core, .name = "Speech Synthesis Voices", .description = "Available speech synthesis voices." },
 
     // ── GPU (80-82) ──────────────────────────────────────────────────
-    .{ .id = .GPUVendor, .category = .GPU, .value_type = .String, .weight = 70, .flags = .stable_entropy, .name = "GPU Vendor", .description = "GPU vendor (from canvas/WebGL)." },
-    .{ .id = .GPURenderer, .category = .GPU, .value_type = .String, .weight = 75, .flags = .stable_entropy, .name = "GPU Renderer", .description = "GPU renderer (from canvas/WebGL)." },
-    .{ .id = .GPUDriverVersion, .category = .GPU, .value_type = .String, .weight = 60, .flags = .stable_entropy, .name = "GPU Driver Version", .description = "GPU driver version." },
+    .{ .id = .GPUVendor, .category = .GPU, .value_type = .String, .weight = 70, .flags = .stable_entropy_core, .name = "GPU Vendor", .description = "GPU vendor (from canvas/WebGL)." },
+    .{ .id = .GPURenderer, .category = .GPU, .value_type = .String, .weight = 75, .flags = .stable_entropy_core, .name = "GPU Renderer", .description = "GPU renderer (from canvas/WebGL)." },
+    .{ .id = .GPUDriverVersion, .category = .GPU, .value_type = .String, .weight = 60, .flags = .stable_entropy_core, .name = "GPU Driver Version", .description = "GPU driver version." },
 
     // ── Performance (83-85) ──────────────────────────────────────────
     .{ .id = .HardwareConcurrencyPerformance, .category = .Performance, .value_type = .Integer, .weight = 40, .flags = .stable_entropy, .name = "HW Concurrency Perf", .description = "Hardware concurrency (performance API)." },
@@ -149,3 +150,112 @@ pub const definitions = [_]model.FeatureDefinition{
     .{ .id = .SDKVersion, .category = .Metadata, .value_type = .String, .weight = 0, .flags = .required_entropy, .name = "SDK Version", .description = "Fingerprint SDK version." },
     .{ .id = .CollectionTimestamp, .category = .Metadata, .value_type = .Integer, .weight = 0, .flags = .required_entropy, .name = "Collection Timestamp", .description = "Unix timestamp of collection." },
 };
+
+// story: m6-signal-contract
+/// Stable-core subset (D-v1-7). The durable, hardware/host-determined features
+/// hashed into `core_digest` — the drift gate that answers "did this device's
+/// stable core change?" without replaying signals. Distinct from the `stable`
+/// validation tier: battery, connection and window geometry are `stable` yet
+/// transient, so they are excluded here. Selection rule + exclusion rationale:
+/// specs/quality/signal-determinism-contract.md.
+pub const core_subset = [_]model.FeatureID{
+    .Language,
+    .Languages,
+    .Platform,
+    .HardwareConcurrency,
+    .MaxTouchPoints,
+    .DeviceMemory,
+    .DeviceRam,
+    .ColorDepth,
+    .PixelDepth,
+    .DevicePixelRatio,
+    .CpuCores,
+    .CpuArchitecture,
+    .PlatformArchitecture,
+    .CanvasHash,
+    .WebGLRenderer,
+    .WebGLHash,
+    .AudioHash,
+    .FontsHash,
+    .SupportedCodecs,
+    .MediaFormats,
+    .AudioFormats,
+    .Timezone,
+    .SpeechSynthesisVoices,
+    .GPUVendor,
+    .GPURenderer,
+    .GPUDriverVersion,
+};
+
+/// Revision of the stable-core subset definition. Bump this whenever
+/// `core_subset` changes: a `core_digest` is only comparable against another
+/// signed by the same revision (a subset change would otherwise masquerade as
+/// device drift). The lock guard below fails the build if the `.core` flags and
+/// `core_subset` disagree — the forcing function to bump this constant.
+pub const core_version: u16 = 1;
+
+comptime {
+    @setEvalBranchQuota(100_000);
+    // Stable-core lock guard (D-v1-7 / story m6-signal-contract):
+    //   (1) `.core` flags and `core_subset` membership must agree exactly, so a
+    //       silent subset change is a compile error (and forces a core_version
+    //       bump);
+    //   (2) no core feature may be `sensitive` — a leaked core digest must not
+    //       identify the person;
+    //   (3) metadata features (weight 0) are never core.
+    var flagged: usize = 0;
+    for (&definitions) |*def| {
+        if (def.flags.core) {
+            flagged += 1;
+            if (def.flags.sensitive) {
+                @compileError(std.fmt.comptimePrint(
+                    "core guard: '{s}' is core but sensitive",
+                    .{@tagName(def.id)},
+                ));
+            }
+            if (def.category == .Metadata) {
+                @compileError(std.fmt.comptimePrint(
+                    "core guard: metadata '{s}' must not be core",
+                    .{@tagName(def.id)},
+                ));
+            }
+        }
+    }
+    if (flagged != core_subset.len) {
+        @compileError(std.fmt.comptimePrint(
+            "core guard: {d} features flagged .core but core_subset has {d} entries",
+            .{ flagged, core_subset.len },
+        ));
+    }
+    for (core_subset) |id| {
+        var found = false;
+        for (&definitions) |*def| {
+            if (def.id == id) {
+                if (!def.flags.core) {
+                    @compileError(std.fmt.comptimePrint(
+                        "core guard: '{s}' is in core_subset but not flagged .core",
+                        .{@tagName(id)},
+                    ));
+                }
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            @compileError(std.fmt.comptimePrint(
+                "core guard: core_subset entry '{s}' has no definition",
+                .{@tagName(id)},
+            ));
+        }
+    }
+    // core_subset must be strictly ascending: `Registry.coreSubset()` promises
+    // registry order, and the core digest hashes features sorted by FeatureID.
+    for (core_subset, 0..) |id, i| {
+        if (i > 0 and @intFromEnum(core_subset[i - 1]) >= @intFromEnum(id)) {
+            @compileError(std.fmt.comptimePrint(
+                "core guard: core_subset not strictly ascending at '{s}'",
+                .{@tagName(id)},
+            ));
+        }
+    }
+}
