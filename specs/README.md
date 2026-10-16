@@ -44,6 +44,7 @@ specs/
 | `quality/TEST_PLAN.md` | Test layers, pinned goldens, planned additions | Current |
 | `quality/browser-matrix-design.md` | W3 cross-browser golden runner design + two-layer contract | Current |
 | `quality/signal-determinism-matrix.md` | W3-D4 per-signal determinism triage (M6 stable-core input) | Current |
+| `quality/signal-determinism-contract.md` | W3-D5 determinism contract + locked stable-core subset | Current |
 | `quality/BUGS.yaml` | Confirmed bug tracker (BUG-001 … BUG-003) | Open |
 | `quality/audits/` | Repository audits (`2026-08-08.md` — bugs, gaps, features) | Current |
 | `quality/verifications/` | Manual verification / UAT checklists per milestone | Current |

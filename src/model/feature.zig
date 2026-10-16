@@ -44,13 +44,25 @@ pub const FeatureFlags = packed struct(u8) {
     high_entropy: bool = false,
     required: bool = false,
     sensitive: bool = false,
-    reserved: u4 = 0,
+    // story: m6-signal-contract
+    // Stable-core subset membership (D-v1-7). Distinct from `stable`: `stable`
+    // is the validation / full-digest tier (battery, connection and geometry
+    // features are all `stable` yet transient), whereas `core` marks the
+    // durable, hardware/host-determined features hashed into `core_digest`
+    // (see specs/quality/signal-determinism-contract.md). Uses one of the
+    // reserved bits — the packed word stays 1 byte.
+    core: bool = false,
+    reserved: u3 = 0,
 
     pub const none = FeatureFlags{};
     pub const stable_required = FeatureFlags{ .stable = true, .required = true };
     pub const stable_entropy = FeatureFlags{ .stable = true, .high_entropy = true };
     pub const required_entropy = FeatureFlags{ .required = true, .high_entropy = true };
     pub const critical = FeatureFlags{ .stable = true, .required = true, .high_entropy = true };
+    // Core variants — the same tiers plus stable-core membership.
+    pub const stable_required_core = FeatureFlags{ .stable = true, .required = true, .core = true };
+    pub const stable_entropy_core = FeatureFlags{ .stable = true, .high_entropy = true, .core = true };
+    pub const critical_core = FeatureFlags{ .stable = true, .required = true, .high_entropy = true, .core = true };
 };
 
 pub const FeatureID = enum(u16) {
@@ -349,6 +361,12 @@ pub const FeatureDefinition = struct {
     }
     pub inline fn isSensitive(self: FeatureDefinition) bool {
         return self.flags.sensitive;
+    }
+    /// Stable-core membership (D-v1-7): the feature is hashed into
+    /// `core_digest` (durable, hardware/host-determined; survives window
+    /// resize and normal use).
+    pub inline fn isCore(self: FeatureDefinition) bool {
+        return self.flags.core;
     }
 };
 
