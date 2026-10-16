@@ -71,9 +71,11 @@ for (const engine of ENGINES) {
 	lines.push(...drift, "");
 }
 
+// Total is part of the report itself so the saved artifact (the triage
+// input) and stdout agree, not just the console.
+lines.push(`total drifted signals: ${totalDrift}`);
 const report = lines.join("\n");
 console.log(report);
-console.log(`total drifted signals: ${totalDrift}`);
 if (opts.out) {
 	mkdirSync(dirname(opts.out), { recursive: true });
 	writeFileSync(opts.out, report);
