@@ -29,6 +29,7 @@ specs/
 | `product/GLOSSARY.yaml` | Domain terms (wire, engine, platform) | Current |
 | `product/SDK_API_SURFACE.md` | Frozen 1.0 SDK public API contract + error paths (W4-D1) | Frozen |
 | `product/SDK_DEPRECATION_POLICY.md` | SemVer rulebook, deprecation window/mechanics, pinned TS toolchain (W4-D2) | Adopted |
+| `product/SDK_RELEASE_CONVENTIONS.md` | npm 1.0 release/tag/dist-tag/canary conventions + checklist (W4-D4) | Adopted |
 | `product/snapshots/` | "What exists today" per release (`v0.4.0.md`) | Current |
 | `decisions/` | ADR-0001…0011 — architectural decision records | Adopted |
 | `decisions/rework/` | Locked D1–D20 rework series: ANALYSIS, DECISIONS, DESIGN, MIGRATION | Complete |

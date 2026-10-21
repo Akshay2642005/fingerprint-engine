@@ -278,9 +278,20 @@ jobs:
         run: |
           PACKAGE="@akshay2642005/fingerprint-sdk"
           VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./src/clients/browser/package.json').version")"
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "::error::tag v$VERSION does not match src/clients/browser/package.json version $PKG_VERSION — bump before tagging"
+            exit 1
+          fi
           if npm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
             echo "npm: $PACKAGE@$VERSION already published — skipping"
             exit 0
           fi
+          # Pre-releases go to @next; only stable versions may own @latest.
+          case "$VERSION" in
+            *-*) DIST_TAG="next" ;;
+            *)   DIST_TAG="latest" ;;
+          esac
           cd src/clients/browser
-          npm publish --access public
+          npm publish --access public --tag "$DIST_TAG"
+          echo "npm: $PACKAGE@$VERSION published (dist-tag: $DIST_TAG)"

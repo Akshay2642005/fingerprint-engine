@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: "m6-sdk-contract-tests (W4-D3 — runtime contract tests/clients/browser/contract.test.mjs pins collect→package→POST + error paths; type-level contract tests/clients/browser/types/surface.ts compiles the frozen signatures/negatives via npm run test:types, wired into CI; TS SDK 28/28. Next: W4-D4 — canary publish dry-run)"
+active_story: "m6-sdk-canary (W4-D4 — canary dry-run rehearsed at 1.0.0-rc.1: 38-file tarball, npm publish --dry-run --tag next, clean-consumer install verified (45 signals, SDK_VERSION 1.0.0-rc.1); conventions in specs/product/SDK_RELEASE_CONVENTIONS.md; release.yml now enforces tag==package.json and routes pre-releases to @next. Public publish awaiting go-ahead.)"
 
 epics:
   e01-core-engine:
