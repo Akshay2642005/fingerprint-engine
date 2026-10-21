@@ -105,8 +105,23 @@ const result = await collect();
 console.log('package id:', result.packageId); // replay identity
 console.log('signals:   ', result.signalCount);
 console.log('sent:      ', result.sent);        // ingress accepted (HTTP 2xx)
+console.log('status:    ', result.status);      // HTTP status (0 = network failure)
+console.log('error:     ', result.error);       // transport failure detail, if any
 console.log('reply:     ', result.reply);       // worker digest, when relayed
 ```
+
+To collect and serialize **without sending** (persist, relay, or inspect the
+exact bytes), use `packageSignals()` — the SDK's `package()` step:
+
+```typescript
+import { packageSignals } from '@akshay2642005/fingerprint-sdk';
+
+const pkg = await packageSignals();
+console.log(pkg.bytes, pkg.hex, pkg.packageId, pkg.signalCount);
+```
+
+The full 1.0 surface is frozen in
+[`specs/product/SDK_API_SURFACE.md`](specs/product/SDK_API_SURFACE.md).
 
 As fraud-platform middleware (the app remains the authority):
 
