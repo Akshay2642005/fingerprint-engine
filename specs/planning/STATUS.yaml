@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
-current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: "m6-sdk-canary (W4-D4 done — @akshay2642005/fingerprint-sdk@1.0.0-rc.1 is live on the public registry under `next`; `latest` stays 0.4.1; clean-consumer install verified; verify step now retries npm replication lag. Next: W4-D5 — M6 review and cut v0.5.0)"
+current_epic: m6-api-determinism (complete — shipped in v0.5.0; next is M7)
+active_story: "W4-D5 done — M6 monthly review (specs/quality/verifications/v0.5.0.md) and v0.5.0 cut. Engine 491/491, SDK 28/28 + type contract, canary 1.0.0-rc.1 on npm `next`, latest 0.4.1. Next: M7 — event envelope + platform ledger contract (→ v0.6.0)"
 
 epics:
   e01-core-engine:
@@ -65,6 +65,10 @@ epics:
   e12-audit-backlog:
     status: done
     summary: "2026-08-08 audit — bugs registry, hardening, ingress + logging designs; slices S1–S6 sequenced in specs/quality/audits/2026-08-08.md. All six slices delivered (S5 AMQP consumer + DLQ, S6 full-stack compose + ingress release surface) and shipped in v0.4.0. Follow-up PR #31 fixed compose container-name DNS resolution."
+
+  m6-api-determinism:
+    status: done
+    summary: "M6 shipped in v0.5.0: ADR-012 wire versioning + ABI pin, FeatureID registry lock, tolerant lookup/decode + capability tail, 3×3 cross-browser golden-digest gate, stable-core subset (core_version = 1), SDK 1.0 surface frozen with SemVer/deprecation policy and runtime + type-level contract suites, SDK 1.0.0-rc.1 canary on npm @next."
 
 rework:
   status: done

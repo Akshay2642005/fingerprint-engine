@@ -7,13 +7,22 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m6/week4-sdk-canary-publish
+  branch: m6/w4d5-cut-v0.5.0
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
-  latest_tag: v0.4.1
+  latest_tag: v0.5.0
 
 releases:
+  v0.5.0:
+    date: "2026-10-21"
+    status: released
+    summary: "M6 — API & determinism contract: ADR-012 wire versioning + ABI pin, FeatureID registry lock, tolerant lookup/decode + capability tail, 3×3 cross-browser golden-digest gate, stable-core subset, SDK 1.0 surface frozen with SemVer + contract suites. Engine 491/491; SDK 1.0.0-rc.1 on npm @next."
+    artifacts:
+      - GitHub Release (WASM + native binaries for linux-x86_64, linux-aarch64, macos-x86_64, macos-aarch64)
+      - GHCR images (fingerprint-worker, fingerprint-ingress)
+      - npm (@akshay2642005/fingerprint-sdk 1.0.0-rc.1 under @next; latest stays 0.4.1)
+
   v0.4.1:
     date: "2026-08-29"
     status: released
@@ -173,7 +182,9 @@ handoff:
     from engine tags: `sdk-publish.yml` (manual, OIDC, version-driven) publishes
     the package, and `release.yml` skips npm when the tag and package version
     differ. The registry-verification step now retries through npm replication
-    lag instead of reporting a successful publish as a failure. The engine
-    stays on track for v0.5.0. Next: W4-D5 — M6 review and cut v0.5.0. M7
+    lag instead of reporting a successful publish as a failure. W4-D5 is done:
+    the M6 review checklist (specs/quality/verifications/v0.5.0.md) is green,
+    the product snapshot is written (specs/product/snapshots/v0.5.0.md), and
+    v0.5.0 is cut (engine 491/491; 10 required CI checks). M7 is next,
     re-scoped 2026-09-07 to the event envelope + platform ledger contract (no
     Zig store, D-v1-4).

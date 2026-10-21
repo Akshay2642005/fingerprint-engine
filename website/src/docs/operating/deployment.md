@@ -67,7 +67,7 @@ services:
       - rabbitmq_logs:/var/log/rabbitmq
 
   worker:
-    image: ghcr.io/akshay2642005/fingerprint-engine/fingerprint-worker:v0.4.1
+    image: ghcr.io/akshay2642005/fingerprint-engine/fingerprint-worker:v0.5.0
     container_name: fingerprint-worker
     restart: always
     ports:
@@ -86,7 +86,7 @@ services:
       - rabbitmq
 
   ingress:
-    image: ghcr.io/akshay2642005/fingerprint-engine/fingerprint-ingress:v0.4.1
+    image: ghcr.io/akshay2642005/fingerprint-engine/fingerprint-ingress:v0.5.0
     container_name: fingerprint-ingress
     restart: always
     ports:
@@ -129,8 +129,8 @@ every annotated, versioned git tag (`v*`):
 
 | Image | Source Dockerfile | Tags pushed |
 | ----- | ----------------- | ----------- |
-| `ghcr.io/akshay2642005/fingerprint-engine/fingerprint-worker` | `deploy/Dockerfile.worker` | `:<version>` (e.g. `v0.4.1`) and `:latest` |
-| `ghcr.io/akshay2642005/fingerprint-engine/fingerprint-ingress` | `deploy/Dockerfile.ingress` | `:<version>` (e.g. `v0.4.1`) and `:latest` |
+| `ghcr.io/akshay2642005/fingerprint-engine/fingerprint-worker` | `deploy/Dockerfile.worker` | `:<version>` (e.g. `v0.5.0`) and `:latest` |
+| `ghcr.io/akshay2642005/fingerprint-engine/fingerprint-ingress` | `deploy/Dockerfile.ingress` | `:<version>` (e.g. `v0.5.0`) and `:latest` |
 
 Jobs `release-docker` and `release-docker-ingress` build and push these
 images with `docker/build-push-action`, tagging each with both the full
@@ -175,7 +175,7 @@ with identical argv contracts, so one artifact can serve both roles.
 ## How release artifacts are produced
 
 The pipeline lives in `.github/workflows/release.yml` and triggers on an
-annotated git tag push matching `v*` (for example `v0.4.1`):
+annotated git tag push matching `v*` (for example `v0.5.0`):
 
 1. **Pre-release tests** (`test`): runs `zig build test` on the tagged tree.
    Nothing else publishes until this job is green.

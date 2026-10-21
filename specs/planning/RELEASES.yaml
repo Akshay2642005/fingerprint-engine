@@ -1,17 +1,28 @@
 # Release Plan — Fingerprint Engine
-target_version: 0.4.1
-next_target: 0.5.0
+target_version: 0.5.0
+next_target: 0.6.0
 note: |
-  v0.4.1 is the current shipped release (patch: compose/Docker AMQP + DNS fix —
-  PR #31). The path to v1.0.0 is defined in specs/planning/ROADMAP-v1.0.0.md:
-  next cuts are v0.5.0 (M6, end of Month 1), v0.6.0 (M7, Month 2), v0.7.0
-  (Month 3), then v1.0.0.
-  Cadence 2026-09-17 (Week-1 D5): no v0.4.x patch cut planned — nothing
-  user-facing has landed since v0.4.1; patch cuts are reserved for
-  regressions/bugfixes before a milestone cut. Next cut is v0.5.0
-  (end of Week 4, Sep 28 – Oct 2).
+  v0.5.0 is the current shipped release (M6 — API & determinism contract).
+  The path to v1.0.0 is defined in specs/planning/ROADMAP-v1.0.0.md:
+  next cuts are v0.6.0 (M7, Month 2), v0.7.0 (Month 3), then v1.0.0.
+  The browser SDK is versioned independently: `1.0.0-rc.1` is live under the
+  npm `next` dist-tag, and engine tags no longer publish npm.
 
 releases:
+  v0.5.0:
+    status: released
+    date: "2026-10-21"
+    epics:
+      - m6-api-determinism
+    summary: |
+      M6 — API & determinism contract. ADR-012 adopted (wire versioning and
+      breaking-vs-additive table); compile-time ABI pin; FeatureID renumbering
+      guard; tolerant lookup/decode; SDK capability tail; 3×3 cross-browser
+      golden-digest gate with zero drift; stable-core subset locked behind
+      `core_version = 1`; SDK 1.0 surface frozen with SemVer/deprecation
+      policy, runtime + type-level contract suites, and a `1.0.0-rc.1` canary
+      published to npm `@next` via OIDC. Engine suite 491/491.
+
   v0.4.1:
     status: released
     date: "2026-08-29"

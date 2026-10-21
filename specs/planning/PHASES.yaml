@@ -23,9 +23,9 @@ build_phase:
     - Hand-written TypeScript SDK (collect → package → POST; decision middleware)
     - HTTP ingress (S4 — worker pool, FPKG translation, /healthz, Dockerfile, compose, GHCR)
     - AMQP consumer + DLQ (S5) and full-stack compose (S6)
-    - Testing (457 tests, 3 fuzz targets, 12 benchmarks)
-    - CI/CD (test, wasm-build, worker-build, docker-worker, docker-ingress)
-  total_tests: 457
+    - Testing (491 tests, 3 fuzz targets, 12 benchmarks)
+    - CI/CD (test, wasm-build, worker-build, docker-worker, docker-ingress, browser-matrix)
+  total_tests: 491
 
 verify_phase:
   status: completed
@@ -33,6 +33,11 @@ verify_phase:
   release_green: true
 
 release_phase:
+  v0.5.0:
+    status: released
+    date: "2026-10-21"
+    notes: "M6 — API & determinism contract: ADR-012 adopted, ABI pin, registry lock, capability negotiation, cross-browser golden digests, stable-core subset, SDK 1.0 surface frozen with SemVer/contract suites; SDK 1.0.0-rc.1 canary on npm @next."
+
   v0.4.1:
     status: released
     date: "2026-08-29"
