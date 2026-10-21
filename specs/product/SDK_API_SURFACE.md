@@ -193,6 +193,7 @@ are unsupported even if physically reachable; use the entry point.
 | Network failure / thrown `fetch` | `collect()` resolves: `sent: false`, `status: 0`, `error: <message>` |
 | Non-2xx HTTP response | `collect()` resolves: `sent: false`, `status: <code>`, `error` absent; `reply` present if the ingress relayed a worker frame |
 | 2xx response | `collect()` resolves: `sent: true`, `status: <code>`, `reply` when relayed |
+| 2xx with an unreadable reply body | `collect()` resolves: `sent: true`, `status: <code>`, `error: "failed to read ingress reply: …"` |
 | Invalid signal value passed to `encodeSignalPackage` | **throws** `Error` |
 | Worker rejects the package | `sent: true` (ingress accepted), `reply.status !== 0` |
 | `configure()` with a bad URL | no throw; surfaces on the next `collect()` |

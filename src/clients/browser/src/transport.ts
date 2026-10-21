@@ -57,14 +57,19 @@ export async function sendPackage(
 	}
 
 	let reply: WorkerReply | undefined;
+	let error: string | undefined;
 	try {
 		const body = new Uint8Array(await res.arrayBuffer());
 		reply = parseWorkerReply(body);
-	} catch {
-		// Non-binary reply (e.g. a JSON error page) — keep reply undefined.
+	} catch (err) {
+		// The POST was accepted but the reply body could not be read. That is
+		// distinct from an empty/unparseable body and must be observable.
+		error = `failed to read ingress reply: ${
+			err instanceof Error ? err.message : String(err)
+		}`;
 	}
 
-	return { ok: res.ok, status: res.status, reply };
+	return { ok: res.ok, status: res.status, reply, error };
 }
 
 /**

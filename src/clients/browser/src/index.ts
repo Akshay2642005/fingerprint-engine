@@ -44,6 +44,12 @@ export function configure(options: Partial<SdkConfig>): void {
  * it — the SDK's "package" step. (The roadmap calls this `package()`; the
  * identifier is `packageSignals` because `package` is a strict-mode reserved
  * word in ES modules.) Use it to persist, relay, or inspect the exact bytes.
+ *
+ * @example
+ * const pkg = await packageSignals();
+ * await storage.put(`pkg-${toHex(pkg.packageId)}`, pkg.bytes); // pkg.hex, pkg.signalCount
+ *
+ * story: m6-sdk-api-freeze
  */
 export async function packageSignals(
 	options: CollectOptions = {},
@@ -66,8 +72,9 @@ export async function packageSignals(
 /**
  * Packages the collected signals (see `packageSignals`) and POSTs them to the
  * ingress. Never computes a fingerprint — the reply, when present, carries the
- * worker's canonical digest. Transport failures resolve with `sent: false` and
- * `error`; this function does not throw for network errors.
+ * worker's canonical digest. I/O problems resolve as data (`sent`, `status`,
+ * `error`) instead of throwing; a 2xx whose reply body cannot be read reports
+ * `sent: true` with `error` set.
  */
 export async function collect(options: CollectOptions = {}): Promise<CollectResult> {
 	const pkg = await packageSignals(options);

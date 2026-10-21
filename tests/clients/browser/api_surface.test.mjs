@@ -8,6 +8,8 @@
  *
  * Everything is imported from `dist/index.js` — the published entry point —
  * so these tests fail if a symbol leaves the public surface.
+ *
+ * story: m6-sdk-api-freeze
  */
 
 import { test, before } from "node:test";
@@ -173,6 +175,28 @@ test("collect() reports an HTTP rejection via status, without throwing", async (
 		assert.equal(result.sent, false);
 		assert.equal(result.status, 503);
 		assert.equal(result.error, undefined);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("collect() reports an accepted POST whose reply body cannot be read", async () => {
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = async () => ({
+		ok: true,
+		status: 200,
+		arrayBuffer: async () => {
+			throw new Error("socket closed");
+		},
+	});
+
+	try {
+		sdk.configure({ ingressUrl: "https://ingress.invalid/v1/fingerprints" });
+		const result = await sdk.collect(LIGHT);
+		assert.equal(result.sent, true);
+		assert.equal(result.status, 200);
+		assert.equal(result.reply, undefined);
+		assert.match(result.error, /failed to read ingress reply: socket closed/);
 	} finally {
 		globalThis.fetch = originalFetch;
 	}

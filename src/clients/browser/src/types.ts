@@ -71,10 +71,11 @@ export interface CollectResult extends PackageResult {
 	/** Server-computed reply, when the ingress relayed a worker frame. */
 	reply?: WorkerReply;
 	/**
-	 * Transport failure detail when `sent` is false (network error or thrown
-	 * fetch). Absent on a successful POST; HTTP failures are reported via
-	 * `status` (and `reply`, when the ingress relayed a worker error frame)
-	 * instead — this function does not throw.
+	 * Transport detail when `sent` is false (network error or thrown fetch), or
+	 * when the reply body could not be read after an accepted POST. Absent on a
+	 * clean exchange; HTTP failures are reported via `status` (and `reply`, when
+	 * the ingress relayed a worker error frame) instead — this function does not
+	 * throw.
 	 */
 	error?: string;
 }
