@@ -1,7 +1,7 @@
 # Project Scope — Fingerprint Engine (Post-Rework)
 
 name: Fingerprint Engine
-version: 0.4.1
+version: 0.5.0
 engine_phases: 1-11 (complete) + rework/distributed-engine (complete)
 current_milestone: "M6 — API & determinism contract (target v0.5.0; wire frozen at 1.0)"
 
