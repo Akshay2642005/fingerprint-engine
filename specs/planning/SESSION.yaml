@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m6/week4-sdk-contract-tests
+  branch: m6/week4-sdk-canary
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -164,7 +164,13 @@ handoff:
     `types: []`, single typed export). W4-D3 is done: `contract.test.mjs` pins
     the collect→package→POST round trip and error paths, and the type-level
     contract (`tests/clients/browser/types/surface.ts`, `npm run test:types`)
-    is wired into CI — 28/28 runtime tests. Next: W4-D4 — canary publish
-    dry-run (`npm@1.0.0-rc` via the OIDC trusted publisher). M7 re-scoped
+    is wired into CI — 28/28 runtime tests. W4-D4 rehearsed the 1.0 canary:
+    1.0.0-rc.1 packs to 38 files, `npm publish --dry-run --tag next` succeeds,
+    and a clean consumer installs the tarball and runs `packageSignals()`
+    (45 signals, SDK_VERSION matches). Conventions are recorded in
+    specs/product/SDK_RELEASE_CONVENTIONS.md; `release.yml` now fails on a
+    tag/package.json mismatch and publishes pre-releases to `@next`. The
+    public canary publish is pending an explicit go-ahead (it needs a tag and
+    the OIDC workflow). Next: W4-D5 — M6 review and cut v0.5.0. M7 re-scoped
     2026-09-07 to the event envelope + platform ledger contract (no Zig store,
     D-v1-4).

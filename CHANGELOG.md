@@ -37,6 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   negative cases against `dist/index.d.ts` (`npm run test:types`, wired into
   CI).
 
+### Documentation
+
+- **SDK 1.0 release conventions** — `specs/product/SDK_RELEASE_CONVENTIONS.md`
+  records the version/tag contract, `next` vs `latest` dist-tags, the canary
+  procedure (pack → clean-consumer install → `publish --dry-run`), OIDC
+  publishing, and the 1.0.0 checklist. `release.yml` now fails when the tag and
+  `package.json` version disagree, and routes pre-release versions to `@next`
+  instead of `@latest`.
+
 ## [0.4.1] - 2026-08-29
 
 ### Fixed
