@@ -9,6 +9,7 @@ verification and waits for user confirmation (UAT) before declaring done.
 | File | Contents |
 |------|----------|
 | `v0.2.x.md` | Evidence for released milestones (v0.1.0 … v0.2.2), including the 2026-08-08 session evidence |
+| `v0.5.0.md` | M6 monthly review checklist and v0.5.0 release evidence |
 | `backlog-s1-s6.md` | Planned verification checklists for the audit backlog slices S1–S6 |
 
 ## How to run a verification
