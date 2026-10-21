@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: m6-signal-contract (W3-D5 done — determinism contract published in specs/quality/signal-determinism-contract.md; stable-core subset locked in the registry: `core` flag + `core_version = 1` + comptime lock guard, 26 features, 488/488 tests green. W3 complete; next is Week 4 — TS SDK API freeze)
+active_story: m6-sdk-api-freeze (W4-D1 — SDK 1.0 surface frozen in specs/product/SDK_API_SURFACE.md; `packageSignals()` + `PackageResult` added, `CollectResult.status`/`error` surface transport failures, runtime contract test added; TS SDK 20/20. Next: W4-D2 — deprecation policy + SemVer, pin types)
 
 epics:
   e01-core-engine:

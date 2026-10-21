@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **SDK: frozen 1.0 public API surface** — `specs/product/SDK_API_SURFACE.md`
+  now enumerates every supported export and the error contract. New
+  `packageSignals()` collects and serializes a `SignalPackage` without sending
+  it (the roadmap's `package()` step; the identifier differs because `package`
+  is a strict-mode reserved word). `CollectResult` gains `status` and `error`,
+  so transport failures — and accepted POSTs whose reply body cannot be read —
+  are observable instead of collapsing to `sent: false` with no detail.
+  All changes are additive over 0.4.1.
+
 ## [0.4.1] - 2026-08-29
 
 ### Fixed
