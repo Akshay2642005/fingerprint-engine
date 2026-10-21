@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-21
+
+> Engine milestone release (M6 — API & determinism contract). The browser SDK
+> is versioned independently and ships as `1.0.0-rc.1` under npm `@next`; the
+> engine tag does not publish npm.
+
+### Added
+
+- **Wire ABI pin** — `tests/serialization/abi_pin_test.zig` pins the FPKG
+  header, SignalPackage v1 and v2 bodies, and decode round-trips at compile
+  time, so the ADR-012 ABI table cannot drift from code.
+- **Registry renumbering guard** — `src/model/feature.zig` carries a 102-entry
+  anchor table plus a `comptime` `@field` check; changing or reclaiming a
+  `FeatureID` fails the build.
+- **Capability negotiation** — the SDK appends an optional sorted/deduped
+  `signals` tail to the SignalPackage v2 body; the engine tolerates its absence
+  and never hashes it. Unknown feature ids and short/malformed values decode
+  tolerantly instead of failing the package.
+- **Cross-browser determinism gate** — a 3×3 Chromium/Firefox/WebKit runner
+  compares digests against checked-in goldens and fails CI on any drift. The
+  per-signal triage matrix and the stable-core contract are documented in
+  `specs/quality/`.
+- **Stable-core subset** — the registry marks the RFC-defined core features
+  with `core` + `core_version = 1`, guarded at comptime and pinned by a core
+  signature.
+
+### Changed
+
+- **ADR-012 adopted** — versioning and compatibility contract for the envelope,
+  body schema, and SDK, including the breaking-vs-additive table and the v3
+  escape hatch.
+- **SDK toolchain pinned** — TypeScript `5.9.3`, `types: []`, a type-level
+  surface test, and `npm run verify` (typecheck + types + runtime).
+- **SDK publishing decoupled from engine tags** — `sdk-publish.yml` publishes
+  the SDK from `package.json` via OIDC; `release.yml` skips npm when the tag and
+  package version differ.
+
+### Tests
+
+- Engine suite: **491/491** (468 unit + 23 integration).
+- SDK: **28/28** runtime contract tests plus the type-level surface suite.
+
+## [1.0.0-rc.1] - 2026-10-21
+
+> **Pre-release** — install with `npm install @akshay2642005/fingerprint-sdk@next`.
+> This is the frozen SDK 1.0 surface; no `latest` promotion until 1.0.0 final.
+
+### Added
+
+- **SDK: frozen 1.0 public API surface** — `specs/product/SDK_API_SURFACE.md`
+  now enumerates every supported export and the error contract. New
+  `packageSignals()` collects and serializes a `SignalPackage` without sending
+  it (the roadmap's `package()` step; the identifier differs because `package`
+  is a strict-mode reserved word). `CollectResult` gains `status` and `error`,
+  so transport failures — and accepted POSTs whose reply body cannot be read —
+  are observable instead of collapsing to `sent: false` with no detail.
+  All changes are additive over 0.4.1.
+
+### Changed
+
+- **SDK: reproducible TypeScript surface** — `typescript` is pinned to
+  `5.9.3`, `tsconfig` sets `"types": []` so ambient `@types` cannot leak into
+  the emitted declarations, and `npm run typecheck` is available. The SemVer +
+  deprecation rulebook is published in
+  `specs/product/SDK_DEPRECATION_POLICY.md`, including the two-minor
+  deprecation window and the PR checklist.
+
+### Tests
+
+- **SDK contract suite** — `tests/clients/browser/contract.test.mjs` pins the
+  collect→package→POST round trip: posted bytes, `x-fpkg-*` headers, body /
+  package-id / signal-count agreement, worker-reply parsing, and the 2xx,
+  non-2xx, network, and worker-rejection paths.
+  `tests/clients/browser/types/surface.ts` compiles the frozen signatures and
+  negative cases against `dist/index.d.ts` (`npm run test:types`, wired into
+  CI).
+
+### Documentation
+
+- **SDK 1.0 release conventions** — `specs/product/SDK_RELEASE_CONVENTIONS.md`
+  records the version/tag contract, `next` vs `latest` dist-tags, the canary
+  procedure (pack → clean-consumer install → `publish --dry-run`), OIDC
+  publishing, and the 1.0.0 checklist. SDK publishing is now decoupled from
+  engine tags via the manual `sdk-publish.yml` workflow (OIDC; pre-releases go
+  to `@next`); `release.yml` skips npm when the tag and package version differ
+  instead of failing the engine release.
+
 ## [0.4.1] - 2026-08-29
 
 ### Fixed

@@ -47,20 +47,37 @@ export interface CollectOptions {
 	enablePermissions?: boolean;
 }
 
-/** Result of a collect() — the package that was shipped to the ingress. */
-export interface CollectResult {
+/**
+ * Result of packageSignals() — a collected, serialized SignalPackage that has
+ * not been sent. `CollectResult` extends this with the transport outcome.
+ */
+export interface PackageResult {
 	/** Replay-identity bytes used as the package correlation id. */
 	packageId: Uint8Array;
-	/** The serialized SignalPackage v2 body (exact bytes POSTed). */
+	/** The serialized SignalPackage v2 body (exact bytes that would be POSTed). */
 	bytes: Uint8Array;
 	/** Hex of `bytes`. */
 	hex: string;
 	/** Number of signals in the package. */
 	signalCount: number;
+}
+
+/** Result of a collect() — the package that was shipped to the ingress. */
+export interface CollectResult extends PackageResult {
 	/** Whether the ingress accepted the package (HTTP 2xx). */
 	sent: boolean;
+	/** HTTP status from the ingress (0 when the request never completed). */
+	status?: number;
 	/** Server-computed reply, when the ingress relayed a worker frame. */
 	reply?: WorkerReply;
+	/**
+	 * Transport detail when `sent` is false (network error or thrown fetch), or
+	 * when the reply body could not be read after an accepted POST. Absent on a
+	 * clean exchange; HTTP failures are reported via `status` (and `reply`, when
+	 * the ingress relayed a worker error frame) instead — this function does not
+	 * throw.
+	 */
+	error?: string;
 }
 
 /** Worker reply relayed by the ingress (FPKG fingerprint_result payload). */

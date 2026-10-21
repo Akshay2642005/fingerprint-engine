@@ -2,7 +2,7 @@
 
 Master index for all planning documentation. Everything is written before
 code (per `CONVENTIONS.md`), and status files are refreshed after every
-release. Current release: **v0.4.1** (2026-08-29), Zig **0.14.1**.
+release. Current release: **v0.5.0** (2026-10-21), Zig **0.14.1**.
 
 ## Document map
 
@@ -27,6 +27,9 @@ specs/
 | `product/VISION.md` | Initiative direction and non-targets | Current |
 | `product/SCOPE.md` | What the product does — targets, milestones, out-of-scope | Current |
 | `product/GLOSSARY.yaml` | Domain terms (wire, engine, platform) | Current |
+| `product/SDK_API_SURFACE.md` | Frozen 1.0 SDK public API contract + error paths (W4-D1) | Frozen |
+| `product/SDK_DEPRECATION_POLICY.md` | SemVer rulebook, deprecation window/mechanics, pinned TS toolchain (W4-D2) | Adopted |
+| `product/SDK_RELEASE_CONVENTIONS.md` | npm 1.0 release/tag/dist-tag/canary conventions + checklist (W4-D4) | Adopted |
 | `product/snapshots/` | "What exists today" per release (`v0.4.0.md`) | Current |
 | `decisions/` | ADR-0001…0011 — architectural decision records | Adopted |
 | `decisions/rework/` | Locked D1–D20 rework series: ANALYSIS, DECISIONS, DESIGN, MIGRATION | Complete |
@@ -39,9 +42,12 @@ specs/
 | `planning/PLAN.md` | Milestone plan — M1–M4 (done) + M5 (next) + slices S1–S6 | Current |
 | `planning/STATUS.yaml` | Epic-level execution ledger (e01–e12) + rework breakdown | Current |
 | `planning/PHASES.yaml` | Discover → design → plan → build → verify → release phases | Current |
-| `planning/RELEASES.yaml` | Per-release records (v0.1.0 → v0.4.1) and superseded plans | Current |
+| `planning/RELEASES.yaml` | Per-release records (v0.1.0 → v0.5.0) and superseded plans | Current |
 | `planning/SESSION.yaml` | Session state — active flow, git, modules, CI, handoff | Current |
 | `quality/TEST_PLAN.md` | Test layers, pinned goldens, planned additions | Current |
+| `quality/browser-matrix-design.md` | W3 cross-browser golden runner design + two-layer contract | Current |
+| `quality/signal-determinism-matrix.md` | W3-D4 per-signal determinism triage (M6 stable-core input) | Current |
+| `quality/signal-determinism-contract.md` | W3-D5 determinism contract + locked stable-core subset | Current |
 | `quality/BUGS.yaml` | Confirmed bug tracker (BUG-001 … BUG-003) | Open |
 | `quality/audits/` | Repository audits (`2026-08-08.md` — bugs, gaps, features) | Current |
 | `quality/verifications/` | Manual verification / UAT checklists per milestone | Current |

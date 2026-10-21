@@ -15,7 +15,7 @@ import { sendPackage, connectDecisionSocket } from "./transport.js";
 import { DecisionGate } from "./middleware.js";
 import { SDK_VERSION, DEFAULT_INGRESS_URL } from "./generated/config.js";
 import { FeatureID, FeatureType } from "./generated/tables.js";
-import type { BlockDecision, CollectOptions, CollectResult, SdkConfig } from "./types.js";
+import type { BlockDecision, CollectOptions, CollectResult, PackageResult, SdkConfig } from "./types.js";
 
 /** Current runtime configuration (overridable via configure()). */
 let config: SdkConfig = { ingressUrl: DEFAULT_INGRESS_URL };
@@ -40,11 +40,20 @@ export function configure(options: Partial<SdkConfig>): void {
 }
 
 /**
- * Collects signals, serializes the SignalPackage v2 body, and POSTs it to
- * the ingress. Never computes a fingerprint — the reply, when present,
- * carries the worker's canonical digest.
+ * Collects signals and serializes the SignalPackage v2 body **without** sending
+ * it — the SDK's "package" step. (The roadmap calls this `package()`; the
+ * identifier is `packageSignals` because `package` is a strict-mode reserved
+ * word in ES modules.) Use it to persist, relay, or inspect the exact bytes.
+ *
+ * @example
+ * const pkg = await packageSignals();
+ * await storage.put(`pkg-${toHex(pkg.packageId)}`, pkg.bytes); // pkg.hex, pkg.signalCount
+ *
+ * story: m6-sdk-api-freeze
  */
-export async function collect(options: CollectOptions = {}): Promise<CollectResult> {
+export async function packageSignals(
+	options: CollectOptions = {},
+): Promise<PackageResult> {
 	const signals = await collectSignals(options);
 	const packageId = newPackageId();
 	const bytes = encodeSignalPackage(signals, {
@@ -52,18 +61,34 @@ export async function collect(options: CollectOptions = {}): Promise<CollectResu
 		collectedAt: Date.now(),
 		packageId,
 	});
-	const sent = await sendPackage(bytes, config, {
-		schemaVersion: SCHEMA_VERSION,
-		sdkVersion: SDK_VERSION,
-		packageId,
-	});
 	return {
 		packageId,
 		bytes,
 		hex: toHex(bytes),
 		signalCount: signals.length,
+	};
+}
+
+/**
+ * Packages the collected signals (see `packageSignals`) and POSTs them to the
+ * ingress. Never computes a fingerprint — the reply, when present, carries the
+ * worker's canonical digest. I/O problems resolve as data (`sent`, `status`,
+ * `error`) instead of throwing; a 2xx whose reply body cannot be read reports
+ * `sent: true` with `error` set.
+ */
+export async function collect(options: CollectOptions = {}): Promise<CollectResult> {
+	const pkg = await packageSignals(options);
+	const sent = await sendPackage(pkg.bytes, config, {
+		schemaVersion: SCHEMA_VERSION,
+		sdkVersion: SDK_VERSION,
+		packageId: pkg.packageId,
+	});
+	return {
+		...pkg,
 		sent: sent.ok,
+		status: sent.status,
 		reply: sent.reply,
+		error: sent.error,
 	};
 }
 
@@ -94,6 +119,7 @@ export type {
 	Signal,
 	SignalValue,
 	CollectOptions,
+	PackageResult,
 	CollectResult,
 	SendResult,
 	SdkConfig,
@@ -101,4 +127,4 @@ export type {
 	WorkerReply,
 } from "./types.js";
 
-export default { configure, collect, assertAllowed, onSessionBlocked, getFeatureIDs };
+export default { configure, packageSignals, collect, assertAllowed, onSessionBlocked, getFeatureIDs };

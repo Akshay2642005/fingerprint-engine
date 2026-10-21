@@ -7,13 +7,22 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: develop
+  branch: m6/w4d5-cut-v0.5.0
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
-  latest_tag: v0.4.1
+  latest_tag: v0.5.0
 
 releases:
+  v0.5.0:
+    date: "2026-10-21"
+    status: released
+    summary: "M6 — API & determinism contract: ADR-012 wire versioning + ABI pin, FeatureID registry lock, tolerant lookup/decode + capability tail, 3×3 cross-browser golden-digest gate, stable-core subset, SDK 1.0 surface frozen with SemVer + contract suites. Engine 491/491; SDK 1.0.0-rc.1 on npm @next."
+    artifacts:
+      - GitHub Release (WASM + native binaries for linux-x86_64, linux-aarch64, macos-x86_64, macos-aarch64)
+      - GHCR images (fingerprint-worker, fingerprint-ingress)
+      - npm (@akshay2642005/fingerprint-sdk 1.0.0-rc.1 under @next; latest stays 0.4.1)
+
   v0.4.1:
     date: "2026-08-29"
     status: released
@@ -78,8 +87,8 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 457
-  unit_tests: 434
+  total_tests: 488
+  unit_tests: 465
   integration_tests: 23
   status: all_green
   fuzz_targets: 3
@@ -148,6 +157,34 @@ handoff:
     Distributed-engine roadmap complete (M1–M5); v0.4.1 shipped with the
     Docker/AMQP DNS fix (PR #31). 457 tests green. The v1.0.0 path is defined
     in specs/planning/ROADMAP-v1.0.0.md — M6 (API & determinism contract) is
-    active: ADR-012 (versioning/compatibility) drafted, ABI pin + registry lock
-    next. M7 re-scoped 2026-09-07 to the event envelope + platform ledger
-    contract (no Zig store, D-v1-4).
+    active: ADR-012 (versioning/compatibility) adopted; ABI pin + registry lock
+    done. W3 (cross-browser golden matrix): D1–D4 done — golden capture
+    authoritative on ubuntu-24.04, PRs gate strictly, and the per-signal
+    determinism matrix is published (specs/quality/signal-determinism-matrix.md:
+    CI 3x3 + local Brave 10x10 stable, 38 cross-env diffs classified, no
+    run-to-run drift), and W3-D5 is done: the determinism contract
+    (specs/quality/signal-determinism-contract.md) plus the locked stable-core
+    subset (registry `core` flag + `core_version = 1` + comptime lock guard, 24
+    features). 491 tests green. W4-D1 is merged (#53): the SDK 1.0 public surface
+    is frozen in specs/product/SDK_API_SURFACE.md, with `packageSignals()` +
+    `PackageResult` added and `CollectResult.status`/`error` surfacing transport
+    failures. W4-D2 pins the toolchain and publishes the SemVer/deprecation
+    rulebook (specs/product/SDK_DEPRECATION_POLICY.md; TypeScript 5.9.3,
+    `types: []`, single typed export). W4-D3 is done: `contract.test.mjs` pins
+    the collect→package→POST round trip and error paths, and the type-level
+    contract (`tests/clients/browser/types/surface.ts`, `npm run test:types`)
+    is wired into CI — 28/28 runtime tests. W4-D4 is done: the 1.0 canary
+    `1.0.0-rc.1` is live on the public registry under `@next` (38 files,
+    provenance published; `latest` remains `0.4.1`). A clean consumer installed
+    from npm and `packageSignals()` produced 57 signals and a 1006-byte
+    SignalPackage v2 body. Conventions are recorded in
+    specs/product/SDK_RELEASE_CONVENTIONS.md. SDK publishing is decoupled
+    from engine tags: `sdk-publish.yml` (manual, OIDC, version-driven) publishes
+    the package, and `release.yml` skips npm when the tag and package version
+    differ. The registry-verification step now retries through npm replication
+    lag instead of reporting a successful publish as a failure. W4-D5 is done:
+    the M6 review checklist (specs/quality/verifications/v0.5.0.md) is green,
+    the product snapshot is written (specs/product/snapshots/v0.5.0.md), and
+    v0.5.0 is cut (engine 491/491; 10 required CI checks). M7 is next,
+    re-scoped 2026-09-07 to the event envelope + platform ledger contract (no
+    Zig store, D-v1-4).

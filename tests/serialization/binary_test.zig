@@ -3,6 +3,7 @@ const testing = std.testing;
 const features = @import("model");
 const fingerprint = @import("model");
 const serialization = @import("serialization");
+const core = @import("core");
 
 // ──────────────────────────────────────────────
 // Binary Serialization — Encode header
@@ -479,20 +480,342 @@ test "decode rejects invalid FeatureType tag" {
     try testing.expectError(error.InvalidPayload, serialization.decode(&r, allocator));
 }
 
-test "decode rejects invalid FeatureID tag" {
+// m6-tolerant-lookup: unknown FeatureIDs are silently skipped; the package
+// decodes with zero or fewer features, never InvalidPayload.
+// story: m6-tolerant-lookup
+test "decode skips unknown FeatureID instead of rejecting" {
     const allocator = testing.allocator;
-    // FNGR magic | v1 | feature_count=1 | id=9999 (invalid) | type=0 (Boolean) | len=1 | value
-    const invalid_id = [_]u8{
-        'F', 'N', 'G', 'R', // magic
-        1, 0, // schema_version = 1
-        1, 0, // feature_count = 1
-        0x27, 0x27, // feature_id = 9999 (invalid FeatureID)
-        0, // type_tag = 0 (Boolean)
-        1, 0, 0, 0, // payload_len = 1
-        1, // payload: true
+    // FNGR magic | v1 | feature_count=1 | id=9999 (unknown) | type=0 (Boolean) | len=1 | value
+    const unknown_id = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0x27, 0x27,
+        0,
+        1, 0, 0, 0,
+        1,
+    };
+    var fbs = std.io.fixedBufferStream(&unknown_id);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+test "decode skips Count sentinel (id=102) as unknown" {
+    const allocator = testing.allocator;
+    // FNGR magic | v1 | feature_count=1 | id=102 (Count sentinel) | type=0 (Boolean) | len=1 | value
+    const sentinel_id = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        102, 0,
+        0,
+        1, 0, 0, 0,
+        0,
+    };
+    var fbs = std.io.fixedBufferStream(&sentinel_id);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+test "decode compacts features: skips unknown ids, keeps known" {
+    const allocator = testing.allocator;
+    // v1 | feature_count=3: unknown(9999), Count(102), UserAgent(0 String "ab")
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        3, 0,
+        // unknown id 9999
+        0x27, 0x27, 0, 1, 0, 0, 0, 1,
+        // Count sentinel 102
+        102, 0, 0, 1, 0, 0, 0, 0,
+        // UserAgent (id=0) String "ab"
+        0, 0, 3, 6, 0, 0, 0, 2, 0, 0, 0, 'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 1), decoded.fingerprint.features.len);
+     try testing.expectEqual(features.FeatureID.UserAgent, decoded.fingerprint.features[0].id);
+     try testing.expectEqualStrings("ab", decoded.fingerprint.features[0].value.String);
+}
+
+// ── m6-tolerant-decode: short/malformed values and non-canonical booleans → drop ──
+
+// story: m6-tolerant-decode
+test "decode drops non-canonical boolean (byte=2)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=Boolean | payload_len=1 | value=2
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        1, 0, 0, 0,
+        2,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short Integer (4 bytes instead of 8)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=Integer | payload_len=4 | 4 bytes
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        1, 0, 0, 0,
+        4, 0, 0, 0,
+        0, 0, 0, 0,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short String (declared len=5, 2 bytes provided)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=String | payload_len=6 | u32 len=5 + 2 bytes
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        3, 0, 0, 0,
+        6, 0, 0, 0,
+        5, 0, 0, 0,
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short StringArray (count=3, only 1 item present)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=StringArray | payload_len=10 | count=3, 1 item
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        5, 0, 0, 0,
+        10, 0, 0, 0,
+        3, 0, 0, 0,
+        2, 0, 0, 0,
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short Float (4 bytes instead of 8)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=Float | payload_len=4 | 4 bytes
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        2, 0, 0, 0,
+        4, 0, 0, 0,
+        0, 0, 0, 0,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short Bytes (declared len=5, 2 bytes provided)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=Bytes | payload_len=6 | u32 len=5 + 2 bytes
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        4, 0, 0, 0,
+        6, 0, 0, 0,
+        5, 0, 0, 0,
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short IntegerArray (count=3, only 1 element present)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=IntegerArray | payload_len=12 | count=3, 1 element
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        6, 0, 0, 0,
+        12, 0, 0, 0,
+        3, 0, 0, 0,
+        1, 0, 0, 0, 0, 0, 0, 0,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short FloatArray (count=3, only 1 element present)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=FloatArray | payload_len=12 | count=3, 1 element
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        7, 0, 0, 0,
+        12, 0, 0, 0,
+        3, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode drops short BytesArray (count=3, only 1 item present)" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=1 | id=0 | type=BytesArray | payload_len=10 | count=3, 1 item
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        1, 0,
+        0, 0, 0,
+        8, 0, 0, 0,
+        10, 0, 0, 0,
+        3, 0, 0, 0,
+        2, 0, 0, 0,
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 0), decoded.fingerprint.features.len);
+}
+
+// story: m6-tolerant-decode
+test "decode compacts: drops malformed value, keeps valid" {
+    const allocator = testing.allocator;
+    // FNGR | v1 | feature_count=2: non-canonical Boolean (dropped), UserAgent String "ab" (kept)
+    const body = [_]u8{
+        'F', 'N', 'G', 'R',
+        1, 0,
+        2, 0,
+        // Feature 1: non-canonical Boolean (dropped)
+        0, 0,       // id=0
+        0,          // type=Boolean
+        1, 0, 0, 0, // payload_len=1
+        2,          // value=2 (non-canonical)
+        // Feature 2: UserAgent String "ab" (kept)
+        0, 0,       // id=0
+        3,          // type=String
+        6, 0, 0, 0, // payload_len=6
+        2, 0, 0, 0, // string len=2
+        'a', 'b',
+    };
+    var fbs = std.io.fixedBufferStream(&body);
+    var r = fbs.reader();
+    const decoded = try serialization.decode(&r, allocator);
+    defer decoded.deinit();
+    try testing.expectEqual(@as(usize, 1), decoded.fingerprint.features.len);
+    try testing.expectEqual(features.FeatureID.UserAgent, decoded.fingerprint.features[0].id);
+    try testing.expectEqualStrings("ab", decoded.fingerprint.features[0].value.String);
+}
+
+// story: m6-regression-fixtures
+test "v2: capability tail is ignored on decode and digest is unchanged" {
+    const allocator = testing.allocator;
+    const fp = fingerprint.Fingerprint{
+        .metadata = fingerprint.FingerprintMetadata{
+            .schema_version = 2,
+            .sdk_version = "0.4.1",
+            .collected_at = 1700000000123,
+            .package_id = test_package_id,
+        },
+        .features = &.{
+            fingerprint.Feature{ .id = features.FeatureID.UserAgent, .value = fingerprint.FeatureValue{ .String = "Mozilla/5.0" } },
+            fingerprint.Feature{ .id = features.FeatureID.CookieEnabled, .value = fingerprint.FeatureValue{ .Boolean = true } },
+            fingerprint.Feature{ .id = features.FeatureID.HardwareConcurrency, .value = fingerprint.FeatureValue{ .Integer = 8 } },
+        },
     };
 
-    var fbs = std.io.fixedBufferStream(&invalid_id);
-    var r = fbs.reader();
-    try testing.expectError(error.InvalidPayload, serialization.decode(&r, allocator));
+    // The same fingerprint serialized twice: bare, and with the ADR-012
+    // capability tail appended after the feature TLVs (DESIGN §9.4.7).
+    var buf_a: [512]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf_a);
+    try serialization.encode(fbs.writer(), fp);
+    const without_tail = fbs.getWritten();
+
+    var buf_b: [512]u8 = undefined;
+    var fbs2 = std.io.fixedBufferStream(&buf_b);
+    try serialization.encode(fbs2.writer(), fp);
+    try serialization.encodeCapabilityTail(fbs2.writer(), &.{ 0, 9, 11 });
+    const with_tail = fbs2.getWritten();
+    try testing.expectEqual(@as(usize, without_tail.len + 8), with_tail.len);
+
+    var fs_a = std.io.fixedBufferStream(without_tail);
+    var r1 = fs_a.reader();
+    const d1 = try serialization.decode(&r1, allocator);
+    defer d1.deinit();
+    var fs_b = std.io.fixedBufferStream(with_tail);
+    var r2 = fs_b.reader();
+    const d2 = try serialization.decode(&r2, allocator);
+    defer d2.deinit();
+
+    // Skip-by-length: the decoder reads feature_count features and ignores
+    // the trailing bytes, so both decode to the identical feature set.
+    try testing.expectEqual(@as(usize, 3), d1.fingerprint.features.len);
+    try testing.expectEqual(@as(usize, 3), d2.fingerprint.features.len);
+    for (d1.fingerprint.features, d2.fingerprint.features) |a, b| {
+        try testing.expectEqual(a.id, b.id);
+        try testing.expectEqualDeep(a.value, b.value);
+    }
+
+    // The tail is metadata, not hashed: identical canonical feature buffers
+    // produce byte-identical digests with or without it.
+    var digest1: [32]u8 = undefined;
+    var digest2: [32]u8 = undefined;
+    core.hashing.hashFingerprintBuffer(d1.fingerprint.features, &digest1);
+    core.hashing.hashFingerprintBuffer(d2.fingerprint.features, &digest2);
+    try testing.expectEqualSlices(u8, &digest1, &digest2);
 }

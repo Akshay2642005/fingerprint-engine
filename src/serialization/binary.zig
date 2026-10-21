@@ -2,6 +2,7 @@ const std = @import("std");
 
 const FeatureID = @import("model").FeatureID;
 const FeatureType = @import("model").FeatureType;
+const Registry = @import("model").Registry;
 const fingerprint = @import("model");
 const Feature = fingerprint.Feature;
 const FeatureValue = fingerprint.FeatureValue;
@@ -87,6 +88,20 @@ fn encodeV2Body(w: anytype, fp: Fingerprint) !void {
     try encodeV1Body(w, fp);
 }
 
+/// Appends the ADR-012 capability tail to a v2 body:
+/// `signals_count u16 | signals u16 ×count`, after `features TLV×N`
+/// (DESIGN §9.4.7). `ids` must already be sorted ascending and deduplicated
+/// (producer rule; package.ts derives the same set from collected signals).
+/// The tail is metadata: it is **not** hashed into the canonical digest, and
+/// a decoder that does not know it tolerates the trailing bytes
+/// (skip-by-length). The engine never emits it — only SDKs do.
+/// story: m6-sdk-signals
+pub fn encodeCapabilityTail(w: anytype, ids: []const u16) !void {
+    std.debug.assert(ids.len <= std.math.maxInt(u16));
+    try w.writeInt(u16, @as(u16, @intCast(ids.len)), .little);
+    for (ids) |id| try w.writeInt(u16, id, .little);
+}
+
 fn encodeFeature(w: anytype, feat: Feature) !void {
     try w.writeInt(u16, @intFromEnum(feat.id), .little);
     try w.writeByte(@intFromEnum(feat.value.valueType()));
@@ -149,6 +164,7 @@ fn writeValuePayload(w: anytype, value: FeatureValue) !void {
 pub const DecodeError = error{
     InvalidMagic,
     InvalidPayload,
+    PayloadTooLarge,
     UnsupportedVersion,
     Truncated,
     OutOfMemory,
@@ -190,14 +206,24 @@ fn decodeV1(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerp
     const feature_count = std.mem.readInt(u16, &count_bytes, .little);
 
     const features_slice = try allocator.alloc(Feature, feature_count);
-    errdefer allocator.free(features_slice);
-
-    for (features_slice, 0..) |*feat, i| {
-        feat.* = decodeFeature(r, allocator) catch |err| {
-            for (0..i) |j| freeFeatureValue(allocator, features_slice[j].value);
-            return err;
-        };
+    var written: usize = 0;
+    errdefer {
+        for (features_slice[0..written]) |f| freeFeatureValue(allocator, f.value);
+        allocator.free(features_slice);
     }
+    var i: usize = 0;
+    while (i < feature_count) : (i += 1) {
+        const decoded = decodeFeature(r, allocator) catch |err| return err;
+        if (decoded) |feat| {
+            features_slice[written] = feat;
+            written += 1;
+        }
+    }
+
+    const features = if (written < feature_count)
+        try allocator.realloc(features_slice, written)
+    else
+        features_slice;
 
     return DecodedFingerprint{
         .fingerprint = Fingerprint{
@@ -206,7 +232,7 @@ fn decodeV1(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerp
                 .sdk_version = "",
                 .collected_at = 0,
             },
-            .features = features_slice,
+            .features = features,
         },
         .allocator = allocator,
     };
@@ -231,14 +257,24 @@ fn decodeV2(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerp
     const feature_count = std.mem.readInt(u16, &count_bytes, .little);
 
     const features_slice = try allocator.alloc(Feature, feature_count);
-    errdefer allocator.free(features_slice);
-
-    for (features_slice, 0..) |*feat, i| {
-        feat.* = decodeFeature(r, allocator) catch |err| {
-            for (0..i) |j| freeFeatureValue(allocator, features_slice[j].value);
-            return err;
-        };
+    var written: usize = 0;
+    errdefer {
+        for (features_slice[0..written]) |f| freeFeatureValue(allocator, f.value);
+        allocator.free(features_slice);
     }
+    var i: usize = 0;
+    while (i < feature_count) : (i += 1) {
+        const decoded = decodeFeature(r, allocator) catch |err| return err;
+        if (decoded) |feat| {
+            features_slice[written] = feat;
+            written += 1;
+        }
+    }
+
+    const features = if (written < feature_count)
+        try allocator.realloc(features_slice, written)
+    else
+        features_slice;
 
     return DecodedFingerprint{
         .fingerprint = Fingerprint{
@@ -248,13 +284,13 @@ fn decodeV2(r: anytype, allocator: std.mem.Allocator) DecodeError!DecodedFingerp
                 .collected_at = collected_at,
                 .package_id = package_id,
             },
-            .features = features_slice,
+            .features = features,
         },
         .allocator = allocator,
     };
 }
 
-fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!Feature {
+fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!?Feature {
     const id_bytes = try readArray(r, 2);
     const id_int = std.mem.readInt(u16, &id_bytes, .little);
 
@@ -264,31 +300,47 @@ fn decodeFeature(r: anytype, allocator: std.mem.Allocator) DecodeError!Feature {
     const len_bytes = try readArray(r, 4);
     const payload_len = std.mem.readInt(u32, &len_bytes, .little);
 
+    // R-3: enforce per-feature payload size cap on decode (matches encode).
+    if (payload_len > max_feature_payload_size) return error.PayloadTooLarge;
+
     const payload = try allocator.alloc(u8, payload_len);
     defer allocator.free(payload);
     try readExact(r, payload);
+
+    // m6-tolerant-lookup: ids outside the shipped registry are silently skipped
+    // — the caller compacts the feature slice so the package still decodes
+    // (DESIGN §9.4.7). The payload is still drained so TLV framing holds.
+    // story: m6-tolerant-lookup
+    if (Registry.lookup(id_int) == null) return null;
 
     // BUG-009: validate enum tags from untrusted wire data before use.
     const feature_type = std.meta.intToEnum(FeatureType, type_tag) catch return error.InvalidPayload;
 
     var pfbs = std.io.fixedBufferStream(payload);
     var pr = pfbs.reader();
-    const value = try readValuePayload(&pr, allocator, feature_type);
-
-    const feature_id = std.meta.intToEnum(FeatureID, id_int) catch return error.InvalidPayload;
-
-    return Feature{
-        .id = feature_id,
-        .value = value,
+    // story: m6-tolerant-decode
+    const value = readValuePayload(&pr, allocator, feature_type) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return null,
     };
+    const feature_id = std.meta.intToEnum(FeatureID, id_int) catch unreachable;
+    return if (value) |v| Feature{ .id = feature_id, .value = v } else null;
 }
 
-fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) DecodeError!FeatureValue {
-    switch (tag) {
+// story: m6-tolerant-decode
+fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) DecodeError!?FeatureValue {
+    // Tolerant decode (m6-tolerant-decode): short/malformed payloads and
+    // non-canonical booleans never fail the package. readArray/readExact/readU32
+    // map all read failure to error.Truncated, which decodeFeature converts to a
+    // dropped feature; OutOfMemory still propagates. errdefer frees interim
+    // allocations on every error/Truncated path; only OutOfMemory is allowed to
+    // escape as an error, and null (drop) never fires errdefers that would leak.
+    return switch (tag) {
         .Boolean => {
-            const byte = (try readArray(r, 1))[0];
-            // R-4: reject non-canonical booleans — payload must be exactly 1 byte.
-            if (byte != 0 and byte != 1) return error.InvalidPayload;
+            const bytes = try readArray(r, 1);
+            const byte = bytes[0];
+            // Non-canonical boolean payloads are dropped (tolerant).
+            if (byte != 0 and byte != 1) return null;
             return FeatureValue{ .Boolean = byte == 1 };
         },
         .Integer => {
@@ -303,24 +355,32 @@ fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) 
         .String => {
             const len = try readU32(r);
             const bytes = try allocator.alloc(u8, len);
+            errdefer allocator.free(bytes);
             try readExact(r, bytes);
             return FeatureValue{ .String = bytes };
         },
         .Bytes => {
             const len = try readU32(r);
             const bytes = try allocator.alloc(u8, len);
+            errdefer allocator.free(bytes);
             try readExact(r, bytes);
             return FeatureValue{ .Bytes = bytes };
         },
         .StringArray => {
             const count = try readU32(r);
             var items = try allocator.alloc([]const u8, count);
-            errdefer allocator.free(items);
+            var allocated: usize = 0;
+            errdefer {
+                for (items[0..allocated]) |it| allocator.free(it);
+                allocator.free(items);
+            }
             for (0..count) |i| {
                 const item_len = try readU32(r);
                 const item = try allocator.alloc(u8, item_len);
+                errdefer allocator.free(item);
                 try readExact(r, item);
                 items[i] = item;
+                allocated += 1;
             }
             return FeatureValue{ .StringArray = items };
         },
@@ -347,16 +407,22 @@ fn readValuePayload(r: anytype, allocator: std.mem.Allocator, tag: FeatureType) 
         .BytesArray => {
             const count = try readU32(r);
             var items = try allocator.alloc([]const u8, count);
-            errdefer allocator.free(items);
+            var allocated: usize = 0;
+            errdefer {
+                for (items[0..allocated]) |it| allocator.free(it);
+                allocator.free(items);
+            }
             for (0..count) |i| {
                 const item_len = try readU32(r);
                 const item = try allocator.alloc(u8, item_len);
+                errdefer allocator.free(item);
                 try readExact(r, item);
                 items[i] = item;
+                allocated += 1;
             }
             return FeatureValue{ .BytesArray = items };
         },
-    }
+    };
 }
 
 fn readU32(r: anytype) DecodeError!u32 {

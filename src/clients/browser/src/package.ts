@@ -6,6 +6,11 @@
  * specs/rework/DESIGN.md §9.4.4; cross-checked against the Zig golden
  * fixture by the TS parity test (tests/clients/browser/).
  *
+ * Since M6 (W2-D4, m6-sdk-signals) every body also carries the ADR-012
+ * capability tail (DESIGN §9.4.7): `signals_count u16 | ids u16 ×count`
+ * appended after the feature TLVs — the ids of the signals actually
+ * collected, sorted ascending and deduplicated. Metadata, not hashed.
+ *
  * Pure functions, no clocks, no globals — fully replayable.
  */
 
@@ -132,6 +137,16 @@ export function encodeSignalPackage(
 	for (const signal of signals) {
 		writeFeature(w, signal);
 	}
+
+	// ADR-012 capability tail (DESIGN §9.4.7): the ids of the signals this
+	// package collected, sorted ascending and deduplicated (deterministic
+	// bytes), as `signals_count u16 | ids u16 ×count`. Always emitted; a
+	// decoder that does not know it skips the trailing bytes, and the tail
+	// is metadata — not part of the canonical digest.
+	// story: m6-sdk-signals
+	const ids = [...new Set(signals.map((s) => s.id))].sort((a, b) => a - b);
+	w.u16(ids.length);
+	for (const id of ids) w.u16(id);
 	return w.finish();
 }
 
