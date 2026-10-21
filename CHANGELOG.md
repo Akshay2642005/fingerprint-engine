@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are observable instead of collapsing to `sent: false` with no detail.
   All changes are additive over 0.4.1.
 
+### Changed
+
+- **SDK: reproducible TypeScript surface** — `typescript` is pinned to
+  `5.9.3`, `tsconfig` sets `"types": []` so ambient `@types` cannot leak into
+  the emitted declarations, and `npm run typecheck` is available. The SemVer +
+  deprecation rulebook is published in
+  `specs/product/SDK_DEPRECATION_POLICY.md`, including the two-minor
+  deprecation window and the PR checklist.
+
 ## [0.4.1] - 2026-08-29
 
 ### Fixed

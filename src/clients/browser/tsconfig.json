@@ -5,6 +5,7 @@
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
 		"lib": ["ES2020", "DOM", "DOM.Iterable"],
+		"types": [],
 		"declaration": true,
 		"declarationDir": "dist",
 		"outDir": "dist",

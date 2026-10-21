@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: m6-sdk-api-freeze (W4-D1 — SDK 1.0 surface frozen in specs/product/SDK_API_SURFACE.md; `packageSignals()` + `PackageResult` added, `CollectResult.status`/`error` surface transport failures, runtime contract test added; TS SDK 20/20. Next: W4-D2 — deprecation policy + SemVer, pin types)
+active_story: "m6-sdk-semver (W4-D2 — SemVer + deprecation policy frozen in specs/product/SDK_DEPRECATION_POLICY.md; TS pinned to 5.9.3, `types: []`, single typed export pinned by the contract test; TS SDK 23/23. Next: W4-D3 — API contract tests (types + runtime))"
 
 epics:
   e01-core-engine:

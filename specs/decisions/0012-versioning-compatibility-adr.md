@@ -92,9 +92,11 @@ it already understands.
    different meaning. Reclaiming is allowed only on a breaking schema bump, and
    then never inside a version 1.0 supports.
 
-### 5. SemVer policy for the npm SDK (first cut)
+### 5. SemVer policy for the npm SDK (frozen)
 
-Refined and frozen with the SDK freeze; this is the contractual baseline:
+Refined and frozen with the SDK freeze; this is the contractual baseline. The
+operational rulebook — deprecation mechanics, window, pinned toolchain, and PR
+checklist — lives in [`product/SDK_DEPRECATION_POLICY.md`](../product/SDK_DEPRECATION_POLICY.md).
 
 - **minor** — additive signal collectors/features, backwards-compatible
   signals, docs. Must keep producing bytes a 1.0 engine decodes.
@@ -102,11 +104,16 @@ Refined and frozen with the SDK freeze; this is the contractual baseline:
 - **major** — any change requiring a new SignalPackage schema version, a raised
   minimum engine version, or a changed public API / default behavior; issued
   only together with the engine release that supports it.
+- **deprecation** — a public symbol is deprecated for two consecutive minor
+  releases (or 90 days plus a major) before removal. Deprecated symbols keep
+  their behavior for the whole window and warn once at runtime.
 - Compatibility claim: an SDK minor works with every engine speaking the same
   SignalPackage schema version; `sdk_version` (v2 body) records the claim per
   package.
 - Pre-1.0, the SDK ships 0.x aligned to engine milestone cuts; the wire is
-  frozen at engine 1.0.
+  frozen at engine 1.0. Breaks in 0.x minors are called out in the changelog.
+- The TypeScript compiler is pinned exactly, `tsconfig` disables ambient
+  `@types`, and the package exposes a single typed `"."` export.
 
 ## Consequences
 

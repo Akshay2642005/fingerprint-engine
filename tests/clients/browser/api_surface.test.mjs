@@ -14,6 +14,9 @@
 
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const PKG_URL = new URL("../../../src/clients/browser/package.json", import.meta.url);
 
 let sdk;
 
@@ -121,6 +124,22 @@ test("public surface exports the frozen 1.0 symbols", () => {
 	for (const name of ergonomic) {
 		assert.equal(sdk.default[name], sdk[name], `default.${name} must alias the named export`);
 	}
+});
+
+test("SDK_VERSION matches the package version", () => {
+	const pkg = JSON.parse(readFileSync(PKG_URL, "utf8"));
+	assert.equal(sdk.SDK_VERSION, pkg.version);
+});
+
+test("package exports exactly one typed entry point", () => {
+	const pkg = JSON.parse(readFileSync(PKG_URL, "utf8"));
+	assert.deepEqual(Object.keys(pkg.exports), ["."]);
+	assert.deepEqual(pkg.exports["."], {
+		types: "./dist/index.d.ts",
+		default: "./dist/index.js",
+	});
+	assert.equal(pkg.types, "./dist/index.d.ts");
+	assert.equal(pkg.main, "./dist/index.js");
 });
 
 test("packageSignals() packages without sending", async () => {
