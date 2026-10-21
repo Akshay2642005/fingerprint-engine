@@ -227,8 +227,11 @@ From W4-D1 onward:
   first (W4-D2 policy).
 - **No signature changes** to the symbols above without a major release.
 - Internal modules may change freely as long as the surface and wire bytes hold.
-- The runtime contract test suite (`tests/clients/browser/api_surface.test.mjs`)
-  guards the export list and the `collect()` error paths; it must stay green.
+- The runtime contract suites (`tests/clients/browser/api_surface.test.mjs` and
+  `contract.test.mjs`) plus the type-level check
+  (`tests/clients/browser/types/surface.ts`, `npm run test:types`) guard the
+  export list, signatures, wire round trip, and `collect()` error paths; they
+  must stay green.
 
 ---
 

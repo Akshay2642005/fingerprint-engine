@@ -19,6 +19,8 @@
 		"build": "cd ../.. && zig build clients:browser",
 		"prepublishOnly": "npm run build",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test:types": "tsc -p ../../../tests/clients/browser/tsconfig.types.json",
+		"verify": "npm run typecheck && npm run test:types && npm test",
 		"test": "node --test ../../../tests/clients/browser/*.test.mjs"
 	},
 	"keywords": [

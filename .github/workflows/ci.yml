@@ -89,6 +89,10 @@ jobs:
         run: npm test
         working-directory: src/clients/browser
 
+      - name: Type-level API contract
+        run: npm run test:types
+        working-directory: src/clients/browser
+
   browser-matrix:
     name: Browser Matrix
     # Pinned image — must match golden-capture.yml exactly: the pins are

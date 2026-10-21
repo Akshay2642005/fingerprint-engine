@@ -10,7 +10,7 @@ on every commit (Zig 0.14.1).
 |-------|----------|--------|
 | Unit (Zig) | `tests/{model,core,serialization,engine,io,adapter,worker,build,browser}/` | algorithms, codecs, engine dispatch, io primitives, adapter framing, worker CLI parsing |
 | Integration/e2e | `src/integration_tests.zig` (drives pre-built executables) | scripts/bench smokes, worker loopback pipe + tcp round-trip, protocol-violation handling, `amqp` round-trip |
-| TS (node --test) | `tests/clients/browser/` | golden parity (TS serializer vs Zig fixture), wire-layout, middleware, mocked-fetch transport |
+| TS (node --test) | `tests/clients/browser/` | golden parity (TS serializer vs Zig fixture), wire-layout, middleware, mocked-fetch transport; frozen-surface contract (`api_surface`, `contract`) and type-level surface (`types/surface.ts` via `npm run test:types`) |
 | Fuzz | `tests/fuzz/` | decode, normalize, hashing |
 | Bench | `src/bench/` | 12 deterministic benchmarks |
 
