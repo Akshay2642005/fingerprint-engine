@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: "m6-sdk-semver (W4-D2 — SemVer + deprecation policy frozen in specs/product/SDK_DEPRECATION_POLICY.md; TS pinned to 5.9.3, `types: []`, single typed export pinned by the contract test; TS SDK 23/23. Next: W4-D3 — API contract tests (types + runtime))"
+active_story: "m6-sdk-contract-tests (W4-D3 — runtime contract tests/clients/browser/contract.test.mjs pins collect→package→POST + error paths; type-level contract tests/clients/browser/types/surface.ts compiles the frozen signatures/negatives via npm run test:types, wired into CI; TS SDK 28/28. Next: W4-D4 — canary publish dry-run)"
 
 epics:
   e01-core-engine:

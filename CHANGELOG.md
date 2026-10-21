@@ -27,6 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `specs/product/SDK_DEPRECATION_POLICY.md`, including the two-minor
   deprecation window and the PR checklist.
 
+### Tests
+
+- **SDK contract suite** — `tests/clients/browser/contract.test.mjs` pins the
+  collect→package→POST round trip: posted bytes, `x-fpkg-*` headers, body /
+  package-id / signal-count agreement, worker-reply parsing, and the 2xx,
+  non-2xx, network, and worker-rejection paths.
+  `tests/clients/browser/types/surface.ts` compiles the frozen signatures and
+  negative cases against `dist/index.d.ts` (`npm run test:types`, wired into
+  CI).
+
 ## [0.4.1] - 2026-08-29
 
 ### Fixed

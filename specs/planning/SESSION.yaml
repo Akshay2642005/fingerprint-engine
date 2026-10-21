@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m6/week4-sdk-semver
+  branch: m6/week4-sdk-contract-tests
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -159,9 +159,12 @@ handoff:
     features). 491 tests green. W4-D1 is merged (#53): the SDK 1.0 public surface
     is frozen in specs/product/SDK_API_SURFACE.md, with `packageSignals()` +
     `PackageResult` added and `CollectResult.status`/`error` surfacing transport
-    failures. W4-D2 adds specs/product/SDK_DEPRECATION_POLICY.md (SemVer mapping,
-    two-minor deprecation window, pinned toolchain) and pins TypeScript 5.9.3 +
-    `types: []` + the single typed export. Next: W4-D3 — API contract tests
-    (type-level surface + runtime collect→package→post), then W4-D4 canary
-    publish. M7 re-scoped 2026-09-07 to the event envelope + platform ledger
-    contract (no Zig store, D-v1-4).
+    failures. W4-D2 pins the toolchain and publishes the SemVer/deprecation
+    rulebook (specs/product/SDK_DEPRECATION_POLICY.md; TypeScript 5.9.3,
+    `types: []`, single typed export). W4-D3 is done: `contract.test.mjs` pins
+    the collect→package→POST round trip and error paths, and the type-level
+    contract (`tests/clients/browser/types/surface.ts`, `npm run test:types`)
+    is wired into CI — 28/28 runtime tests. Next: W4-D4 — canary publish
+    dry-run (`npm@1.0.0-rc` via the OIDC trusted publisher). M7 re-scoped
+    2026-09-07 to the event envelope + platform ledger contract (no Zig store,
+    D-v1-4).
