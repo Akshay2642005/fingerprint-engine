@@ -109,6 +109,20 @@ Promotion to stable is a normal `npm publish` with `latest`; do not move the
 reported `SDK_VERSION = 1.0.0-rc.1`, `MAGIC = FNGR`, schema `2`, 16-byte package
 id, and 45 signals. No registry write was made.
 
+**Recorded W4-D4 canary publish (2026-10-21):** `sdk-publish.yml` was dispatched
+from `develop` with `dist_tag=next`, `dry_run=false` and published
+`@akshay2642005/fingerprint-sdk@1.0.0-rc.1` (38 files, 24.1 kB packed, 83.9 kB
+unpacked, provenance published to the transparency log). `latest` stayed on
+`0.4.1`; `next` resolved to `1.0.0-rc.1`. A clean consumer installed from the
+public registry and `packageSignals()` produced 57 signals, a 16-byte package
+id, and a 1006-byte SignalPackage v2 body with `hex` matching `bytes`.
+
+The run's "Verify the registry entry" step initially failed with `E404` because
+npm had not yet replicated the new version. The publish itself succeeded. The
+verify step now retries for up to two minutes and asserts the expected
+`dist-tag → version` mapping, so a successful publish cannot be reported as a
+failure.
+
 ## 5. OIDC trusted publishing
 
 Two paths exist; both use npm trusted publishing (OIDC), not a long-lived

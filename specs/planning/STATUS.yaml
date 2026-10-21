@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m6-api-determinism (started — per ROADMAP-v1.0.0.md)
-active_story: "m6-sdk-canary (W4-D4 — canary published via the new manual SDK Publish workflow (`sdk-publish.yml`, OIDC, @next) at 1.0.0-rc.1, decoupled from engine tags; conventions in specs/product/SDK_RELEASE_CONVENTIONS.md. Next: W4-D5 — M6 review and cut v0.5.0)"
+active_story: "m6-sdk-canary (W4-D4 done — @akshay2642005/fingerprint-sdk@1.0.0-rc.1 is live on the public registry under `next`; `latest` stays 0.4.1; clean-consumer install verified; verify step now retries npm replication lag. Next: W4-D5 — M6 review and cut v0.5.0)"
 
 epics:
   e01-core-engine:

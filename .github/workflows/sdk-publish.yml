@@ -111,5 +111,26 @@ jobs:
       - name: Verify the registry entry
         if: ${{ steps.exists.outputs.skip != 'true' && !inputs.dry_run }}
         run: |
-          npm view "$PACKAGE@$VERSION" version dist.tarball
-          npm view "$PACKAGE" dist-tags
+          # npm returns 404 briefly after a successful publish while the new
+          # version replicates across the registry. Retry before failing the
+          # run — a green publish that reports failure is worse than a wait.
+          for attempt in $(seq 1 12); do
+            if npm view "$PACKAGE@$VERSION" version dist.tarball; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "::error::$PACKAGE@$VERSION is not visible after 12 attempts"
+              exit 1
+            fi
+            echo "Version not visible yet (attempt $attempt/12); retrying in 10s..."
+            sleep 10
+          done
+
+          tags="$(npm view "$PACKAGE" dist-tags --json)"
+          echo "$tags"
+          actual="$(node -e "process.stdout.write(JSON.parse(process.argv[1])[process.argv[2]] ?? '')" "$tags" "$DIST_TAG")"
+          if [ "$actual" != "$VERSION" ]; then
+            echo "::error::$DIST_TAG points at '$actual', expected '$VERSION'"
+            exit 1
+          fi
+          echo "npm: $PACKAGE@$VERSION is live under dist-tag $DIST_TAG"
