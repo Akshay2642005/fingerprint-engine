@@ -1,49 +1,49 @@
 {
-	"name": "@akshay2642005/fingerprint-sdk",
-	"version": "0.4.1",
-	"description": "Browser signal collection SDK — gathers browser signals, packages them into a versioned SignalPackage, and ships them to the fingerprint ingress. No fingerprint computation in the browser.",
-	"type": "module",
-	"main": "./dist/index.js",
-	"module": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"default": "./dist/index.js"
-		}
-	},
-	"files": [
-		"dist/"
-	],
-	"scripts": {
-		"build": "cd ../.. && zig build clients:browser",
-		"prepublishOnly": "npm run build",
-		"typecheck": "tsc -p tsconfig.json --noEmit",
-		"test:types": "tsc -p ../../../tests/clients/browser/tsconfig.types.json",
-		"verify": "npm run typecheck && npm run test:types && npm test",
-		"test": "node --test ../../../tests/clients/browser/*.test.mjs"
-	},
-	"keywords": [
-		"fingerprint",
-		"browser-fingerprinting",
-		"signal-collection",
-		"fraud-prevention",
-		"bot-detection"
-	],
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/Akshay2642005/fingerprint-engine"
-	},
-	"homepage": "https://github.com/Akshay2642005/fingerprint-engine#readme",
-	"bugs": {
-		"url": "https://github.com/Akshay2642005/fingerprint-engine/issues"
-	},
-	"author": "Fingerprint Engine Contributors",
-	"publishConfig": {
-		"access": "public"
-	},
-	"devDependencies": {
-		"typescript": "5.9.3"
-	}
+  "name": "@akshay2642005/fingerprint-sdk",
+  "version": "1.0.0-rc.1",
+  "description": "Browser signal collection SDK — gathers browser signals, packages them into a versioned SignalPackage, and ships them to the fingerprint ingress. No fingerprint computation in the browser.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "cd ../.. && zig build clients:browser",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:types": "tsc -p ../../../tests/clients/browser/tsconfig.types.json",
+    "verify": "npm run typecheck && npm run test:types && npm test",
+    "test": "node --test ../../../tests/clients/browser/*.test.mjs"
+  },
+  "keywords": [
+    "fingerprint",
+    "browser-fingerprinting",
+    "signal-collection",
+    "fraud-prevention",
+    "bot-detection"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Akshay2642005/fingerprint-engine"
+  },
+  "homepage": "https://github.com/Akshay2642005/fingerprint-engine#readme",
+  "bugs": {
+    "url": "https://github.com/Akshay2642005/fingerprint-engine/issues"
+  },
+  "author": "Fingerprint Engine Contributors",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
 }

@@ -280,8 +280,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           PKG_VERSION="$(node -p "require('./src/clients/browser/package.json').version")"
           if [ "$PKG_VERSION" != "$VERSION" ]; then
-            echo "::error::tag v$VERSION does not match src/clients/browser/package.json version $PKG_VERSION — bump before tagging"
-            exit 1
+            echo "npm: SDK version $PKG_VERSION differs from engine tag v$VERSION — skipping (use the SDK Publish workflow)"
+            exit 0
           fi
           if npm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
             echo "npm: $PACKAGE@$VERSION already published — skipping"

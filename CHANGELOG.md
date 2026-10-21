@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-10-21
+
+> **Pre-release** — install with `npm install @akshay2642005/fingerprint-sdk@next`.
+> This is the frozen SDK 1.0 surface; no `latest` promotion until 1.0.0 final.
+
 ### Added
 
 - **SDK: frozen 1.0 public API surface** — `specs/product/SDK_API_SURFACE.md`
@@ -42,9 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SDK 1.0 release conventions** — `specs/product/SDK_RELEASE_CONVENTIONS.md`
   records the version/tag contract, `next` vs `latest` dist-tags, the canary
   procedure (pack → clean-consumer install → `publish --dry-run`), OIDC
-  publishing, and the 1.0.0 checklist. `release.yml` now fails when the tag and
-  `package.json` version disagree, and routes pre-release versions to `@next`
-  instead of `@latest`.
+  publishing, and the 1.0.0 checklist. SDK publishing is now decoupled from
+  engine tags via the manual `sdk-publish.yml` workflow (OIDC; pre-releases go
+  to `@next`); `release.yml` skips npm when the tag and package version differ
+  instead of failing the engine release.
 
 ## [0.4.1] - 2026-08-29
 
