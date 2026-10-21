@@ -1,0 +1,115 @@
+# SDK Publish — npm (manual, decoupled from engine tags)
+#
+# The SDK version is independent of the engine release version (the roadmap
+# ships SDK 1.0.0-rc while the engine cuts v0.5.0). Publishing is therefore a
+# manual, version-driven operation: it reads the version from
+# src/clients/browser/package.json on the selected ref and publishes that.
+#
+# Pre-releases MUST use the `next` dist-tag; only stable versions may use
+# `latest`. Defaults to a dry run.
+
+name: SDK Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: "npm dist-tag"
+        type: choice
+        options: [next, latest]
+        default: next
+      dry_run:
+        description: "Build and pack, but do not upload"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sdk-publish
+  cancel-in-progress: false
+
+env:
+  ZIG_VERSION: 0.14.1
+  PACKAGE: "@akshay2642005/fingerprint-sdk"
+
+jobs:
+  publish:
+    name: Publish SDK to npm
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install TS SDK dependencies
+        run: npm install
+        working-directory: src/clients/browser
+
+      - name: Put the pinned tsc on PATH
+        run: |
+          echo "$GITHUB_WORKSPACE/src/clients/browser/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Build TS SDK dist
+        run: zig build clients:browser
+
+      - name: Verify (typecheck + type surface + runtime contracts)
+        run: npm run verify
+        working-directory: src/clients/browser
+
+      - name: Resolve and validate the version
+        run: |
+          VERSION="$(node -p "require('./src/clients/browser/package.json').version")"
+          DIST_TAG="${{ inputs.dist_tag }}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
+          echo "Publishing $PACKAGE@$VERSION with dist-tag $DIST_TAG"
+          case "$VERSION" in
+            *-*)
+              if [ "$DIST_TAG" != "next" ]; then
+                echo "::error::pre-release $VERSION must use the 'next' dist-tag, not '$DIST_TAG'"
+                exit 1
+              fi
+              ;;
+          esac
+
+      - name: Check whether this version is already published
+        id: exists
+        run: |
+          if npm view "$PACKAGE@$VERSION" version >/dev/null 2>&1; then
+            echo "npm: $PACKAGE@$VERSION already published — skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish (dry run)
+        if: ${{ steps.exists.outputs.skip != 'true' && inputs.dry_run }}
+        run: |
+          cd src/clients/browser
+          npm publish --access public --tag "$DIST_TAG" --dry-run
+
+      - name: Publish
+        if: ${{ steps.exists.outputs.skip != 'true' && !inputs.dry_run }}
+        run: |
+          cd src/clients/browser
+          npm publish --access public --tag "$DIST_TAG"
+          echo "npm: $PACKAGE@$VERSION published (dist-tag: $DIST_TAG)"
+
+      - name: Verify the registry entry
+        if: ${{ steps.exists.outputs.skip != 'true' && !inputs.dry_run }}
+        run: |
+          npm view "$PACKAGE@$VERSION" version dist.tarball
+          npm view "$PACKAGE" dist-tags
