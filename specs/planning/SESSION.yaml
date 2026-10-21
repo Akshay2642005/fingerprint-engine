@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m6/week4-sdk-api-freeze
+  branch: m6/week4-sdk-semver
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -156,10 +156,12 @@ handoff:
     run-to-run drift), and W3-D5 is done: the determinism contract
     (specs/quality/signal-determinism-contract.md) plus the locked stable-core
     subset (registry `core` flag + `core_version = 1` + comptime lock guard, 24
-    features). 491 tests green. W4-D1 is done: the SDK 1.0 public surface is
-    frozen in specs/product/SDK_API_SURFACE.md, with `packageSignals()` +
+    features). 491 tests green. W4-D1 is merged (#53): the SDK 1.0 public surface
+    is frozen in specs/product/SDK_API_SURFACE.md, with `packageSignals()` +
     `PackageResult` added and `CollectResult.status`/`error` surfacing transport
-    failures; the runtime contract test (tests/clients/browser/api_surface.test.mjs)
-    is green. Next: W4-D2 — deprecation policy + SemVer, pin `@types`/tsconfig
-    exports. M7 re-scoped 2026-09-07 to the event envelope + platform ledger
+    failures. W4-D2 adds specs/product/SDK_DEPRECATION_POLICY.md (SemVer mapping,
+    two-minor deprecation window, pinned toolchain) and pins TypeScript 5.9.3 +
+    `types: []` + the single typed export. Next: W4-D3 — API contract tests
+    (type-level surface + runtime collect→package→post), then W4-D4 canary
+    publish. M7 re-scoped 2026-09-07 to the event envelope + platform ledger
     contract (no Zig store, D-v1-4).
