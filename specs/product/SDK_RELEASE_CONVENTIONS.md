@@ -31,16 +31,19 @@ Consequences:
 ## 2. Tag ↔ version contract
 
 The release workflow derives the expected version from the tag
-(`v1.0.0-rc.1` → `1.0.0-rc.1`). `publish-npm` now **fails** if the tag does not
-match `package.json` (it previously would have published whatever version was
-in the file while checking idempotency against the tag).
+(`v1.0.0-rc.1` → `1.0.0-rc.1`). The SDK version is **independent** of the
+engine version: `release.yml` publishes the SDK only when the tag matches
+`package.json`; otherwise it logs a skip and leaves publishing to the manual
+**SDK Publish** workflow (`.github/workflows/sdk-publish.yml`). This lets the
+engine cut `v0.5.0` while the SDK is at `1.0.0-rc.1`.
 
 Rules:
 
-- Tag format is `v<semver>`; the version must equal `package.json`.
-- A tag pushes the engine *and* SDK release together. If the change is
-  SDK-only, still bump and tag — the pipeline is idempotent for unchanged
-  artifacts.
+- Tag format is `v<semver>`; when equal, the tag and `package.json` version
+  must match.
+- Engine tags drive the engine artifacts only. Publish the SDK from the
+  **SDK Publish** workflow against the ref that carries the intended
+  `package.json` version.
 - The engine release version and the SDK version are independent numbers. A
   `v0.5.0` engine cut may ship SDK `1.0.0-rc.N`; record both in the release
   notes.
@@ -84,8 +87,15 @@ Promotion to stable is a normal `npm publish` with `latest`; do not move the
    node smoke.mjs   # import the entry point, call packageSignals(), check SDK_VERSION
    ```
 
-5. Publish for real only through the OIDC workflow: tag `v<version>` and let
-   `publish-npm` run. Local `npm publish` is intentionally unauthenticated.
+5. Publish for real through the manual **SDK Publish** workflow
+   (`sdk-publish.yml`), dispatching the ref that carries the bumped version:
+
+   ```sh
+   gh workflow run sdk-publish.yml --ref develop -f dist_tag=next -f dry_run=false
+   ```
+
+   Local `npm publish` is intentionally unauthenticated. Prefer `ref: develop`
+   after the version bump is merged.
 6. Verify from the registry:
 
    ```sh
@@ -101,16 +111,26 @@ id, and 45 signals. No registry write was made.
 
 ## 5. OIDC trusted publishing
 
-`publish-npm` uses npm trusted publishing (OIDC), not a long-lived token:
+Two paths exist; both use npm trusted publishing (OIDC), not a long-lived
+token.
 
-- Job permissions: `id-token: write`, `contents: read`.
-- Node 24 + `actions/setup-node@v4` with `registry-url`.
-- `npm publish` exchanges the GitHub OIDC token; no `NODE_AUTH_TOKEN` secret.
-- Idempotency: before publishing, the job runs
-  `npm view "$PACKAGE@$VERSION" version`; if it exists, it logs and exits 0.
-  Re-running a tag therefore cannot double-publish.
-- The job rebuilds `dist/` from the tagged commit (`npm run build` via
-  `prepublishOnly`), so the tarball always matches the tag.
+**Primary — `sdk-publish.yml` (manual, version-driven):**
+
+- Dispatch inputs: `dist_tag` (`next` | `latest`) and `dry_run` (default true).
+- Reads the version from `package.json` on the selected ref, builds, runs
+  `npm run verify`, refuses a pre-release on `latest`, and skips a version that
+  is already on the registry.
+- Job permissions: `id-token: write`, `contents: read`; Node 24 +
+  `registry-url`.
+- The npm trusted publisher must list `sdk-publish.yml` as an allowed workflow
+  file for the package.
+
+**Fallback — `release.yml` `publish-npm` (tag-driven):**
+
+- Runs on `v*` tags and publishes only when the tag equals `package.json`;
+  otherwise it logs a skip. Pre-releases go to `next`, stable to `latest`.
+- Idempotency: `npm view "$PACKAGE@$VERSION" version`; if present, exit 0.
+- `prepublishOnly` rebuilds `dist/` from the tagged commit.
 
 ## 6. Pre-publish guards
 
@@ -139,6 +159,7 @@ id, and 45 signals. No registry write was made.
 - [ ] `SDK_API_SURFACE.md` has no `Deprecated since` entry whose removal is
       due earlier than 1.0.0.
 - [ ] Changelog section written with the required call-outs.
-- [ ] `npm publish` with `latest` via OIDC; `dist-tags` shows `latest: 1.0.0`.
+- [ ] `npm publish` with `latest` via OIDC (SDK Publish, `dist_tag=latest`);
+      `dist-tags` shows `latest: 1.0.0`.
 - [ ] Clean-consumer install pinned to `1.0.0` runs `packageSignals()` and
       `collect()` (mocked ingress) successfully.
