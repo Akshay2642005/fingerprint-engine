@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   canonicalized signals) so a platform ledger can store one row per
   collection without re-joining the live `result.*` fanout. Keys are emitted
   in a frozen order; digests are lower-hex.
+- **Worker publishes the envelope** — with `--publish=amqp`, every successful
+  `signal_package` / `signal_package_context` now also publishes one
+  `collection_event` frame under `result.collection-event`, after the
+  unchanged digest reply. The envelope is rebuilt from the same package the
+  engine hashed (canonicalized order, v2 digests parsed from the reply) and
+  carries the ingress context when the collection arrived over HTTP. Failed
+  collections and non-collection frames emit nothing; build/publish failures
+  are logged and dropped, so a ledger gap can always fall back to the live
+  fanout.
 - **`x-fpkg-session-id` through the ingress** — a new optional CORS-allowed
   request header is validated at the boundary (1–128 bytes of
   `[A-Za-z0-9._:-]`, 400 otherwise) and forwarded to the worker in the new
