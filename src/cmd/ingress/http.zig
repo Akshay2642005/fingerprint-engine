@@ -52,6 +52,10 @@ pub const ParsedHead = struct {
     package_id: ?[]const u8 = null,
     integrity: ?[]const u8 = null,
     origin: ?[]const u8 = null,
+    /// `x-fpkg-session-id` (ADR-013 §4). Forwarded to the worker inside a
+    /// `signal_package_context` frame; unvalidated here — `handlePost`
+    /// rejects anything `io.session_context.isValidSessionId` refuses.
+    session_id: ?[]const u8 = null,
 };
 
 pub const ParseError = error{
@@ -105,6 +109,8 @@ pub fn parseHead(head: []const u8) ParseError!ParsedHead {
             result.package_id = value;
         } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-integrity")) {
             result.integrity = value;
+        } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-session-id")) {
+            result.session_id = value;
         } else if (std.ascii.eqlIgnoreCase(name, "origin")) {
             result.origin = value;
         }
@@ -468,9 +474,39 @@ pub const HttpServer = struct {
                 return;
             }
         }
+        // ADR-013 §4: the session id rides in the frame payload, so it is
+        // validated here rather than in the worker — a bad one is the
+        // client's error (400), not a poison frame. The value is never
+        // logged; only its presence is.
+        if (parsed.session_id) |session_id| {
+            if (!io.session_context.isValidSessionId(session_id)) {
+                log.ingress.warn("ingress: invalid session id from {s}", .{parsed.origin orelse "unknown"});
+                try self.replyError(client, 400, "invalid session id", null);
+                return;
+            }
+        }
 
-        const frame_buf = try a.alloc(u8, io.frame.header_size + body.len);
-        const frame = adapter.buildFrame(.signal_package, .binary, body, frame_buf) catch {
+        // The package body travels one level down, inside a
+        // `signal_package_context` payload that also carries the ingress
+        // arrival time (ADR-013 §4): the envelope needs both, and neither fits
+        // in the FPKG header. The inner body is copied verbatim so the worker
+        // hashes exactly what the client signed.
+        const session_id = parsed.session_id orelse "";
+        const wrapped = try a.alloc(u8, io.session_context.header_len + session_id.len + body.len);
+        const frame_payload = io.session_context.wrap(
+            wrapped,
+            session_id,
+            std.time.milliTimestamp(),
+            body,
+        ) catch |err| {
+            log.ingress.warn("ingress: cannot wrap session context: {s}", .{@errorName(err)});
+            try self.replyError(client, 400, "invalid session id", null);
+            return;
+        };
+        log.ingress.debug("ingress: session context attached ({d} session bytes)", .{session_id.len});
+
+        const frame_buf = try a.alloc(u8, io.frame.header_size + frame_payload.len);
+        const frame = adapter.buildFrame(.signal_package_context, .binary, frame_payload, frame_buf) catch {
             try self.replyError(client, 400, "invalid body", null);
             return;
         };
@@ -590,7 +626,11 @@ pub const HttpServer = struct {
     /// site embedding the SDK is a legitimate caller, there is no session/cookie
     /// auth on this path, so reflecting the caller's Origin (or `*` when absent,
     /// e.g. a non-browser client) is the same trust boundary as a wildcard.
-    const cors_allow_headers = "content-type, x-fpkg-schema-version, x-fpkg-sdk-version, x-fpkg-package-id, x-fpkg-integrity";
+    ///
+    /// `x-fpkg-session-id` is public because the preflight list is a contract
+    /// the browser SDK depends on (ADR-013 §4); it is pinned by
+    /// `tests/cmd/ingress_http_test.zig`.
+    pub const cors_allow_headers = "content-type, x-fpkg-schema-version, x-fpkg-sdk-version, x-fpkg-package-id, x-fpkg-integrity, x-fpkg-session-id";
     const cors_allow_methods = "POST, OPTIONS";
     const cors_max_age_seconds = 86400;
 

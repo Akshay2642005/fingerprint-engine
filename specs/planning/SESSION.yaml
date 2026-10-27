@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m7/week5-collection-event
+  branch: m7/week5-session-id
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -199,5 +199,13 @@ handoff:
     `serialization.encodeCollectionEvent` emits the ADR-013 envelope as
     deterministic JSON in frozen key order, pinned by a byte-for-byte golden
     plus key-order, registry-name, risk-flag, and JSON round-trip tests.
-    Next: the session-id header, worker publish wiring, wire-contract tests,
-    ledger schema fixtures, and ingress HMAC + replay window.
+    D4 is done: the ingress parses and validates `x-fpkg-session-id`
+    (1-128 bytes of [A-Za-z0-9._:-], CORS-allow-listed, 400 otherwise) and
+    forwards it in the new inbound frame type `signal_package_context = 11`
+    as `[u16 session_len][session][i64 ingress_received_at][body]`, so the
+    envelope's ingress timestamp is real for HTTP traffic (direct frame
+    clients record 0); the worker strips the header and hands the inner body
+    to the engine unchanged, proven by unit and e2e tests to produce an
+    identical digest with and without a session id.
+    Next: worker envelope publish wiring, wire-contract tests, ledger schema
+    fixtures, and ingress HMAC + replay window.

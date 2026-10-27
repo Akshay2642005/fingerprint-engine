@@ -32,6 +32,7 @@ components.
 | `x-fpkg-sdk-version`    | `1.0.0-rc.1`               | SDK version (informational)                                          |
 | `x-fpkg-package-id`     | 32 hex chars               | replay identity                                                      |
 | `x-fpkg-integrity`      | `sha256-<64 hex>`          | SHA-256 of the body (best-effort; the ingress enforces when present) |
+| `x-fpkg-session-id`     | `tenant42:8d56529f`        | browser/idp session, 1–128 bytes of `[A-Za-z0-9._:-]` (optional; ADR-013 §4) |
 | `origin`                | `https://example.com`      | CORS origin (optional)                                               |
 
 The reply body is the worker's raw payload `u8 status | engine result`
@@ -67,11 +68,20 @@ sequenceDiagram
      ingress computes anyway (same digest, zero extra work).
    - `x-fpkg-schema-version` must be a known schema (2; v1 tolerated per the
      engine's compatibility path, or rejected with 415 — decide in review).
+   - If `x-fpkg-session-id` is present it must be 1–128 bytes of
+     `[A-Za-z0-9._:-]`; anything else is 400 (ADR-013 §4). The value is
+     never logged, only its presence.
    - `cross-origin` / CORS headers are optional; the ingress does not enforce them
      (the SDK does). checks the preflight `OPTIONS` request and responds with the appropriate CORS headers if needed.
 
-2. **Frame translation**: reuse `adapter.buildFrame(.signal_package, .binary,
-body, ...)` — the exact helper the worker already trusts.
+2. **Frame translation**: reuse `adapter.buildFrame(...)` — the exact helper
+   the worker already trusts. Every forwarded POST is a
+   `.signal_package_context` frame: `io.session_context.wrap` prefixes the
+   client's body with the session id (possibly empty) and the ingress arrival
+   time (`[u16 session_len][session][i64 ingress_received_at][body]`). The
+   worker strips the header and hashes the inner body unchanged, so the digest
+   is independent of the context. Direct TCP/loopback clients may still send a
+   plain `.signal_package`; those collections record no ingress timestamp.
 3. **Worker pool**:
    - `--worker=host:port` (repeatable) seeds the pool; default from
      `FPKG_WORKERS` env (comma-separated) for containerized deploys.

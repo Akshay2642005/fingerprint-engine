@@ -202,11 +202,14 @@ fn parsePublish(value: []const u8) ?PublishKind {
 // ── Frame ↔ engine mapping (design §8) ───────────────────────────────
 
 /// Inbound FPKG message type → engine operation. Outbound event types
-/// (diagnostics, fingerprint_computed) are not engine operations and return
-/// null so the worker replies `invalid_request`.
+/// (diagnostics, fingerprint_computed, collection_event) are not engine
+/// operations and return null so the worker replies `invalid_request`.
 pub fn operationFor(message_type: io.frame.MessageType) ?engine.Operation {
     return switch (message_type) {
         .signal_package => .hash, // canonical digest — the worker's core path
+        // A signal package wrapped with an ingress session id (ADR-013 §4):
+        // same operation, the prefix is stripped before the engine sees it.
+        .signal_package_context => .hash,
         .validation_result => .validate,
         .normalization_result => .normalize,
         .fingerprint_result => .hash,
@@ -238,25 +241,68 @@ fn codecOf(frame_codec: io.frame.Codec) engine.CodecID {
     return std.meta.intToEnum(engine.CodecID, @intFromEnum(frame_codec)) catch unreachable;
 }
 
+/// One inbound frame, resolved to what the engine needs. Splitting transport
+/// metadata from the request payload is what keeps `signal_package_context`
+/// invisible to the engine (ADR-013 §4).
+pub const Inbound = struct {
+    /// The frame's message type as received; `signal_package_context` stays
+    /// visible here so logging and dispatch can distinguish it.
+    message_type: io.frame.MessageType,
+    codec: io.frame.Codec,
+    /// The engine request payload. For `signal_package_context` this is the
+    /// inner package body with the context prefix stripped — byte-identical
+    /// to an unwrapped `signal_package` body, so the digest is too.
+    body: []const u8,
+    /// `x-fpkg-session-id` as forwarded by the ingress; null when the client
+    /// sent none. Borrows from the frame.
+    session_id: ?[]const u8 = null,
+    /// Ingress arrival time in epoch milliseconds (0 when the frame did not
+    /// traverse the ingress, e.g. a direct TCP/loopback client).
+    ingress_received_at: i64 = 0,
+};
+
+/// Resolves a decoded frame into an `Inbound`. A `signal_package_context`
+/// payload is `[u16 session_len][session][i64 ingress_received_at][body]`;
+/// malformed context is a protocol error (the caller drops the frame, as for
+/// any poison frame).
+pub fn splitInbound(decoded: adapter.DecodedFrame) !Inbound {
+    if (decoded.header.message_type != .signal_package_context) {
+        return .{
+            .message_type = decoded.header.message_type,
+            .codec = decoded.header.codec,
+            .body = decoded.payload,
+        };
+    }
+    const view = try io.session_context.unwrap(decoded.payload);
+    return .{
+        .message_type = decoded.header.message_type,
+        .codec = decoded.header.codec,
+        .body = view.body,
+        .session_id = if (view.session_id.len > 0) view.session_id else null,
+        .ingress_received_at = view.ingress_received_at,
+    };
+}
+
 /// The worker's reply to one inbound frame: an FPKG frame whose payload is
 /// `u8 status | engine result`. `buf` must hold at least
 /// `header_size + 1 + max_result` bytes; the engine writes its result in
 /// place after the status byte.
 pub fn processFrame(frame: []const u8, buf: []u8, allocator: std.mem.Allocator) ![]const u8 {
     const decoded = try adapter.decodeFrame(frame);
-    const operation = operationFor(decoded.header.message_type) orelse {
-        return buildReply(.diagnostics, decoded.header.codec, .invalid_request, &.{}, buf);
+    const inbound = try splitInbound(decoded);
+    const operation = operationFor(inbound.message_type) orelse {
+        return buildReply(.diagnostics, inbound.codec, .invalid_request, &.{}, buf);
     };
 
     var response = engine.Response.init(operation, buf[io.frame.header_size + 1 ..]);
     var request = engine.Request{
         .operation = operation,
-        .codec = codecOf(decoded.header.codec),
-        .payload = decoded.payload,
+        .codec = codecOf(inbound.codec),
+        .payload = inbound.body,
     };
     try engine.process(&request, &response, allocator);
 
-    return buildReply(resultType(operation), decoded.header.codec, response.status, response.slice(), buf);
+    return buildReply(resultType(operation), inbound.codec, response.status, response.slice(), buf);
 }
 
 pub const Reply = struct {
