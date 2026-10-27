@@ -1,16 +1,16 @@
 # Roadmap — Fingerprint Engine v1.0.0
 
-Status: **Draft** (planning)
-Updated: 2026-09-07
-Supersedes: nothing — extends `specs/planning/PLAN.md` (M1–M5 complete at v0.4.1). Locked decision **D-v1-3 (own Zig store) superseded by D-v1-4 (2026-09-07)**; M7/M7.1 re-scoped accordingly.
+Status: **Active** (M6 shipped at v0.5.0; M7 in progress)
+Updated: 2026-10-27
+Supersedes: nothing — extends `specs/planning/PLAN.md` (M1–M6 complete at v0.5.0). Locked decision **D-v1-3 (own Zig store) superseded by D-v1-4 (2026-09-07)**; M7/M7.1 re-scoped accordingly.
 Source of truth for decisions: `specs/decisions/` (ADRs) + `specs/decisions/rework/DECISIONS.md`
 
 ## Context
 
-v0.4.1 ships the full distributed-engine roadmap (M1–M5): deterministic engine,
+v0.5.0 ships the full distributed-engine roadmap (M1–M6): deterministic engine,
 FPKG v2 / SignalPackage v2, async IO, HTTP ingress, Zig worker + Docker, AMQP
-outbound, hand-written TS SDK, docs site, 457 tests. `PLAN.md` marks the next
-milestone as *unplanned*. This document defines the path to a stable **1.0.0**.
+outbound, hand-written TS SDK, docs site, 491 tests. `PLAN.md` tracks the next
+milestone. This document defines the path to a stable **1.0.0**.
 
 `VISION.yaml` long-term goals this roadmap delivers: production-grade distributed
 ingestion, a durable at-least-once event stream, cross-language serialization
@@ -47,8 +47,8 @@ A **frozen public contract** + **durable event record** + **operational maturity
 
 | Phase | Theme | Scope | Status |
 |-------|-------|-------|--------|
-| M6 | API & determinism contract | Freeze wire + SDK; lock registry; cross-browser golden; event schema | Planned |
-| M7 | Event envelope + platform ledger contract | Two-digest result + `collection_event` envelope on AMQP; platform Postgres/MongoDB ledger schema (JSONB, idempotent on `package_id`); no Zig store (D-v1-4) | Planned |
+| M6 | API & determinism contract | Freeze wire + SDK; lock registry; cross-browser golden; event schema | ✅ done (v0.5.0) |
+| M7 | Event envelope + platform ledger contract | Two-digest result + `collection_event` envelope on AMQP; platform Postgres/MongoDB ledger schema (JSONB, idempotent on `package_id`); ingress HMAC + replay window; no Zig store (D-v1-4) | 🚧 in progress (Weeks 5–6 → v0.6.0) |
 | M7.1 | Identity anchoring (platform, compute-only, optional) | Platform resolves `identity_id` from stable-core digest equality + core similarity; no matching in core | Planned (fast-follow) |
 | M8 | Observability & ops | Prometheus metrics, `request_id` tracing, probes, chaos SLO | Planned |
 | M9 | Signal breadth, quality & SDK ergonomics | Confidence/entropy, anti-tamper, new categories; SDK wrappers/script tag/consent | Planned |
@@ -60,7 +60,7 @@ A **frozen public contract** + **durable event record** + **operational maturity
 - Lock `FeatureID` 0–101; `flags`/`weight` governance doc.
 - **Capability negotiation**: SDK reports collected signal set; engine tolerates missing/extra (`definitions` lookup is tolerant).
 - **Cross-browser golden matrix**: headless Chromium/Firefox/WebKit collect → encode → compare digest bytes against a pinned golden; CI gate.
-- Define the **event envelope schema** (`collection_event`, one per collection): `package_id, session_id, fingerprint_id, core_digest, feature_count, core_feature_count, status, entropy, risk, sdk_version, canonicalized signals (JSON), schema_version`. `fingerprint_result` carries **two digests** (full + stable-core) per ADR-012's additive append-extend path (D-v1-5/D-v1-6). Schema (field list + types) drafted in [ADR-013](decisions/0013-event-envelope-ledger-adr.md) (Week-1 D4), refined + grilled Week 5.
+- Define the **event envelope schema** (`collection_event`, one per collection): `package_id, session_id, fingerprint_id, core_digest, feature_count, core_feature_count, status, entropy, risk, sdk_version, canonicalized signals (JSON), schema_version`. `fingerprint_result` carries **two digests** (full + stable-core) per ADR-012's additive append-extend path (D-v1-5/D-v1-6). Schema frozen in [ADR-013](decisions/0013-event-envelope-ledger-adr.md) (adopted 2026-10-27).
 - Lock the **stable-core subset** as registry `core` metadata (a reserved `FeatureFlags` bit, D-v1-7): selection rule + `core_version`, calibrated against the cross-browser golden matrix.
 
 ### M7 — Event envelope + platform ledger contract
@@ -77,10 +77,11 @@ A **frozen public contract** + **durable event record** + **operational maturity
 > CLI.~~
 
 **New scope** (engine side, D-v1-4/D-v1-5/D-v1-6): the engine's month-2 work is
-the **two-digest `fingerprint_result`** and the outbound **`collection_event`
-envelope** on the existing AMQP publisher. Compute stays untouched: workers
-remain stateless and the browser-facing reply contract is unchanged. **No Zig
-storage abstraction and no `stored` service.**
+the **two-digest `fingerprint_result`**, the outbound **`collection_event`
+envelope** on the existing AMQP publisher, and **ingress HMAC + replay-window**
+(D5). Compute stays untouched: workers remain stateless and the browser-facing
+reply contract is unchanged. **No Zig storage abstraction and no `stored`
+service.**
 
 **Platform ledger contract** (Postgres JSONB default / MongoDB):
 - Table `collection_events(package_id PK, session_id, fingerprint_id, core_digest,
@@ -134,7 +135,7 @@ tight.
 - Consumes `VISION.yaml` long-term goals; respects `SCOPE.yaml` out-of-scope.
 - No Zig storage adapter exists (D-v1-4): the event ledger is platform-side; the AMQP outbound envelope follows `architecture/tech-stack.md` adapter contract (`adapters depend inward`).
 - Security notes land in `security/SECURITY_PLAN.md` (refresh for HMAC/replay).
-- New ADRs required: versioning/compatibility (M6) — [ADR-012](decisions/0012-versioning-compatibility-adr.md) drafted; two-digest result + event envelope + ledger contract — [ADR-013](decisions/0013-event-envelope-ledger-adr.md) (Week 5 full draft; Week-1 D4 skeleton drafted).
+- New ADRs required: versioning/compatibility (M6) — [ADR-012](decisions/0012-versioning-compatibility-adr.md) **Adopted**; two-digest result + event envelope + ledger contract — [ADR-013](decisions/0013-event-envelope-ledger-adr.md) **Adopted 2026-10-27**.
 
 ## Execution plan
 

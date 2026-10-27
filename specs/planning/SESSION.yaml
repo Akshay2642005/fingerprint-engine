@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m6/w4d5-cut-v0.5.0
+  branch: m7/week5-envelope-adr
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -185,6 +185,10 @@ handoff:
     lag instead of reporting a successful publish as a failure. W4-D5 is done:
     the M6 review checklist (specs/quality/verifications/v0.5.0.md) is green,
     the product snapshot is written (specs/product/snapshots/v0.5.0.md), and
-    v0.5.0 is cut (engine 491/491; 10 required CI checks). M7 is next,
-    re-scoped 2026-09-07 to the event envelope + platform ledger contract (no
-    Zig store, D-v1-4).
+    v0.5.0 is cut (engine 491/491; 10 required CI checks). M7 has started
+    (2026-10-27): ADR-013 is Adopted, the superseded Zig `stored`/AOF plan is
+    removed from the roadmap, ledger idempotency is fixed on the SDK-minted
+    `package_id`, and M7 is re-dated to Weeks 5–6 (Oct 27 – Nov 6) with the
+    cut at v0.6.0. Next: two-digest `fingerprint_result` v2, then the
+    `collection_event` JSON envelope, session-id header, worker publish
+    wiring, ledger schema fixtures, and ingress HMAC + replay window.
