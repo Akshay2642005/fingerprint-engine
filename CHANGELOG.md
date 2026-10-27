@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ingress request authentication (HMAC + replay window)** — setting
+  `FPKG_HMAC_SECRET` makes the ingress require an HMAC-SHA256 signature over
+  `fpkg-hmac-v1 / collected_at / nonce / sha256(body)` in the new
+  `x-fpkg-collected-at`, `x-fpkg-nonce`, and `x-fpkg-signature` headers, and
+  fail closed otherwise: a missing or malformed header, a forged MAC, a
+  timestamp outside the freshness window (`FPKG_HMAC_WINDOW_MS`, default 5
+  minutes, past or future), and a replayed nonce are all rejected before the
+  body is framed (401/409). MACs are compared in constant time, nonces are
+  remembered in a bounded fixed-size cache, and `FPKG_HMAC_SECRET_PREVIOUS`
+  supports rotation. Unset by default, in which case the ingress keeps
+  trusting the network (D-v1-2). The browser SDK cannot hold a secret, so
+  signing is for a trusted edge or platform gateway.
 - **Platform ledger reference schema** — `deploy/ledger/` ships the
   platform-side persistence contract for the ADR-013 envelope: Postgres DDL
   (`collection_events`, `uuid` primary key on the SDK-minted `package_id`,

@@ -66,6 +66,44 @@ test "ingress http: the CORS preflight allows x-fpkg-session-id" {
     try testing.expect(std.mem.indexOf(u8, http.HttpServer.cors_allow_headers, "x-fpkg-session-id") != null);
 }
 
+test "ingress http: parses the request-signature headers" {
+    // M7 W6-D3: the authentication triple is carried in headers, not in the
+    // body, so the ingress never has to parse a package to authenticate it.
+    const parsed = try http.parseHead(
+        "POST / HTTP/1.1\r\n" ++
+            "content-length: 4\r\n" ++
+            "x-fpkg-collected-at: 1757312345678\r\n" ++
+            "x-fpkg-nonce: 8d56529f06040b90df4cb25a3811a10e\r\n" ++
+            "x-fpkg-signature: hmac-sha256=969f0e446e6aeca223b72d5d50a7f1701c9b04c71fd1d7fcdda65b6a046fbfc3\r\n",
+    );
+    try testing.expectEqual(@as(?i64, 1757312345678), parsed.collected_at);
+    try testing.expectEqualStrings("8d56529f06040b90df4cb25a3811a10e", parsed.nonce.?);
+    try testing.expect(std.mem.startsWith(u8, parsed.signature.?, "hmac-sha256="));
+}
+
+test "ingress http: missing signature headers parse as null" {
+    const parsed = try http.parseHead("POST / HTTP/1.1\r\ncontent-length: 0\r\n");
+    try testing.expectEqual(@as(?i64, null), parsed.collected_at);
+    try testing.expectEqual(@as(?[]const u8, null), parsed.nonce);
+    try testing.expectEqual(@as(?[]const u8, null), parsed.signature);
+}
+
+test "ingress http: a non-numeric collected-at is a header error" {
+    try testing.expectError(
+        error.MalformedHeader,
+        http.parseHead("POST / HTTP/1.1\r\nx-fpkg-collected-at: yesterday\r\n"),
+    );
+}
+
+test "ingress http: the CORS preflight allows the signature headers" {
+    // A signing client may be a browser-adjacent gateway doing a preflight, so
+    // the triple belongs in the allow-list for the same reason the session id
+    // does.
+    for ([_][]const u8{ "x-fpkg-collected-at", "x-fpkg-nonce", "x-fpkg-signature" }) |header| {
+        try testing.expect(std.mem.indexOf(u8, http.HttpServer.cors_allow_headers, header) != null);
+    }
+}
+
 test "ingress http: marks chunked requests" {
     const parsed = try http.parseHead("POST / HTTP/1.1\r\ntransfer-encoding: chunked\r\n");
     try testing.expect(parsed.chunked);

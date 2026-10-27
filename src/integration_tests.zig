@@ -18,6 +18,11 @@ const bench_exe: []const u8 = @import("test_options").bench_exe;
 const scripts_exe: []const u8 = @import("test_options").scripts_exe;
 const worker_exe: []const u8 = @import("test_options").worker_exe;
 const ingress_exe: []const u8 = @import("test_options").ingress_exe;
+
+/// The ingress's request-authentication codec, imported directly so the e2e
+/// tests sign with the production implementation instead of re-deriving the
+/// canonical string (a drift there would then be a real test failure).
+const ingress_hmac = @import("cmd/ingress/hmac.zig");
 const fingerprint_exe: []const u8 = @import("test_options").fingerprint_exe;
 
 test "scripts: no arguments prints usage and exits 0" {
@@ -620,14 +625,27 @@ test "worker: flow logs emit at the default info level (S3b)" {
 
 /// Spawns the ingress binary and reads its `ingress: listening on host:port`
 /// announcement from stderr, returning the bound port.
-fn spawnIngress(args: []const []const u8, alloc: std.mem.Allocator) !struct {
+const IngressSpawn = struct {
     child: std.process.Child,
     port: u16,
-} {
+};
+
+fn spawnIngress(args: []const []const u8, alloc: std.mem.Allocator) !IngressSpawn {
+    return spawnIngressEnv(args, alloc, null);
+}
+
+/// `spawnIngress` with a replacement environment (the ingress reads
+/// `FPKG_HMAC_*` from it). The map must outlive the child.
+fn spawnIngressEnv(
+    args: []const []const u8,
+    alloc: std.mem.Allocator,
+    env: ?*const std.process.EnvMap,
+) !IngressSpawn {
     var child = std.process.Child.init(args, alloc);
     child.stdin_behavior = .Ignore;
     child.stdout_behavior = .Pipe;
     child.stderr_behavior = .Pipe;
+    if (env) |map| child.env_map = map;
     try child.spawn();
 
     const stderr_reader = child.stderr.?.reader();
@@ -956,6 +974,131 @@ test "ingress: enforces boundary checks (413/400/415/405/healthz)" {
     const missing = try httpRequest(alloc, ingress.port, "GET", "/nope", &.{}, &.{});
     defer alloc.free(missing.body);
     try std.testing.expectEqual(@as(u16, 404), missing.status);
+}
+
+test "ingress: HMAC + replay window rejects unsigned, stale, forged, and replayed (W6-D3)" {
+    const alloc = std.testing.allocator;
+    const secret = "0123456789abcdef0123456789abcdef";
+
+    // Fail-closed enforcement is opt-in per deployment: with the secret set,
+    // the ingress will not forward a request it cannot authenticate.
+    var env = try std.process.getEnvMap(alloc);
+    defer env.deinit();
+    try env.put("FPKG_HMAC_SECRET", secret);
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    defer {
+        _ = spawned.child.kill() catch {};
+        _ = spawned.child.wait() catch {};
+    }
+
+    const worker_arg = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{spawned.port});
+    defer alloc.free(worker_arg);
+    var ingress = try spawnIngressEnv(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        worker_arg,
+    }, alloc, &env);
+    defer {
+        _ = ingress.child.kill() catch {};
+        _ = ingress.child.wait() catch {};
+    }
+
+    const fixture = try fixtureWithIntegrity(alloc);
+    defer alloc.free(fixture.body);
+    defer alloc.free(fixture.integrity);
+
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(fixture.body, &digest, .{});
+    const base_headers = [_][]const u8{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+    };
+
+    // 1. Unsigned: rejected before the body is framed.
+    const unsigned = try httpRequest(alloc, ingress.port, "POST", "/", &base_headers, fixture.body);
+    defer alloc.free(unsigned.body);
+    try std.testing.expectEqual(@as(u16, 401), unsigned.status);
+    try std.testing.expectEqualStrings("signature required", unsigned.body);
+
+    // 2. Correctly signed: the digest relay is byte-identical to the
+    // unauthenticated path, so HMAC never changes what the SDK receives.
+    const now = std.time.milliTimestamp();
+    const now_header = try std.fmt.allocPrint(alloc, "{d}", .{now});
+    defer alloc.free(now_header);
+    const nonce = "8d56529f06040b90df4cb25a3811a10e";
+    var signature_buf: [ingress_hmac.signature_prefix.len + 64]u8 = undefined;
+    const signature = ingress_hmac.renderSignature(
+        ingress_hmac.sign(secret, now, nonce, digest),
+        &signature_buf,
+    );
+    const signed_headers = [_][]const u8{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+        "x-fpkg-collected-at",   now_header,
+        "x-fpkg-nonce",          nonce,
+        "x-fpkg-signature",      signature,
+    };
+    const signed = try httpRequest(alloc, ingress.port, "POST", "/", &signed_headers, fixture.body);
+    defer alloc.free(signed.body);
+    try std.testing.expectEqual(@as(u16, 200), signed.status);
+    try expectHashPayload(signed.body);
+
+    // 3. Replay: the identical request again is a spent nonce.
+    const replay = try httpRequest(alloc, ingress.port, "POST", "/", &signed_headers, fixture.body);
+    defer alloc.free(replay.body);
+    try std.testing.expectEqual(@as(u16, 409), replay.status);
+    try std.testing.expectEqualStrings("replayed nonce", replay.body);
+
+    // 4. Forged: a well-formed MAC under an unknown key is not accepted even
+    // though every header is syntactically valid.
+    var forged_buf: [ingress_hmac.signature_prefix.len + 64]u8 = undefined;
+    const forged = ingress_hmac.renderSignature(
+        ingress_hmac.sign("another-secret-32-characters-long!!", now, "0000000000000000000000000000000f", digest),
+        &forged_buf,
+    );
+    const forged_headers = [_][]const u8{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+        "x-fpkg-collected-at",   now_header,
+        "x-fpkg-nonce",          "0000000000000000000000000000000f",
+        "x-fpkg-signature",      forged,
+    };
+    const forged_reply = try httpRequest(alloc, ingress.port, "POST", "/", &forged_headers, fixture.body);
+    defer alloc.free(forged_reply.body);
+    try std.testing.expectEqual(@as(u16, 401), forged_reply.status);
+    try std.testing.expectEqualStrings("invalid signature", forged_reply.body);
+
+    // 5. Stale: a correctly signed request from outside the window is refused.
+    const stale_at = now - ingress_hmac.default_window_ms - 1_000;
+    const stale_header = try std.fmt.allocPrint(alloc, "{d}", .{stale_at});
+    defer alloc.free(stale_header);
+    var stale_buf: [ingress_hmac.signature_prefix.len + 64]u8 = undefined;
+    const stale_signature = ingress_hmac.renderSignature(
+        ingress_hmac.sign(secret, stale_at, "0000000000000000000000000000000e", digest),
+        &stale_buf,
+    );
+    const stale_headers = [_][]const u8{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+        "x-fpkg-collected-at",   stale_header,
+        "x-fpkg-nonce",          "0000000000000000000000000000000e",
+        "x-fpkg-signature",      stale_signature,
+    };
+    const stale_reply = try httpRequest(alloc, ingress.port, "POST", "/", &stale_headers, fixture.body);
+    defer alloc.free(stale_reply.body);
+    try std.testing.expectEqual(@as(u16, 401), stale_reply.status);
+    try std.testing.expectEqualStrings("stale request timestamp", stale_reply.body);
 }
 
 test "ingress: exits 0 on SIGTERM after draining (H-2)" {

@@ -22,6 +22,7 @@ const io = @import("io");
 const adapter = @import("adapter");
 const version_info = @import("version");
 const worker_pool = @import("pool.zig");
+const request_hmac = @import("hmac.zig");
 const log = @import("log");
 
 const IO = io.IO;
@@ -56,6 +57,14 @@ pub const ParsedHead = struct {
     /// `signal_package_context` frame; unvalidated here — `handlePost`
     /// rejects anything `io.session_context.isValidSessionId` refuses.
     session_id: ?[]const u8 = null,
+    /// `x-fpkg-collected-at`: epoch milliseconds, the freshness input to the
+    /// request signature (M7 W6-D3). Parsed here, range-checked in `handlePost`
+    /// against the replay window.
+    collected_at: ?i64 = null,
+    /// `x-fpkg-nonce`: 16–64 lowercase hex chars, fresh per attempt.
+    nonce: ?[]const u8 = null,
+    /// `x-fpkg-signature`: `hmac-sha256=<64 hex>` over the canonical string.
+    signature: ?[]const u8 = null,
 };
 
 pub const ParseError = error{
@@ -111,6 +120,12 @@ pub fn parseHead(head: []const u8) ParseError!ParsedHead {
             result.integrity = value;
         } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-session-id")) {
             result.session_id = value;
+        } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-collected-at")) {
+            result.collected_at = std.fmt.parseInt(i64, value, 10) catch return error.MalformedHeader;
+        } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-nonce")) {
+            result.nonce = value;
+        } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-signature")) {
+            result.signature = value;
         } else if (std.ascii.eqlIgnoreCase(name, "origin")) {
             result.origin = value;
         }
@@ -136,12 +151,15 @@ fn reasonPhrase(status: u16) []const u8 {
     return switch (status) {
         200 => "OK",
         400 => "Bad Request",
+        401 => "Unauthorized",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        409 => "Conflict",
         411 => "Length Required",
         413 => "Payload Too Large",
         415 => "Unsupported Media Type",
         502 => "Bad Gateway",
+        503 => "Service Unavailable",
         else => "Error",
     };
 }
@@ -172,6 +190,10 @@ pub const HttpServer = struct {
     /// Per-stage receive deadline for HTTP connections (H-1).
     read_timeout_ns: u64,
     pool: *worker_pool.WorkerPool,
+    /// Request authentication (M7 W6-D3). `null` = no secret configured, so the
+    /// ingress trusts the network (D-v1-2); when set, every POST must carry a
+    /// valid `x-fpkg-*` signature triple or it is rejected before framing.
+    hmac: ?*request_hmac.Verifier = null,
 
     accept_ctx: AcceptContext = .{},
     read_ctx: ReadContext = .{},
@@ -460,8 +482,36 @@ pub const HttpServer = struct {
         const body = try a.alloc(u8, @intCast(content_length));
         try self.drainBody(client, head_buf, head_end, head_len, body);
 
+        // The body digest is needed by the integrity header and by the request
+        // signature, so it is computed at most once per request.
+        var body_digest: [32]u8 = undefined;
+        if (self.hmac != null or parsed.integrity != null) {
+            std.crypto.hash.sha2.Sha256.hash(body, &body_digest, .{});
+        }
+
+        // M7 W6-D3: authenticity before anything is forwarded. Fail-closed when
+        // the ingress is configured with a secret: an unsigned request is a
+        // 401, never a pass-through. The nonce and the secret are never logged.
+        if (self.hmac) |verifier| {
+            verifier.verify(
+                parsed.collected_at,
+                std.time.milliTimestamp(),
+                parsed.nonce,
+                body_digest,
+                parsed.signature,
+            ) catch |err| {
+                log.ingress.warn("ingress: request authentication rejected ({s}) from {s}", .{
+                    @errorName(err),
+                    parsed.origin orelse "unknown",
+                });
+                const rejection = hmacRejection(err);
+                try self.replyError(client, rejection.status, rejection.reason, null);
+                return;
+            };
+        }
+
         if (parsed.integrity) |expected| {
-            if (!integrityMatches(expected, body)) {
+            if (!integrityMatches(expected, body_digest)) {
                 log.ingress.warn("ingress: integrity mismatch from {s}", .{parsed.origin orelse "unknown"});
                 try self.replyError(client, 400, "integrity mismatch", null);
                 return;
@@ -630,7 +680,7 @@ pub const HttpServer = struct {
     /// `x-fpkg-session-id` is public because the preflight list is a contract
     /// the browser SDK depends on (ADR-013 §4); it is pinned by
     /// `tests/cmd/ingress_http_test.zig`.
-    pub const cors_allow_headers = "content-type, x-fpkg-schema-version, x-fpkg-sdk-version, x-fpkg-package-id, x-fpkg-integrity, x-fpkg-session-id";
+    pub const cors_allow_headers = "content-type, x-fpkg-schema-version, x-fpkg-sdk-version, x-fpkg-package-id, x-fpkg-integrity, x-fpkg-session-id, x-fpkg-collected-at, x-fpkg-nonce, x-fpkg-signature";
     const cors_allow_methods = "POST, OPTIONS";
     const cors_max_age_seconds = 86400;
 
@@ -685,16 +735,35 @@ pub const HttpServer = struct {
 };
 
 /// Compares `x-fpkg-integrity` (`sha256-<64 hex>`, case-insensitive) against
-/// the SHA-256 of the body.
-fn integrityMatches(expected: []const u8, body: []const u8) bool {
+/// the request body's digest (computed once by the caller and shared with the
+/// request-signature check).
+fn integrityMatches(expected: []const u8, digest: [32]u8) bool {
     if (!std.mem.startsWith(u8, expected, "sha256-")) return false;
     const expected_hex = expected["sha256-".len..];
     if (expected_hex.len != 64) return false;
-    var digest: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(body, &digest, .{});
     var hex_buf: [64]u8 = undefined;
     const actual = std.fmt.bufPrint(&hex_buf, "{s}", .{std.fmt.fmtSliceHexLower(&digest)}) catch unreachable;
     return std.ascii.eqlIgnoreCase(expected_hex, actual);
+}
+
+/// Maps a verification failure to a status and a client-facing reason. Errors
+/// and reasons are fixed strings: nothing derived from the request (nonce,
+/// timestamp, secret) is echoed back.
+fn hmacRejection(err: request_hmac.Error) struct { status: u16, reason: []const u8 } {
+    return switch (err) {
+        error.MissingTimestamp,
+        error.MissingNonce,
+        error.MissingSignature,
+        => .{ .status = 401, .reason = "signature required" },
+        error.MalformedNonce,
+        error.MalformedSignature,
+        => .{ .status = 401, .reason = "malformed signature headers" },
+        error.StaleTimestamp => .{ .status = 401, .reason = "stale request timestamp" },
+        error.InvalidSignature => .{ .status = 401, .reason = "invalid signature" },
+        error.ReplayedNonce => .{ .status = 409, .reason = "replayed nonce" },
+        error.CacheFull => .{ .status = 503, .reason = "replay cache full" },
+        error.OutOfMemory => .{ .status = 503, .reason = "replay cache unavailable" },
+    };
 }
 
 // ── Accept race (H-1/H-2) ─────────────────────────────────────────────
