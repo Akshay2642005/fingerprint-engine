@@ -33,6 +33,9 @@ components.
 | `x-fpkg-package-id`     | 32 hex chars               | replay identity                                                      |
 | `x-fpkg-integrity`      | `sha256-<64 hex>`          | SHA-256 of the body (best-effort; the ingress enforces when present) |
 | `x-fpkg-session-id`     | `tenant42:8d56529f`        | browser/idp session, 1–128 bytes of `[A-Za-z0-9._:-]` (optional; ADR-013 §4) |
+| `x-fpkg-collected-at`   | `1757312345678`            | epoch ms, signed; the freshness input (required when HMAC is on)     |
+| `x-fpkg-nonce`          | 32 hex chars               | fresh per attempt, 16–64 lowercase hex (required when HMAC is on)    |
+| `x-fpkg-signature`      | `hmac-sha256=<64 hex>`     | MAC over the canonical string below (required when HMAC is on)       |
 | `origin`                | `https://example.com`      | CORS origin (optional)                                               |
 
 The reply body is the worker's raw payload `u8 status | engine result`
@@ -56,6 +59,58 @@ sequenceDiagram
     IN-->>SDK: HTTP reply (raw result payload)
 ```
 
+## Request authentication (M7 W6-D3)
+
+The ingress is multi-tenant and trusts the network by default (D-v1-2). For
+deployments that need proof of origin and tamper evidence, set
+`FPKG_HMAC_SECRET` (at least 32 characters, from the environment/secret store,
+never a CLI flag):
+
+| Variable | Meaning |
+| --- | --- |
+| `FPKG_HMAC_SECRET` | Current key. Setting it enables enforcement. |
+| `FPKG_HMAC_SECRET_PREVIOUS` | Optional previous key, accepted during rotation. |
+| `FPKG_HMAC_WINDOW_MS` | Freshness/replay window, default `300000` (5 min); 1 s–1 h. |
+
+The client signs this canonical string with HMAC-SHA256:
+
+```
+fpkg-hmac-v1
+<collected_at>
+<nonce>
+<sha256(body) as lowercase hex>
+```
+
+and sends `x-fpkg-signature: hmac-sha256=<hex>`. The signature is bound to the
+timestamp, the nonce, and the body digest, so a captured request cannot be
+re-aimed at a different package or replayed with a fresh timestamp.
+
+Rejection matrix (nothing request-derived is echoed back or logged):
+
+| Condition | Status | Body |
+| --- | --- | --- |
+| Any of the three headers absent | 401 | `signature required` |
+| Malformed value (bad hex, bad nonce length/case, bad prefix) | 401 | `malformed signature headers` |
+| Timestamp outside the window, past or future | 401 | `stale request timestamp` |
+| MAC mismatch | 401 | `invalid signature` |
+| Nonce already used inside the window | 409 | `replayed nonce` |
+| Replay cache full (capacity exhausted by sustained traffic) | 503 | `replay cache full` |
+
+The replay cache holds 65 536 nonces (~200 req/s at the default window per
+ingress instance); it is per-process, so signing clients should be pinned to
+one instance or the window must be small enough to tolerate per-instance
+duplication. Honouring a retry requires a **new nonce** — the same body may be
+re-sent, since idempotency is `package_id`'s job at the ledger.
+
+Rotation: deploy the new key as `FPKG_HMAC_SECRET` and the old one as
+`FPKG_HMAC_SECRET_PREVIOUS`, roll clients, then unset the previous variable
+after one window has elapsed.
+
+The browser SDK cannot hold a secret, so enabling this obliges callers to sign
+server-side (the platform gateway or a trusted edge that re-signs the body).
+The comparison is constant-time; the secret, the nonce, and the timestamp are
+never logged.
+
 ## Ingress responsibilities
 
 1. **Boundary checks** (before proxying):
@@ -71,6 +126,11 @@ sequenceDiagram
    - If `x-fpkg-session-id` is present it must be 1–128 bytes of
      `[A-Za-z0-9._:-]`; anything else is 400 (ADR-013 §4). The value is
      never logged, only its presence.
+   - **Request authentication (M7 W6-D3)** is enforced when
+     `FPKG_HMAC_SECRET` is set: `x-fpkg-collected-at`, `x-fpkg-nonce`, and
+     `x-fpkg-signature` must be present and valid, or the request is rejected
+     before framing (401). Fail-closed — with a secret configured there is no
+     unauthenticated path. See [Request authentication](#request-authentication-m7-w6-d3).
    - `cross-origin` / CORS headers are optional; the ingress does not enforce them
      (the SDK does). checks the preflight `OPTIONS` request and responds with the appropriate CORS headers if needed.
 

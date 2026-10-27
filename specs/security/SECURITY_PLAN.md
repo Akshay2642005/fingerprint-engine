@@ -12,8 +12,8 @@ public surface.
 |-------|----------|-------|
 | Worker FPKG tcp port | LAN/trusted network today | No auth; H-1 idle timeout missing → remotely wedge-able |
 | AMQP broker | trusted network | guest/guest in compose dev only |
-| HTTP ingress (planned) | public internet | Auth, rate limits, TLS, body caps all pending (H-4/H-5) |
-| SignalPackage bodies | transit (HTTPS once TLS lands) | SHA-256 integrity header is tamper-evidence, not authenticity |
+| HTTP ingress | public internet | Body cap (413) and optional HMAC request authentication are in place; rate limits and TLS termination still pending (H-4/H-5) |
+| SignalPackage bodies | transit (HTTPS once TLS lands) | SHA-256 integrity header is tamper-evidence; HMAC (when enabled) adds authenticity + freshness |
 
 ## Principles
 
@@ -38,6 +38,32 @@ public surface.
 | S4 | H-4/H-5: decide auth (network ACL / mTLS worker↔ingress, optional API key on HTTP), rate limiting, TLS termination, body-size policy (default 1 MiB → 413 before proxying). |
 | S5 | DLQ for poison frames; AMQP consumer with QoS; failed publishes no longer vanish. |
 | S6 | Release surface: provenance via GHCR + OIDC npm; no tokens in the pipeline. |
+
+## Request authentication (M7 W6-D3)
+
+The ingress can require proof of origin without ever seeing a user identity or
+a tenant: HMAC-SHA256 over `[timestamp, nonce, sha256(body)]`, keyed by
+`FPKG_HMAC_SECRET` (32+ characters, environment/secret store only).
+
+- **Fail-closed.** With a secret configured there is no unauthenticated path:
+  a missing/malformed signature, a timestamp outside the window
+  (`FPKG_HMAC_WINDOW_MS`, default 5 min, past *or* future), a MAC mismatch, or a
+  replayed nonce is rejected before the body is framed or forwarded. Without a
+  secret the ingress trusts the network (D-v1-2), which is the documented
+  default, not an accident.
+- **What it proves.** Integrity and freshness of the request as received, and
+  possession of the deployment key by the caller. It is *not* tenancy, a user
+  identity, or an authorisation decision — those stay platform-side (M10).
+- **Comparison is constant-time** (`std.crypto.timing_safe.eql`), and the
+  secret, nonce, and timestamp are never logged; only the failure reason.
+- **Replay window.** Nonces are remembered for the window in a fixed-size,
+  bounded table (65 536 entries). When it is exhausted the ingress refuses new
+  requests (503) rather than evicting live nonces — a capacity signal, not a
+  silent weakening. The cache is per-process.
+- **Rotation.** `FPKG_HMAC_SECRET_PREVIOUS` is accepted alongside the current
+  key so a roll does not drop in-flight clients; unset it after one window.
+- **Browser deployments.** The SDK cannot hold a secret; signing happens at a
+  trusted edge or platform gateway that forwards the signed request.
 
 ## Already done
 
