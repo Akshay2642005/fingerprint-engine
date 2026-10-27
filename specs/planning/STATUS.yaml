@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m7-event-envelope (started 2026-10-27 — ADR-013 adopted; plan re-dated to Weeks 5–6)
-active_story: "m7-two-digest (D2 done) — fingerprint_result v2 emits the 72-byte two-digest layout (36-byte v1 prefix + core_digest/core_feature_count/core_version), compile-time layout pin, window-resize + core-subset property tests, golden core digest. Note: specs previously said 86 bytes; the append is 36 bytes so the payload is 72. Next: D3 — collection_event + deterministic JSON envelope"
+active_story: "m7-collection-event (D3 done) — `collection_event = 10` added (outbound only, `operationFor` returns null, no status byte) and the deterministic ADR-013 JSON envelope encoder shipped with a byte-for-byte golden, key-order, registry-name, risk-flag, and JSON-round-trip tests. Next: D4 — `x-fpkg-session-id` through the ingress"
 
 epics:
   e01-core-engine:
@@ -74,7 +74,7 @@ epics:
     status: in_progress
     started: "2026-10-27"
     target: "v0.6.0 (2026-11-06)"
-    summary: "Event envelope + platform ledger contract. D1 done: ADR-013 Adopted, superseded Zig `stored`/AOF plan removed, ledger idempotency fixed on SDK-minted `package_id`, M7 re-dated to Weeks 5–6. D2 done: `fingerprint_result` v2 emits the 72-byte two-digest layout (v1 prefix unchanged + core triple), with a compile-time layout pin, window-resize and core-subset property tests, and a pinned core-digest golden (spec 86-byte figure corrected to 72). Remaining: collection_event JSON envelope, x-fpkg-session-id, worker publish wiring, wire-contract tests, ledger schema fixtures, ingress HMAC + replay window, security refresh, v0.6.0 cut."
+    summary: "Event envelope + platform ledger contract. D1 done: ADR-013 Adopted, superseded Zig `stored`/AOF plan removed, ledger idempotency fixed on SDK-minted `package_id`, M7 re-dated to Weeks 5–6. D2 done: `fingerprint_result` v2 emits the 72-byte two-digest layout (v1 prefix unchanged + core triple), with a compile-time layout pin, window-resize and core-subset property tests, and a pinned core-digest golden (spec 86-byte figure corrected to 72). D3 done: `collection_event = 10` (outbound only) plus the deterministic ADR-013 JSON envelope encoder with a byte-for-byte golden, key-order, registry-name, risk-flag, and JSON round-trip tests. Remaining: x-fpkg-session-id, worker publish wiring, wire-contract tests, ledger schema fixtures, ingress HMAC + replay window, security refresh, v0.6.0 cut."
 
 rework:
   status: done
