@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m7/week6-hmac
+  branch: m7/week6-security
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -241,5 +241,11 @@ handoff:
     `FPKG_HMAC_SECRET_PREVIOUS` allows rotation. Authentication is off unless a
     secret is configured (D-v1-2); the browser SDK cannot hold a secret, so
     signing is a trusted-edge/platform-gateway job.
-    Next: the SECURITY_PLAN refresh (W6-D4), then the M7 review and the v0.6.0
-    cut.
+    W6-D4 is done: `specs/security/SECURITY_PLAN.md` is refreshed for v0.6.0.
+    It replaces the pre-ingress threat model with the shipped one (H-1 closed,
+    optional fail-closed HMAC boundary, AMQP envelope fanout), separates the
+    two outbound surfaces and what each reveals, tabulates the boundary caps,
+    names the three independent replay/idempotency layers and their owners,
+    states the ledger's PII/at-rest policy, records the AMQP credentials still
+    arriving as CLI flags for S5/M8, and lists what stays platform-side.
+    Next: the M7 review and the v0.6.0 cut (W6-D5).
