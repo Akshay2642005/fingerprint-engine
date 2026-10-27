@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Platform ledger reference schema** — `deploy/ledger/` ships the
+  platform-side persistence contract for the ADR-013 envelope: Postgres DDL
+  (`collection_events`, `uuid` primary key on the SDK-minted `package_id`,
+  btree indexes on `fingerprint_id`/`session_id`/timestamps, `jsonb_path_ops`
+  GIN over `signals`), the equivalent MongoDB validator plus unique/partial/
+  wildcard indexes, and a generated example envelope
+  (`tests/fixtures/ledger/collection-event-v2.json`) that the encoder produces
+  through the real worker reply path so it cannot drift. Ingestion guidance
+  (48-byte frame-header strip, epoch-ms conversion, `ON CONFLICT DO NOTHING` /
+  error 11000 idempotency, signals privacy) is in `deploy/ledger/README.md`.
+  The engine gains no database dependency.
 - **Two-digest fingerprint result** — `fingerprint_result` v2 appends
   `core_digest[32]`, `core_feature_count u16`, and `core_version u16` after
   the unchanged 36-byte v1 prefix (72 bytes total). The stable-core digest is
