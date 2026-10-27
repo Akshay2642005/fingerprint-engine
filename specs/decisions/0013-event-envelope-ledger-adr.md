@@ -2,8 +2,9 @@
 
 # ADR-013 — Per-collection event envelope + platform ledger contract
 
-- **Status:** Proposed (Week-1 D4 field list + types chosen; full design
-  detail + grill in Week 5 before M7 persistence depends on it)
+- **Status:** Adopted (2026-10-27). Field list, types, and the ledger contract
+  are frozen for M7; implementation detail is tracked in the M7 plan
+  (`ROADMAP-v1.0.0-DAILY.md`, Weeks 5–6).
 - **Source:** `src/io/frame.zig`, `src/serialization/json.zig`,
   `src/engine/ops/risk.zig`, `src/engine/status.zig`, `src/adapter/amqp/publisher.zig`,
   `src/cmd/ingress/http.zig`
@@ -133,17 +134,25 @@ collection_events(
   message type is additive (ADR-012's append-only rule).
 - Deterministic JSON keeps ledger bytes reproducible across platforms and
   comparable for debugging.
-- The stable-core subset is not yet defined (that is D-v1-7: registry `core`
-  metadata + `core_version`, calibrated against the M6 golden matrix). Until
-  then `core_digest`/`core_feature_count`/`core_version` are emitted from the
-  agreed selection rule; the ADR does not bake the subset itself.
+- **The stable-core subset is defined** (M6, `07-stable-core-subset.md`):
+  registry `core` metadata + `core_version = 1` over 24 features, guarded at
+  comptime and calibrated against the M6 golden matrix. `core_digest`,
+  `core_feature_count`, and `core_version` therefore have a concrete source;
+  the ADR still does not bake the subset itself — `core_version` is the seam
+  if it ever changes.
+- **The SDK's public surface stays frozen.** The two-digest result is an
+  append-extend at the wire level only. The SDK keeps parsing the 36-byte v1
+  prefix and ignores trailing bytes; exposing `core_digest` to callers is a
+  post-1.0 additive change under `SDK_DEPRECATION_POLICY.md`, not part of M7.
 
-## Open items (Week 5)
+## Open items (M7 implementation)
 
-- Full envelope ↔ `fingerprint_result` two-digest wiring + version bump.
-- `stable-core` subset definition and `core_version` policy (D-v1-7).
-- Ledger access API + workspace query surface (works with `01`-style
-  investigation needs but is platform-owned).
+- Two-digest `fingerprint_result` v2 (86 bytes) + compile-time layout pin and
+  the window-resize / subset-revision property tests (`05`).
+- `collection_event = 10` + deterministic JSON envelope encoder (`06`).
+- `x-fpkg-session-id` through the ingress and into the envelope.
+- Worker publish wiring for the envelope alongside the unchanged reply.
+- Ledger reference schema + contract fixtures for the platform repo.
 
 ## Out of scope
 

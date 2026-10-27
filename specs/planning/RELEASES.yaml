@@ -7,8 +7,22 @@ note: |
   next cuts are v0.6.0 (M7, Month 2), v0.7.0 (Month 3), then v1.0.0.
   The browser SDK is versioned independently: `1.0.0-rc.1` is live under the
   npm `next` dist-tag, and engine tags no longer publish npm.
+  M7 was re-dated 2026-10-27 to Weeks 5–6 (Oct 27 – Nov 6) after the
+  superseded Zig store work was removed; target cut is v0.6.0 on 2026-11-06.
 
 releases:
+  v0.6.0:
+    status: planned
+    target_date: "2026-11-06"
+    epics:
+      - m7-event-envelope
+    summary: |
+      M7 — event envelope + platform ledger contract. Two-digest
+      `fingerprint_result` (v2, stable-prefix append), `collection_event`
+      JSON envelope on AMQP, `x-fpkg-session-id` header, platform ledger
+      contract (Postgres/Mongo, idempotent on `package_id`), ingress HMAC +
+      replay window. No Zig store.
+
   v0.5.0:
     status: released
     date: "2026-10-21"

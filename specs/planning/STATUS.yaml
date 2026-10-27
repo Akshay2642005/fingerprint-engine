@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
-current_epic: m6-api-determinism (complete — shipped in v0.5.0; next is M7)
-active_story: "W4-D5 done — M6 monthly review (specs/quality/verifications/v0.5.0.md) and v0.5.0 cut. Engine 491/491, SDK 28/28 + type contract, canary 1.0.0-rc.1 on npm `next`, latest 0.4.1. Next: M7 — event envelope + platform ledger contract (→ v0.6.0)"
+current_epic: m7-event-envelope (started 2026-10-27 — ADR-013 adopted; plan re-dated to Weeks 5–6)
+active_story: "m7-envelope-adr (D1 done) — ADR-013 Adopted, superseded Zig-store plan removed, ledger idempotency fixed on package_id, M7 re-dated 2026-10-27 → 2026-11-06. Next: D2 — two-digest fingerprint_result v2 (86 bytes, stable prefix + layout pin/property tests)"
 
 epics:
   e01-core-engine:
@@ -69,6 +69,12 @@ epics:
   m6-api-determinism:
     status: done
     summary: "M6 shipped in v0.5.0: ADR-012 wire versioning + ABI pin, FeatureID registry lock, tolerant lookup/decode + capability tail, 3×3 cross-browser golden-digest gate, stable-core subset (core_version = 1), SDK 1.0 surface frozen with SemVer/deprecation policy and runtime + type-level contract suites, SDK 1.0.0-rc.1 canary on npm @next."
+
+  m7-event-envelope:
+    status: in_progress
+    started: "2026-10-27"
+    target: "v0.6.0 (2026-11-06)"
+    summary: "Event envelope + platform ledger contract. D1 done: ADR-013 Adopted, superseded Zig `stored`/AOF plan removed, ledger idempotency fixed on SDK-minted `package_id`, M7 re-dated to Weeks 5–6. Remaining: two-digest fingerprint_result v2, collection_event JSON envelope, x-fpkg-session-id, worker publish wiring, wire-contract tests, ledger schema fixtures, ingress HMAC + replay window, security refresh, v0.6.0 cut."
 
 rework:
   status: done
