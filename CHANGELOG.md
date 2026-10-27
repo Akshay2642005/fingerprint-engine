@@ -65,6 +65,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   depends on the context; direct TCP/loopback clients still send a plain
   `signal_package` frame.
 
+### Changed
+
+- **Security plan refreshed for v0.6.0** — `specs/security/SECURITY_PLAN.md`
+  now documents the M7 attack surface instead of the pre-ingress one: the
+  closed H-1 idle timeout, the optional HMAC boundary (fail-closed, bounded
+  replay cache, rotation, what it does and does not prove), the two outbound
+  surfaces and exactly what leaves the engine (the digest-only reply vs the
+  signal-bearing `collection_event` envelope, best-effort by design), the
+  boundary-cap table, the three replay/idempotency layers, PII/at-rest policy
+  for the platform-owned ledger, the AMQP-credential CLI-flag gap (S5/M8), and
+  the scope that stays platform-side (TLS, rate limits, authn/tenancy, ledger
+  reads/retention, DLQ).
+
 ## [0.5.0] - 2026-10-21
 
 > Engine milestone release (M6 — API & determinism contract). The browser SDK
