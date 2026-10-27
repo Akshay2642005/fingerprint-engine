@@ -232,6 +232,72 @@ test "collection event: non-collection inbound frames produce no envelope" {
     try testing.expectEqual(@as(?[]const u8, null), try collection_event.build(diag, reply, a, out));
 }
 
+test "collection event: the published frame is byte-identical across builds" {
+    // The ledger contract relies on deterministic documents (same input →
+    // same bytes on every platform). Two independent builds from the same
+    // request/reply must not differ in a single byte, and the frame's own
+    // integrity digest must validate on decode.
+    const payload = try makePackage();
+    defer testing.allocator.free(payload);
+
+    var frame_buf: [io.frame.header_size + 512]u8 = undefined;
+    const frame = try inboundFrame(payload, &frame_buf);
+
+    var arena1 = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena1.deinit();
+    var arena2 = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena2.deinit();
+
+    var reply_buf1: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
+    var reply_buf2: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
+    const reply1 = try worker.processFrame(frame, &reply_buf1, arena1.allocator());
+    const reply2 = try worker.processFrame(frame, &reply_buf2, arena2.allocator());
+
+    const out1 = try testing.allocator.alloc(u8, event_buf_len);
+    defer testing.allocator.free(out1);
+    const out2 = try testing.allocator.alloc(u8, event_buf_len);
+    defer testing.allocator.free(out2);
+
+    const event1 = (try collection_event.build(frame, reply1, arena1.allocator(), out1)).?;
+    const event2 = (try collection_event.build(frame, reply2, arena2.allocator(), out2)).?;
+
+    try testing.expectEqualSlices(u8, event1, event2);
+
+    // decodeFrame verifies the frame integrity digest, so this also proves the
+    // envelope header covers the JSON payload it was built from.
+    const decoded = try adapter.decodeFrame(event1);
+    try testing.expectEqual(io.frame.MessageType.collection_event, decoded.header.message_type);
+}
+
+test "collection event: the envelope carries the SDK-minted package_id" {
+    // The ledger's idempotency key must be the client's id, not something the
+    // worker invents: same package → same key, and it equals the package body's
+    // metadata field byte for byte.
+    const payload = try makePackage();
+    defer testing.allocator.free(payload);
+
+    var frame_buf: [io.frame.header_size + 512]u8 = undefined;
+    const frame = try inboundFrame(payload, &frame_buf);
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var reply_buf: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
+    const reply = try worker.processFrame(frame, &reply_buf, a);
+
+    const out = try testing.allocator.alloc(u8, event_buf_len);
+    defer testing.allocator.free(out);
+    const event_frame = (try collection_event.build(frame, reply, a, out)).?;
+
+    var parsed = try std.json.parseFromSlice(std.json.Value, a, (try adapter.decodeFrame(event_frame)).payload, .{});
+    defer parsed.deinit();
+    try testing.expectEqualStrings(
+        "8d56529f06040b90df4cb25a3811a10e",
+        parsed.value.object.get("package_id").?.string,
+    );
+}
+
 test "collection event: a short output buffer is refused, not truncated" {
     const payload = try makePackage();
     defer testing.allocator.free(payload);
