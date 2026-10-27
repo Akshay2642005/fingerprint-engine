@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m7/week5-envelope-adr
+  branch: m7/week5-two-digest
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -189,6 +189,11 @@ handoff:
     (2026-10-27): ADR-013 is Adopted, the superseded Zig `stored`/AOF plan is
     removed from the roadmap, ledger idempotency is fixed on the SDK-minted
     `package_id`, and M7 is re-dated to Weeks 5–6 (Oct 27 – Nov 6) with the
-    cut at v0.6.0. Next: two-digest `fingerprint_result` v2, then the
-    `collection_event` JSON envelope, session-id header, worker publish
-    wiring, ledger schema fixtures, and ingress HMAC + replay window.
+    cut at v0.6.0. D2 is done: `fingerprint_result` v2 now emits the 72-byte
+    two-digest layout (36-byte v1 prefix + `core_digest` /
+    `core_feature_count` / `core_version`), guarded by a compile-time layout
+    pin plus window-resize, core-subset, and golden-digest tests. The old
+    86-byte figure in the specs was arithmetic drift and is corrected to 72.
+    Next: the `collection_event` JSON envelope, session-id header, worker
+    publish wiring, wire-contract tests, ledger schema fixtures, and ingress
+    HMAC + replay window.

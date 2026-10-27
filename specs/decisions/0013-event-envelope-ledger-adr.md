@@ -85,6 +85,10 @@ describes):
 [32] core_digest       | u16 core_feature_count | u16 core_version ← appended
 ```
 
+Total payload is **72 bytes** (36-byte v1 prefix + 36-byte append); the v1
+prefix is byte-identical, so a legacy reader that stops at 36 bytes is
+unaffected and a v2 reader gates on `payload_len >= 72`.
+
 This is a result-format change, versioned via the existing schema-version
 field per ADR-012 §3 (breaking → dual-decode). The full digest stays
 byte-identical for existing consumers.
@@ -147,7 +151,7 @@ collection_events(
 
 ## Open items (M7 implementation)
 
-- Two-digest `fingerprint_result` v2 (86 bytes) + compile-time layout pin and
+- Two-digest `fingerprint_result` v2 (72 bytes) + compile-time layout pin and
   the window-resize / subset-revision property tests (`05`).
 - `collection_event = 10` + deterministic JSON envelope encoder (`06`).
 - `x-fpkg-session-id` through the ingress and into the envelope.

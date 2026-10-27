@@ -186,10 +186,12 @@ test "worker: processFrame hashes a signal package end to end" {
     const parsed = try worker.decodeReply(reply);
     try testing.expectEqual(io.frame.MessageType.fingerprint_result, parsed.message_type);
     try testing.expectEqual(engine.Status.ok, parsed.status);
-    // digest | feature_count | schema_version
-    try testing.expectEqual(@as(usize, 32 + 2 + 2), parsed.payload.len);
+    // digest | feature_count | schema_version | core_digest |
+    // core_feature_count | core_version
+    try testing.expectEqual(@as(usize, 72), parsed.payload.len);
     try testing.expectEqual(@as(u16, 3), std.mem.readInt(u16, parsed.payload[32..34], .little));
     try testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, parsed.payload[34..36], .little));
+    try testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, parsed.payload[70..72], .little));
 
     // The reply must match the engine's own hash of the same payload.
     var res_buf: [128]u8 = undefined;

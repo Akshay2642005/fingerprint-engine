@@ -160,14 +160,17 @@ fn readFrame(reader: anytype, buf: []u8) ![]const u8 {
     return buf[0..total];
 }
 
-/// Asserts the reply frame carries `status ok | digest | 3 features | v2`.
+/// Asserts the reply frame carries `status ok | digest | 3 features | v2`
+/// followed by the appended core triple (ADR-013 §3).
 fn expectHashReply(reply: []const u8) !void {
     try std.testing.expectEqual(@as(u8, fingerprint_result_type), reply[6]);
     const payload = reply[header_size..];
+    try std.testing.expectEqual(@as(usize, 1 + 72), payload.len);
     try std.testing.expectEqual(@as(u8, 0), payload[0]); // engine.Status.ok
     try std.testing.expectEqualSlices(u8, &expected_digest, payload[1..33]);
     try std.testing.expectEqual(@as(u16, 3), std.mem.readInt(u16, payload[33..35], .little));
     try std.testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, payload[35..37], .little));
+    try std.testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, payload[71..73], .little));
 }
 
 test "worker: hashes a signal package over the loopback pipe" {
@@ -557,7 +560,7 @@ test "worker: --log-level=debug emits the request flow trace (S3b)" {
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail codec=binary payload_len=92") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: processing job") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job done status=ok") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail result_len=36") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: job detail result_len=72") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: reply sent to client (type=fingerprint_result)") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "worker: client closed") != null);
 }
@@ -661,13 +664,14 @@ fn fixtureWithIntegrity(alloc: std.mem.Allocator) !struct { body: []u8, integrit
 }
 
 /// Asserts the relayed HTTP body is `status ok | digest | 3 features | v2`
-/// (the worker's reply payload, relayed verbatim).
+/// plus the appended core triple (the worker's reply payload, relayed verbatim).
 fn expectHashPayload(payload: []const u8) !void {
-    try std.testing.expectEqual(@as(usize, 1 + 32 + 2 + 2), payload.len);
+    try std.testing.expectEqual(@as(usize, 1 + 72), payload.len);
     try std.testing.expectEqual(@as(u8, 0), payload[0]); // engine.Status.ok
     try std.testing.expectEqualSlices(u8, &expected_digest, payload[1..33]);
     try std.testing.expectEqual(@as(u16, 3), std.mem.readInt(u16, payload[33..35], .little));
     try std.testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, payload[35..37], .little));
+    try std.testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, payload[71..73], .little));
 }
 
 const HttpReply = struct {
@@ -1035,7 +1039,7 @@ test "ingress: --log-level=debug emits the request flow trace (S3b)" {
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: reply from worker 0 (127.0.0.1:") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: worker reply status 0 -> http 200") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: reply relayed") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: relayed reply (37 bytes)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: relayed reply (73 bytes)") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: get /healthz (content-length 0) from 127.0.0.1:") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: healthz probe from 127.0.0.1:") != null);
     try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: connection closed") != null);

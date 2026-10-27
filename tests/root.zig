@@ -24,6 +24,7 @@ comptime {
     _ = @import("data/fingerprints/fingerprints_test.zig");
     _ = @import("engine/determinism_test.zig");
     _ = @import("engine/dispatch_test.zig");
+    _ = @import("engine/hash_result_test.zig");
     _ = @import("engine/integration_test.zig");
     _ = @import("engine/replay_test.zig");
     _ = @import("engine/roundtrip_test.zig");
