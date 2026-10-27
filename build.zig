@@ -15,7 +15,7 @@ const builtin = @import("builtin");
 //   engine          - deterministic process dispatch (src/engine/), depends on model+core+serialization
 //   io              - async transport primitives (src/io/), depends on nothing
 //   adapter         - transport implementations (src/adapter/), depends on io
-//   worker          - worker app + CLI (src/cmd/worker.zig), depends on engine+adapter
+//   worker          - worker app + CLI (src/cmd/worker.zig), depends on engine+adapter+core+serialization (it emits the ADR-013 envelope)
 //   ingress         - ingress app + CLI (src/cmd/ingress.zig), depends on adapter only (never engine)
 //   cmd             - combined fingerprint binary (src/cmd/main.zig), depends on worker+ingress
 //   wasm            - WebAssembly infra artifact (src/wasm.zig), depends on core+model
@@ -242,6 +242,12 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "engine", .module = engine },
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
+            // The worker builds the ADR-013 collection envelope itself: it
+            // needs the deterministic encoder (serialization) and the entropy
+            // and risk ops it reports (core). The engine still owns every
+            // fingerprint computation; nothing is added to the engine API.
+            .{ .name = "core", .module = core },
+            .{ .name = "serialization", .module = serialization },
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
             .{ .name = "log", .module = log_module },
@@ -278,6 +284,10 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "engine", .module = engine },
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
+            // Same as the worker module: the combined binary imports
+            // worker.zig directly, so it resolves the envelope's imports too.
+            .{ .name = "core", .module = core },
+            .{ .name = "serialization", .module = serialization },
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
             .{ .name = "log", .module = log_module },

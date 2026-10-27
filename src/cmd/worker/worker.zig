@@ -27,6 +27,11 @@ const version_info = @import("version");
 const shutdown = @import("shutdown");
 const log = @import("log");
 
+/// Per-collection envelope construction (ADR-013 §1). Publishes an extra
+/// outbound frame next to the unchanged digest reply when the publisher is
+/// enabled; see `collection_event.zig`.
+pub const collection_event = @import("collection_event.zig");
+
 /// Routes `std.log` (the AMQP client's `std.log.scoped(.amqp)`) through the
 /// application logger (specs/architecture/logging.md, F-2/S3). The comptime
 /// level stays `.debug` — the TigerBeetle pattern — so `--log-level` is the
@@ -126,10 +131,13 @@ pub const usage =
     \\  --publish     outbound event sink: none or amqp. With amqp, every
     \\                reply frame is published to the broker's `fingerprint`
     \\                exchange (direct, durable) under routing key
-    \\                result.<message-type>, with publisher confirms. Publish
-    \\                failures are logged and the frame dropped; the broker's
-    \\                persistence and the supervisor's restart policy cover
-    \\                the rest in v1.
+    \\                result.<message-type>, with publisher confirms. Each
+    \\                successful signal package also publishes one
+    \\                `collection_event` (result.collection-event) carrying the
+    \\                ADR-013 envelope, so a ledger can store one row per
+    \\                collection. Publish failures are logged and the frame
+    \\                dropped; the broker's persistence and the supervisor's
+    \\                restart policy cover the rest in v1.
     \\  --amqp-address  broker host:port (default 127.0.0.1:5672)
     \\  --amqp-user     broker user name (default guest)
     \\  --amqp-password  broker password (default guest)
@@ -372,8 +380,9 @@ fn peerGone(err: anyerror) bool {
 /// Inbound frames are processed one at a time; scratch is an arena that
 /// resets after every frame (no state carries across requests). When a
 /// publisher is configured, every reply frame is also published to the
-/// broker; publish failures are logged and the frame dropped (v1 policy,
-/// documented in the CLI usage).
+/// broker, and every successful collection additionally publishes one
+/// `collection_event` envelope (ADR-013); publish failures are logged and the
+/// frame dropped (v1 policy, documented in the CLI usage).
 fn serve(
     comptime Transport: type,
     t: *Transport,
@@ -460,10 +469,53 @@ fn serve(
                 log.worker.warn("worker: publish dropped: {s}", .{@errorName(err)});
             };
             log.worker.info("worker: publish confirmed", .{});
+
+            // ADR-013 §1: one extra out-of-band frame per successful
+            // collection, carrying the self-contained ledger document. It is
+            // built from the same package the reply was, after the reply is
+            // published, so a slow/expensive envelope can never delay or
+            // change the browser's reply (which was already written above).
+            publishCollectionEvent(frame, reply, a, p);
         }
         t.ack(frame);
         _ = arena.reset(.retain_capacity);
     }
+}
+
+/// Builds and publishes the collection envelope for one request/reply pair.
+/// Non-collection frames and failed collections build nothing (returns
+/// silently); a build or publish failure is logged and dropped, exactly like
+/// the reply publish path — the ledger can fall back to the live fanout, and a
+/// partial/truncated envelope would be worse than none (ADR-013 §1).
+fn publishCollectionEvent(
+    frame: []const u8,
+    reply: []const u8,
+    alloc: std.mem.Allocator,
+    publisher: *adapter.amqp_publisher.Publisher,
+) void {
+    const out = alloc.alloc(u8, io.frame.header_size + collection_event.max_payload) catch {
+        log.worker.warn("worker: collection event dropped: out of memory", .{});
+        return;
+    };
+    const event_frame = collection_event.build(frame, reply, alloc, out) catch |err| {
+        log.worker.warn("worker: collection event dropped: {s}", .{@errorName(err)});
+        return;
+    } orelse return;
+
+    if (log.shouldLog(.info)) {
+        log.worker.info(
+            "worker: publishing collection event to exchange '{s}' key '{s}'",
+            .{
+                adapter.amqp_publisher.exchange_name,
+                adapter.amqp_publisher.routingKey(.collection_event),
+            },
+        );
+    }
+    publisher.publish_reply(event_frame) catch |err| {
+        log.worker.warn("worker: collection event publish dropped: {s}", .{@errorName(err)});
+        return;
+    };
+    log.worker.info("worker: collection event confirmed", .{});
 }
 
 fn start(options: StartOptions, alloc: std.mem.Allocator) !void {

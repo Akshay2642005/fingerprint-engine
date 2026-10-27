@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m7/week5-session-id
+  branch: m7/week5-envelope-publish
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -206,6 +206,14 @@ handoff:
     envelope's ingress timestamp is real for HTTP traffic (direct frame
     clients record 0); the worker strips the header and hands the inner body
     to the engine unchanged, proven by unit and e2e tests to produce an
-    identical digest with and without a session id.
-    Next: worker envelope publish wiring, wire-contract tests, ledger schema
-    fixtures, and ingress HMAC + replay window.
+    identical digest with and without a session id. D5 is done: with
+    `--publish=amqp` the worker publishes one `collection_event` frame
+    (`result.collection-event`) per successful collection, after the unchanged
+    digest reply. The envelope is rebuilt from the same package the engine
+    hashed (canonicalized signals, v2 digests/counts parsed from the 72-byte
+    reply, entropy/risk via core) and carries the ingress session id and
+    arrival time. Failed collections and non-collection frames emit nothing;
+    build/publish failures log and drop, leaving the live `result.*` fanout as
+    the fallback.
+    Next: wire-contract/compat tests, ledger schema fixtures, and ingress
+    HMAC + replay window.
