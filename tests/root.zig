@@ -8,6 +8,7 @@ comptime {
     _ = @import("browser/wasm_test.zig");
     _ = @import("build/browser_package_test.zig");
     _ = @import("build/dist_surface_test.zig");
+    _ = @import("cmd/ingress_hmac_test.zig");
     _ = @import("cmd/ingress_http_test.zig");
     _ = @import("cmd/ingress_test.zig");
     _ = @import("core/bounds_test.zig");
@@ -24,6 +25,7 @@ comptime {
     _ = @import("data/fingerprints/fingerprints_test.zig");
     _ = @import("engine/determinism_test.zig");
     _ = @import("engine/dispatch_test.zig");
+    _ = @import("engine/hash_result_test.zig");
     _ = @import("engine/integration_test.zig");
     _ = @import("engine/replay_test.zig");
     _ = @import("engine/roundtrip_test.zig");
@@ -40,6 +42,8 @@ comptime {
     _ = @import("io/message_test.zig");
     _ = @import("io/reader_writer_test.zig");
     _ = @import("io/ring_buffer_test.zig");
+    _ = @import("io/session_context_test.zig");
+    _ = @import("ledger/ledger_fixture_test.zig");
     _ = @import("log/log_test.zig");
     _ = @import("model/api_test.zig");
     _ = @import("model/definitions_test.zig");
@@ -53,9 +57,11 @@ comptime {
     _ = @import("serialization/abi_pin_test.zig");
     _ = @import("serialization/binary_test.zig");
     _ = @import("serialization/codec_test.zig");
+    _ = @import("serialization/envelope_test.zig");
     _ = @import("serialization/integrity_test.zig");
     _ = @import("serialization/json_test.zig");
     _ = @import("utils_test.zig");
+    _ = @import("worker/collection_event_test.zig");
     _ = @import("worker/worker_test.zig");
 }
 

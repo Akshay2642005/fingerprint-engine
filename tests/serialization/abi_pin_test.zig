@@ -28,6 +28,8 @@ comptime {
     std.debug.assert(@intFromEnum(MessageType.diagnostics) == 7);
     std.debug.assert(@intFromEnum(MessageType.fingerprint_computed) == 8);
     std.debug.assert(@intFromEnum(MessageType.entropy_result) == 9);
+    std.debug.assert(@intFromEnum(MessageType.collection_event) == 10);
+    std.debug.assert(@intFromEnum(MessageType.signal_package_context) == 11);
 
     // codec check
     std.debug.assert(@intFromEnum(Codec.binary) == 1);

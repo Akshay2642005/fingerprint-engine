@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "package_id": "0102030405060708090a0b0c0d0e0f10",
+  "session_id": "tenant42:8d56529f",
+  "fingerprint_id": "db29fc13d8dad5dc0bd7b1f997155cff411f3da88a597619f5e0d67a251e6c75",
+  "core_digest": "475491c611c2fdd05d6e0814a3871d80211db76ebf8a3bc2d89d29375f8cd63b",
+  "core_version": 1,
+  "feature_count": 3,
+  "core_feature_count": 1,
+  "status": 0,
+  "entropy": 2.013521446710627,
+  "risk": {
+    "score": 0.6875592217821157,
+    "label": "medium",
+    "flags": ["missing_required_feature", "low_feature_coverage"]
+  },
+  "collected_at": 1700000000123,
+  "ingress_received_at": 1757312346789,
+  "sdk_version": "0.2.0",
+  "signals": {
+    "User Agent": "Mozilla/5.0",
+    "Cookie Enabled": true,
+    "Hardware Concurrency": 8
+  }
+}

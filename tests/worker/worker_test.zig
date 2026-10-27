@@ -149,6 +149,7 @@ test "worker: parse amqp options override broker settings" {
 
 test "worker: operationFor maps inbound message types" {
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package).?);
+    try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package_context).?);
     try testing.expectEqual(engine.Operation.validate, worker.operationFor(.validation_result).?);
     try testing.expectEqual(engine.Operation.normalize, worker.operationFor(.normalization_result).?);
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.fingerprint_result).?);
@@ -186,10 +187,12 @@ test "worker: processFrame hashes a signal package end to end" {
     const parsed = try worker.decodeReply(reply);
     try testing.expectEqual(io.frame.MessageType.fingerprint_result, parsed.message_type);
     try testing.expectEqual(engine.Status.ok, parsed.status);
-    // digest | feature_count | schema_version
-    try testing.expectEqual(@as(usize, 32 + 2 + 2), parsed.payload.len);
+    // digest | feature_count | schema_version | core_digest |
+    // core_feature_count | core_version
+    try testing.expectEqual(@as(usize, 72), parsed.payload.len);
     try testing.expectEqual(@as(u16, 3), std.mem.readInt(u16, parsed.payload[32..34], .little));
     try testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, parsed.payload[34..36], .little));
+    try testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, parsed.payload[70..72], .little));
 
     // The reply must match the engine's own hash of the same payload.
     var res_buf: [128]u8 = undefined;
@@ -199,18 +202,108 @@ test "worker: processFrame hashes a signal package end to end" {
     try testing.expectEqualSlices(u8, res.slice(), parsed.payload);
 }
 
-test "worker: processFrame replies invalid_request for outbound-only types" {
-    var frame_buf: [io.frame.header_size + 64]u8 = undefined;
-    const frame = try adapter.buildFrame(.diagnostics, .binary, "{}", &frame_buf);
+test "worker: a session-context package hashes identically to a plain one" {
+    // ADR-013 §4: the ingress wraps the body, the worker strips the prefix.
+    // The digest must not move — the session id is envelope metadata, not
+    // input to the fingerprint.
+    const payload = try makeSignalPackage();
+    defer testing.allocator.free(payload);
+
+    var plain_buf: [io.frame.header_size + 512]u8 = undefined;
+    const plain = try adapter.buildFrame(.signal_package, .binary, payload, &plain_buf);
+
+    var wrapped_buf: [io.session_context.header_len + 32 + io.frame.header_size + 512]u8 = undefined;
+    const wrapped_payload = try io.session_context.wrap(
+        &wrapped_buf,
+        "sess-42:abc",
+        1757312346789,
+        payload,
+    );
+    var ctx_frame_buf: [io.frame.header_size + 512]u8 = undefined;
+    const ctx_frame = try adapter.buildFrame(.signal_package_context, .binary, wrapped_payload, &ctx_frame_buf);
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    var plain_reply_buf: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
+    var ctx_reply_buf: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
+    const plain_reply = try worker.processFrame(plain, &plain_reply_buf, arena.allocator());
+    const ctx_reply = try worker.processFrame(ctx_frame, &ctx_reply_buf, arena.allocator());
+
+    try testing.expectEqualSlices(u8, plain_reply, ctx_reply);
+
+    // The reply type is the engine's, never the transport wrapper: the
+    // browser's contract does not change when a session id is attached.
+    const parsed = try worker.decodeReply(ctx_reply);
+    try testing.expectEqual(io.frame.MessageType.fingerprint_result, parsed.message_type);
+    try testing.expectEqual(engine.Status.ok, parsed.status);
+}
+
+test "worker: splitInbound strips the context and keeps the session id" {
+    const payload = try makeSignalPackage();
+    defer testing.allocator.free(payload);
+
+    var wrapped_buf: [io.session_context.header_len + 16 + 512]u8 = undefined;
+    const wrapped_payload = try io.session_context.wrap(&wrapped_buf, "tenant:1", 1757312346789, payload);
+    var frame_buf: [io.frame.header_size + 512]u8 = undefined;
+    const frame = try adapter.buildFrame(.signal_package_context, .binary, wrapped_payload, &frame_buf);
+
+    const decoded = try adapter.decodeFrame(frame);
+    const inbound = try worker.splitInbound(decoded);
+    try testing.expectEqual(io.frame.MessageType.signal_package_context, inbound.message_type);
+    try testing.expectEqualStrings("tenant:1", inbound.session_id.?);
+    try testing.expectEqual(@as(i64, 1757312346789), inbound.ingress_received_at);
+    // The body handed to the engine is byte-identical to the client's package.
+    try testing.expectEqualSlices(u8, payload, inbound.body);
+
+    // No session header: the context is still present (the ingress timestamp
+    // is always carried), the session id is simply absent.
+    const no_session = try io.session_context.wrap(&wrapped_buf, "", 7, payload);
+    const no_session_frame = try adapter.buildFrame(.signal_package_context, .binary, no_session, &frame_buf);
+    const no_session_inbound = try worker.splitInbound(try adapter.decodeFrame(no_session_frame));
+    try testing.expectEqual(@as(?[]const u8, null), no_session_inbound.session_id);
+    try testing.expectEqual(@as(i64, 7), no_session_inbound.ingress_received_at);
+    try testing.expectEqualSlices(u8, payload, no_session_inbound.body);
+
+    // A plain package (direct TCP/loopback client) carries no ingress context.
+    const plain_frame = try adapter.buildFrame(.signal_package, .binary, payload, &frame_buf);
+    const plain_inbound = try worker.splitInbound(try adapter.decodeFrame(plain_frame));
+    try testing.expectEqual(@as(?[]const u8, null), plain_inbound.session_id);
+    try testing.expectEqual(@as(i64, 0), plain_inbound.ingress_received_at);
+    try testing.expectEqualSlices(u8, payload, plain_inbound.body);
+}
+
+test "worker: processFrame rejects a malformed session-context payload" {
+    // A context frame whose session length runs past the payload is a protocol
+    // error, like a bad integrity digest: the frame is dropped, not answered.
+    var frame_buf: [io.frame.header_size + 8]u8 = undefined;
+    const frame = try adapter.buildFrame(.signal_package_context, .binary, &.{ 0x08, 0x00, 'a' }, &frame_buf);
 
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     var reply_buf: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
-    const reply = try worker.processFrame(frame, &reply_buf, arena.allocator());
+    try testing.expectError(error.Truncated, worker.processFrame(frame, &reply_buf, arena.allocator()));
 
-    const parsed = try worker.decodeReply(reply);
-    try testing.expectEqual(engine.Status.invalid_request, parsed.status);
-    try testing.expectEqual(@as(usize, 0), parsed.payload.len);
+    // A session id longer than the cap cannot have come from the ingress.
+    const too_long = try adapter.buildFrame(.signal_package_context, .binary, &.{ 0x81, 0x00 }, &frame_buf);
+    try testing.expectError(error.SessionIdTooLong, worker.processFrame(too_long, &reply_buf, arena.allocator()));
+}
+
+test "worker: processFrame replies invalid_request for outbound-only types" {
+    // `collection_event` is the new outbound envelope; like diagnostics it is
+    // never an inbound engine operation (ADR-013 §2).
+    for ([_]io.frame.MessageType{ .diagnostics, .collection_event }) |message_type| {
+        var frame_buf: [io.frame.header_size + 64]u8 = undefined;
+        const frame = try adapter.buildFrame(message_type, .binary, "{}", &frame_buf);
+
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+        var reply_buf: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
+        const reply = try worker.processFrame(frame, &reply_buf, arena.allocator());
+
+        const parsed = try worker.decodeReply(reply);
+        try testing.expectEqual(engine.Status.invalid_request, parsed.status);
+        try testing.expectEqual(@as(usize, 0), parsed.payload.len);
+    }
 }
 
 test "worker: processFrame rejects tampered frames" {

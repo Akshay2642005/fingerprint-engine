@@ -38,21 +38,23 @@ precisely so the envelope can grow flags without a version bump.
 
 ### 2. Current wire ABI (byte-for-byte reference)
 
-Verified against source 2026-09-15; the companion ABI pin test
+Verified against source 2026-09-15, amended 2026-10-27 for the M7
+append-only additions (message types 10–11, `x-fpkg-session-id`); the
+companion ABI pin test
 (`tests/serialization/abi_pin_test.zig`, story `m6-abi-pin`) locks this table as
 compile-time constants so it cannot drift.
 
 | Layer | Layout (all little-endian) |
 |-------|----------------------------|
 | FPKG header (48 B) | `FPKG` u8×4 @0 · version u16 @4 (=1) · message_type u8 @6 · codec u8 @7 · payload_len u32 @8 · reserved u32 @12 (must be 0; R-5 reserves it for future flags) · integrity SHA-256[32] @16 |
-| `MessageType` (u8) | signal_package=1 … entropy_result=9 (`frame.zig`); 10+ reserved, append-only |
+| `MessageType` (u8) | signal_package=1 … entropy_result=9, collection_event=10 (outbound, ADR-013 §2), signal_package_context=11 (inbound, ADR-013 §4) (`frame.zig`); 12+ reserved, append-only |
 | `Codec` (u8) | binary=1, json=2; values fixed, append-only |
 | SignalPackage v1 body | `FNGR` · schema u16 · feature_count u16 · features TLV×N |
 | SignalPackage v2 body | `FNGR` · schema u16 · sdk_version_len u16 · sdk_version · collected_at i64 · package_id [16]u8 · feature_count u16 · features TLV×N |
 | SignalPackage v2 body (+ capability tail) | `… features TLV×N` · `signals_count u16` · `signals u16×N` — optional trailing section (W2-4, additive; schema stays 2; old SDKs omit it; presence by remaining bytes) |
 | Feature TLV | id u16 · type u8 · payload_len u32 · payload (cap 4 KiB per feature, R-3) |
 | `FeatureValue` payload | Boolean 1 B (strict 0/1, R-4) · Integer i64 · Float u64 bits · String/Bytes u32 len + bytes · arrays count-prefixed (u32), all LE |
-| HTTP (ingress) | request head cap 16 KiB; request headers `x-fpkg-schema-version`, `x-fpkg-sdk-version`, `x-fpkg-package-id`, `x-fpkg-integrity` (CORS-allow-listed); reply = worker frame in body + `x-fpkg-message-type` response header |
+| HTTP (ingress) | request head cap 16 KiB; request headers `x-fpkg-schema-version`, `x-fpkg-sdk-version`, `x-fpkg-package-id`, `x-fpkg-integrity`, `x-fpkg-session-id` (CORS-allow-listed); reply = worker frame in body + `x-fpkg-message-type` response header |
 
 ### 3. Breaking vs additive table
 

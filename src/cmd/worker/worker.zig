@@ -27,6 +27,11 @@ const version_info = @import("version");
 const shutdown = @import("shutdown");
 const log = @import("log");
 
+/// Per-collection envelope construction (ADR-013 §1). Publishes an extra
+/// outbound frame next to the unchanged digest reply when the publisher is
+/// enabled; see `collection_event.zig`.
+pub const collection_event = @import("collection_event.zig");
+
 /// Routes `std.log` (the AMQP client's `std.log.scoped(.amqp)`) through the
 /// application logger (specs/architecture/logging.md, F-2/S3). The comptime
 /// level stays `.debug` — the TigerBeetle pattern — so `--log-level` is the
@@ -126,10 +131,13 @@ pub const usage =
     \\  --publish     outbound event sink: none or amqp. With amqp, every
     \\                reply frame is published to the broker's `fingerprint`
     \\                exchange (direct, durable) under routing key
-    \\                result.<message-type>, with publisher confirms. Publish
-    \\                failures are logged and the frame dropped; the broker's
-    \\                persistence and the supervisor's restart policy cover
-    \\                the rest in v1.
+    \\                result.<message-type>, with publisher confirms. Each
+    \\                successful signal package also publishes one
+    \\                `collection_event` (result.collection-event) carrying the
+    \\                ADR-013 envelope, so a ledger can store one row per
+    \\                collection. Publish failures are logged and the frame
+    \\                dropped; the broker's persistence and the supervisor's
+    \\                restart policy cover the rest in v1.
     \\  --amqp-address  broker host:port (default 127.0.0.1:5672)
     \\  --amqp-user     broker user name (default guest)
     \\  --amqp-password  broker password (default guest)
@@ -202,17 +210,20 @@ fn parsePublish(value: []const u8) ?PublishKind {
 // ── Frame ↔ engine mapping (design §8) ───────────────────────────────
 
 /// Inbound FPKG message type → engine operation. Outbound event types
-/// (diagnostics, fingerprint_computed) are not engine operations and return
-/// null so the worker replies `invalid_request`.
+/// (diagnostics, fingerprint_computed, collection_event) are not engine
+/// operations and return null so the worker replies `invalid_request`.
 pub fn operationFor(message_type: io.frame.MessageType) ?engine.Operation {
     return switch (message_type) {
         .signal_package => .hash, // canonical digest — the worker's core path
+        // A signal package wrapped with an ingress session id (ADR-013 §4):
+        // same operation, the prefix is stripped before the engine sees it.
+        .signal_package_context => .hash,
         .validation_result => .validate,
         .normalization_result => .normalize,
         .fingerprint_result => .hash,
         .risk_result => .risk,
         .similarity_result => .similarity,
-        .diagnostics, .fingerprint_computed, .entropy_result => null,
+        .diagnostics, .fingerprint_computed, .entropy_result, .collection_event => null,
     };
 }
 
@@ -238,25 +249,68 @@ fn codecOf(frame_codec: io.frame.Codec) engine.CodecID {
     return std.meta.intToEnum(engine.CodecID, @intFromEnum(frame_codec)) catch unreachable;
 }
 
+/// One inbound frame, resolved to what the engine needs. Splitting transport
+/// metadata from the request payload is what keeps `signal_package_context`
+/// invisible to the engine (ADR-013 §4).
+pub const Inbound = struct {
+    /// The frame's message type as received; `signal_package_context` stays
+    /// visible here so logging and dispatch can distinguish it.
+    message_type: io.frame.MessageType,
+    codec: io.frame.Codec,
+    /// The engine request payload. For `signal_package_context` this is the
+    /// inner package body with the context prefix stripped — byte-identical
+    /// to an unwrapped `signal_package` body, so the digest is too.
+    body: []const u8,
+    /// `x-fpkg-session-id` as forwarded by the ingress; null when the client
+    /// sent none. Borrows from the frame.
+    session_id: ?[]const u8 = null,
+    /// Ingress arrival time in epoch milliseconds (0 when the frame did not
+    /// traverse the ingress, e.g. a direct TCP/loopback client).
+    ingress_received_at: i64 = 0,
+};
+
+/// Resolves a decoded frame into an `Inbound`. A `signal_package_context`
+/// payload is `[u16 session_len][session][i64 ingress_received_at][body]`;
+/// malformed context is a protocol error (the caller drops the frame, as for
+/// any poison frame).
+pub fn splitInbound(decoded: adapter.DecodedFrame) !Inbound {
+    if (decoded.header.message_type != .signal_package_context) {
+        return .{
+            .message_type = decoded.header.message_type,
+            .codec = decoded.header.codec,
+            .body = decoded.payload,
+        };
+    }
+    const view = try io.session_context.unwrap(decoded.payload);
+    return .{
+        .message_type = decoded.header.message_type,
+        .codec = decoded.header.codec,
+        .body = view.body,
+        .session_id = if (view.session_id.len > 0) view.session_id else null,
+        .ingress_received_at = view.ingress_received_at,
+    };
+}
+
 /// The worker's reply to one inbound frame: an FPKG frame whose payload is
 /// `u8 status | engine result`. `buf` must hold at least
 /// `header_size + 1 + max_result` bytes; the engine writes its result in
 /// place after the status byte.
 pub fn processFrame(frame: []const u8, buf: []u8, allocator: std.mem.Allocator) ![]const u8 {
     const decoded = try adapter.decodeFrame(frame);
-    const operation = operationFor(decoded.header.message_type) orelse {
-        return buildReply(.diagnostics, decoded.header.codec, .invalid_request, &.{}, buf);
+    const inbound = try splitInbound(decoded);
+    const operation = operationFor(inbound.message_type) orelse {
+        return buildReply(.diagnostics, inbound.codec, .invalid_request, &.{}, buf);
     };
 
     var response = engine.Response.init(operation, buf[io.frame.header_size + 1 ..]);
     var request = engine.Request{
         .operation = operation,
-        .codec = codecOf(decoded.header.codec),
-        .payload = decoded.payload,
+        .codec = codecOf(inbound.codec),
+        .payload = inbound.body,
     };
     try engine.process(&request, &response, allocator);
 
-    return buildReply(resultType(operation), decoded.header.codec, response.status, response.slice(), buf);
+    return buildReply(resultType(operation), inbound.codec, response.status, response.slice(), buf);
 }
 
 pub const Reply = struct {
@@ -326,8 +380,9 @@ fn peerGone(err: anyerror) bool {
 /// Inbound frames are processed one at a time; scratch is an arena that
 /// resets after every frame (no state carries across requests). When a
 /// publisher is configured, every reply frame is also published to the
-/// broker; publish failures are logged and the frame dropped (v1 policy,
-/// documented in the CLI usage).
+/// broker, and every successful collection additionally publishes one
+/// `collection_event` envelope (ADR-013); publish failures are logged and the
+/// frame dropped (v1 policy, documented in the CLI usage).
 fn serve(
     comptime Transport: type,
     t: *Transport,
@@ -414,10 +469,53 @@ fn serve(
                 log.worker.warn("worker: publish dropped: {s}", .{@errorName(err)});
             };
             log.worker.info("worker: publish confirmed", .{});
+
+            // ADR-013 §1: one extra out-of-band frame per successful
+            // collection, carrying the self-contained ledger document. It is
+            // built from the same package the reply was, after the reply is
+            // published, so a slow/expensive envelope can never delay or
+            // change the browser's reply (which was already written above).
+            publishCollectionEvent(frame, reply, a, p);
         }
         t.ack(frame);
         _ = arena.reset(.retain_capacity);
     }
+}
+
+/// Builds and publishes the collection envelope for one request/reply pair.
+/// Non-collection frames and failed collections build nothing (returns
+/// silently); a build or publish failure is logged and dropped, exactly like
+/// the reply publish path — the ledger can fall back to the live fanout, and a
+/// partial/truncated envelope would be worse than none (ADR-013 §1).
+fn publishCollectionEvent(
+    frame: []const u8,
+    reply: []const u8,
+    alloc: std.mem.Allocator,
+    publisher: *adapter.amqp_publisher.Publisher,
+) void {
+    const out = alloc.alloc(u8, io.frame.header_size + collection_event.max_payload) catch {
+        log.worker.warn("worker: collection event dropped: out of memory", .{});
+        return;
+    };
+    const event_frame = collection_event.build(frame, reply, alloc, out) catch |err| {
+        log.worker.warn("worker: collection event dropped: {s}", .{@errorName(err)});
+        return;
+    } orelse return;
+
+    if (log.shouldLog(.info)) {
+        log.worker.info(
+            "worker: publishing collection event to exchange '{s}' key '{s}'",
+            .{
+                adapter.amqp_publisher.exchange_name,
+                adapter.amqp_publisher.routingKey(.collection_event),
+            },
+        );
+    }
+    publisher.publish_reply(event_frame) catch |err| {
+        log.worker.warn("worker: collection event publish dropped: {s}", .{@errorName(err)});
+        return;
+    };
+    log.worker.info("worker: collection event confirmed", .{});
 }
 
 fn start(options: StartOptions, alloc: std.mem.Allocator) !void {

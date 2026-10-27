@@ -11,11 +11,11 @@ const builtin = @import("builtin");
 // Module graph (dependencies flow downward, no cycles):
 //   model           - runtime data model (src/model/), depends on nothing
 //   core            - deterministic algorithms (src/core/), depends on model
-//   serialization   - codecs (src/serialization/), depends on model
+//   serialization   - codecs (src/serialization/), depends on model+core
 //   engine          - deterministic process dispatch (src/engine/), depends on model+core+serialization
 //   io              - async transport primitives (src/io/), depends on nothing
 //   adapter         - transport implementations (src/adapter/), depends on io
-//   worker          - worker app + CLI (src/cmd/worker.zig), depends on engine+adapter
+//   worker          - worker app + CLI (src/cmd/worker.zig), depends on engine+adapter+core+serialization (it emits the ADR-013 envelope)
 //   ingress         - ingress app + CLI (src/cmd/ingress.zig), depends on adapter only (never engine)
 //   cmd             - combined fingerprint binary (src/cmd/main.zig), depends on worker+ingress
 //   wasm            - WebAssembly infra artifact (src/wasm.zig), depends on core+model
@@ -172,13 +172,16 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    // Serialization: binary and JSON codecs for the model. Depends on Model.
+    // Serialization: binary and JSON codecs for the model, plus the
+    // outbound collection-event envelope (which needs `core.risk` flag tags).
+    // Depends on Model + Core.
     const serialization = b.createModule(.{
         .root_source_file = b.path("src/serialization/root.zig"),
         .target = target,
         .optimize = mode,
         .imports = &.{
             .{ .name = "model", .module = model },
+            .{ .name = "core", .module = core },
         },
     });
 
@@ -239,6 +242,12 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "engine", .module = engine },
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
+            // The worker builds the ADR-013 collection envelope itself: it
+            // needs the deterministic encoder (serialization) and the entropy
+            // and risk ops it reports (core). The engine still owns every
+            // fingerprint computation; nothing is added to the engine API.
+            .{ .name = "core", .module = core },
+            .{ .name = "serialization", .module = serialization },
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
             .{ .name = "log", .module = log_module },
@@ -275,6 +284,10 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "engine", .module = engine },
             .{ .name = "adapter", .module = adapter },
             .{ .name = "io", .module = io },
+            // Same as the worker module: the combined binary imports
+            // worker.zig directly, so it resolves the envelope's imports too.
+            .{ .name = "core", .module = core },
+            .{ .name = "serialization", .module = serialization },
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
             .{ .name = "log", .module = log_module },

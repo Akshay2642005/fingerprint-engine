@@ -32,7 +32,7 @@ test "process: validate reports missing required features" {
     try testing.expect(required_count > 0);
 }
 
-test "process: hash returns digest, feature count, and schema version" {
+test "process: hash returns two digests, counts, and versions" {
     var arena_instance = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
@@ -44,9 +44,15 @@ test "process: hash returns digest, feature count, and schema version" {
     try engine.process(&req, &res, arena);
 
     try testing.expectEqual(Status.ok, res.status);
-    // 32-byte digest + u16 feature_count + u16 schema_version.
-    try testing.expectEqual(@as(usize, 36), res.payload_len);
+    // v1 prefix (32-byte digest + feature_count + schema_version) followed by
+    // the appended core triple (32-byte digest + core_feature_count +
+    // core_version) — ADR-013 §3.
+    try testing.expectEqual(@as(usize, 72), res.payload_len);
+    try testing.expectEqual(@as(u16, 5), std.mem.readInt(u16, response_buffer[32..34], .little));
     try testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, response_buffer[34..36], .little));
+    // HardwareConcurrency and Language are core; the other three are not.
+    try testing.expectEqual(@as(u16, 2), std.mem.readInt(u16, response_buffer[68..70], .little));
+    try testing.expectEqual(@as(u16, 1), std.mem.readInt(u16, response_buffer[70..72], .little));
 }
 
 test "process: entropy returns 8 bytes" {

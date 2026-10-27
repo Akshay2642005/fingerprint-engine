@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.6.0] - 2026-10-27
+
+### Added
+
+- **Ingress request authentication (HMAC + replay window)** — setting
+  `FPKG_HMAC_SECRET` makes the ingress require an HMAC-SHA256 signature over
+  `fpkg-hmac-v1 / collected_at / nonce / sha256(body)` in the new
+  `x-fpkg-collected-at`, `x-fpkg-nonce`, and `x-fpkg-signature` headers, and
+  fail closed otherwise: a missing or malformed header, a forged MAC, a
+  timestamp outside the freshness window (`FPKG_HMAC_WINDOW_MS`, default 5
+  minutes, past or future), and a replayed nonce are all rejected before the
+  body is framed (401/409). MACs are compared in constant time, nonces are
+  remembered in a bounded fixed-size cache, and `FPKG_HMAC_SECRET_PREVIOUS`
+  supports rotation. Unset by default, in which case the ingress keeps
+  trusting the network (D-v1-2). The browser SDK cannot hold a secret, so
+  signing is for a trusted edge or platform gateway.
+- **Platform ledger reference schema** — `deploy/ledger/` ships the
+  platform-side persistence contract for the ADR-013 envelope: Postgres DDL
+  (`collection_events`, `uuid` primary key on the SDK-minted `package_id`,
+  btree indexes on `fingerprint_id`/`session_id`/timestamps, `jsonb_path_ops`
+  GIN over `signals`), the equivalent MongoDB validator plus unique/partial/
+  wildcard indexes, and a generated example envelope
+  (`tests/fixtures/ledger/collection-event-v2.json`) that the encoder produces
+  through the real worker reply path so it cannot drift. Ingestion guidance
+  (48-byte frame-header strip, epoch-ms conversion, `ON CONFLICT DO NOTHING` /
+  error 11000 idempotency, signals privacy) is in `deploy/ledger/README.md`.
+  The engine gains no database dependency.
+- **Two-digest fingerprint result** — `fingerprint_result` v2 appends
+  `core_digest[32]`, `core_feature_count u16`, and `core_version u16` after
+  the unchanged 36-byte v1 prefix (72 bytes total). The stable-core digest is
+  the same canonical hash restricted to the registry's core subset, so the
+  full digest stays byte-identical and 1.0 consumers that stop at 36 bytes are
+  unaffected. Pinned by a compile-time layout guard plus window-resize,
+  core-subset-equivalence, and golden-digest tests.
+- **Per-collection event envelope** — new outbound-only message type
+  `collection_event = 10` carrying the ADR-013 deterministic JSON document
+  (`schema_version`, `package_id`, `session_id`, `fingerprint_id`,
+  `core_digest`, counts, status, entropy, risk, timestamps, SDK version, and
+  canonicalized signals) so a platform ledger can store one row per
+  collection without re-joining the live `result.*` fanout. Keys are emitted
+  in a frozen order; digests are lower-hex.
+- **Worker publishes the envelope** — with `--publish=amqp`, every successful
+  `signal_package` / `signal_package_context` now also publishes one
+  `collection_event` frame under `result.collection-event`, after the
+  unchanged digest reply. The envelope is rebuilt from the same package the
+  engine hashed (canonicalized order, v2 digests parsed from the reply) and
+  carries the ingress context when the collection arrived over HTTP. Failed
+  collections and non-collection frames emit nothing; build/publish failures
+  are logged and dropped, so a ledger gap can always fall back to the live
+  fanout.
+- **`x-fpkg-session-id` through the ingress** — a new optional CORS-allowed
+  request header is validated at the boundary (1–128 bytes of
+  `[A-Za-z0-9._:-]`, 400 otherwise) and forwarded to the worker in the new
+  inbound message type `signal_package_context = 11`, together with the
+  ingress arrival time
+  (`[u16 session_len][session][i64 ingress_received_at][body]`). The worker
+  strips the header and hashes the inner body unchanged, so the digest never
+  depends on the context; direct TCP/loopback clients still send a plain
+  `signal_package` frame.
+
+### Changed
+
+- **Security plan refreshed for v0.6.0** — `specs/security/SECURITY_PLAN.md`
+  now documents the M7 attack surface instead of the pre-ingress one: the
+  closed H-1 idle timeout, the optional HMAC boundary (fail-closed, bounded
+  replay cache, rotation, what it does and does not prove), the two outbound
+  surfaces and exactly what leaves the engine (the digest-only reply vs the
+  signal-bearing `collection_event` envelope, best-effort by design), the
+  boundary-cap table, the three replay/idempotency layers, PII/at-rest policy
+  for the platform-owned ledger, the AMQP-credential CLI-flag gap (S5/M8), and
+  the scope that stays platform-side (TLS, rate limits, authn/tenancy, ledger
+  reads/retention, DLQ).
+
 ## [0.5.0] - 2026-10-21
 
 > Engine milestone release (M6 — API & determinism contract). The browser SDK

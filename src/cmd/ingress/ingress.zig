@@ -41,6 +41,9 @@ pub const std_options = std.Options{
 /// worker pool. Exposed so the unit tests can exercise the pure parser and
 /// the status mapping without sockets.
 pub const http = @import("http.zig");
+/// Request authentication (M7 W6-D3). Exposed so tests can sign requests with
+/// the same canonical string the ingress verifies.
+pub const hmac = @import("hmac.zig");
 const pool = @import("pool.zig");
 
 /// Product version, injected from build.zig.zon as the `version`
@@ -111,6 +114,16 @@ pub const usage =
     \\  --max-body    accepted POST body cap in bytes (default 1048576)
     \\  --log-level   log verbosity: debug|info|warn|error (default info)
     \\  --log-format  log encoding: text|json (default text)
+    \\
+    \\Environment:
+    \\  FPKG_WORKERS               comma-separated worker seeds (when no --worker)
+    \\  FPKG_HMAC_SECRET           require request authentication: every POST must
+    \\                             carry x-fpkg-collected-at, x-fpkg-nonce and
+    \\                             x-fpkg-signature (hmac-sha256=...); secret is at
+    \\                             least 32 characters. Unset = authentication off
+    \\                             (the ingress trusts the network, D-v1-2).
+    \\  FPKG_HMAC_SECRET_PREVIOUS  previous secret, accepted during rotation
+    \\  FPKG_HMAC_WINDOW_MS        freshness/replay window in ms (default 300000)
     \\
 ;
 
@@ -187,6 +200,37 @@ fn peerGone(err: anyerror) bool {
     };
 }
 
+/// Reads an optional environment value, distinguishing "absent" from a real
+/// failure so a broken environment is reported instead of silently disabling
+/// authentication.
+fn envValue(alloc: std.mem.Allocator, name: []const u8) !?[]u8 {
+    return std.process.getEnvVarOwned(alloc, name) catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => null,
+        else => err,
+    };
+}
+
+/// FPKG_HMAC_WINDOW_MS, defaulted and bounded. A zero/negative window would
+/// reject everything, and an unbounded one would defeat the replay cache, so
+/// the accepted range is one second to one hour.
+fn hmacWindow(alloc: std.mem.Allocator) i64 {
+    const raw = envValue(alloc, "FPKG_HMAC_WINDOW_MS") catch |err| {
+        log.ingress.err("ingress: cannot read FPKG_HMAC_WINDOW_MS: {s}", .{@errorName(err)});
+        std.process.exit(1);
+    };
+    defer if (raw) |value| alloc.free(value);
+    const value = raw orelse return hmac.default_window_ms;
+    const window_ms = std.fmt.parseInt(i64, std.mem.trim(u8, value, " "), 10) catch {
+        log.ingress.err("ingress: FPKG_HMAC_WINDOW_MS must be an integer number of milliseconds", .{});
+        std.process.exit(1);
+    };
+    if (window_ms < 1000 or window_ms > 60 * 60 * 1000) {
+        log.ingress.err("ingress: FPKG_HMAC_WINDOW_MS must be between 1000 and 3600000", .{});
+        std.process.exit(1);
+    }
+    return window_ms;
+}
+
 fn splitHostPort(listen: []const u8) !struct { []const u8, u16 } {
     // R-7: support IPv6 bracket notation "[::1]:8080" in addition to IPv4 "0.0.0.0:8080".
     if (listen.len > 0 and listen[0] == '[') {
@@ -245,6 +289,38 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     var workers = try pool.WorkerPool.init(alloc, worker_seeds);
     defer workers.deinit();
 
+    // M7 W6-D3: request authentication. Off unless a secret is configured;
+    // when it is, an unsigned/stale/replayed/forged POST is rejected before it
+    // is wrapped into a frame, so the worker only ever sees authenticated
+    // traffic. The secret values stay in this scope (the verifier borrows
+    // them) and are never logged.
+    const secret = envValue(alloc, "FPKG_HMAC_SECRET") catch |err| {
+        log.ingress.err("ingress: cannot read FPKG_HMAC_SECRET: {s}", .{@errorName(err)});
+        std.process.exit(1);
+    };
+    defer if (secret) |value| alloc.free(value);
+    const previous_secret = envValue(alloc, "FPKG_HMAC_SECRET_PREVIOUS") catch |err| {
+        log.ingress.err("ingress: cannot read FPKG_HMAC_SECRET_PREVIOUS: {s}", .{@errorName(err)});
+        std.process.exit(1);
+    };
+    defer if (previous_secret) |value| alloc.free(value);
+
+    var verifier: ?hmac.Verifier = null;
+    defer if (verifier) |*active| active.deinit();
+    if (secret) |value| {
+        const window_ms = hmacWindow(alloc);
+        verifier = hmac.Verifier.init(alloc, value, previous_secret, window_ms) catch |err| {
+            log.ingress.err("ingress: invalid HMAC configuration: {s}", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        log.ingress.info("ingress: request authentication enabled (hmac-sha256, window {d} ms, {d} secret(s))", .{
+            window_ms,
+            verifier.?.secret_count,
+        });
+    } else {
+        log.ingress.warn("ingress: request authentication disabled (set FPKG_HMAC_SECRET to require HMAC)", .{});
+    }
+
     var server = try http.HttpServer.init(
         alloc,
         host,
@@ -254,6 +330,7 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
         &workers,
     );
     defer server.deinit();
+    if (verifier) |*active| server.hmac = active;
 
     // Announce the bound address so supervisors and tests can learn the
     // ephemeral port (--listen=...:0). The `ingress: listening on `

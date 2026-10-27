@@ -18,4 +18,8 @@ pub const amqp_publisher = @import("amqp/publisher.zig");
 pub const max_payload = transport.max_payload;
 pub const buildFrame = transport.buildFrame;
 pub const decodeFrame = transport.decodeFrame;
+/// `decodeFrame`'s result: the validated header plus the borrowed payload.
+/// Exported so the worker can split `signal_package_context` without
+/// re-implementing frame validation.
+pub const DecodedFrame = transport.DecodedFrame;
 pub const readFrameFrom = transport.readFrameFrom;

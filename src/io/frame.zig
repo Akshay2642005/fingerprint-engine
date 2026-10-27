@@ -23,6 +23,16 @@ pub const MessageType = enum(u8) {
     diagnostics = 7,
     fingerprint_computed = 8,
     entropy_result = 9,
+    /// Outbound-only: the per-collection JSON envelope (ADR-013 §2). It is not
+    /// an engine reply and carries no status byte; the payload is the JSON
+    /// document itself.
+    collection_event = 10,
+    /// Inbound-only: a signal package wrapped with the ingress context
+    /// (ADR-013 §4). The payload is `[u16 session_len][session_id]
+    /// [i64 ingress_received_at][signal_package body]` — see
+    /// `session_context.zig`. The worker strips the header and hashes the body
+    /// unchanged, so the digest never depends on the context transport.
+    signal_package_context = 11,
 };
 
 pub const Codec = enum(u8) {

@@ -33,6 +33,11 @@ verify_phase:
   release_green: true
 
 release_phase:
+  v0.6.0:
+    status: released
+    date: "2026-10-27"
+    notes: "M7 — event envelope + platform ledger contract: ADR-013 adopted (no Zig store), 72-byte two-digest fingerprint_result, deterministic collection_event JSON envelope published after the reply, session context through the ingress, platform-side ledger DDL/validator with a generated fixture, optional ingress HMAC + replay window, refreshed security plan. Engine suite 549/549."
+
   v0.5.0:
     status: released
     date: "2026-10-21"

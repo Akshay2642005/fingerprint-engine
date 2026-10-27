@@ -2,8 +2,9 @@
 
 # ADR-013 — Per-collection event envelope + platform ledger contract
 
-- **Status:** Proposed (Week-1 D4 field list + types chosen; full design
-  detail + grill in Week 5 before M7 persistence depends on it)
+- **Status:** Adopted (2026-10-27). Field list, types, and the ledger contract
+  are frozen for M7; implementation detail is tracked in the M7 plan
+  (`ROADMAP-v1.0.0-DAILY.md`, Weeks 5–6).
 - **Source:** `src/io/frame.zig`, `src/serialization/json.zig`,
   `src/engine/ops/risk.zig`, `src/engine/status.zig`, `src/adapter/amqp/publisher.zig`,
   `src/cmd/ingress/http.zig`
@@ -64,8 +65,8 @@ Keys are emitted byte-for-byte deterministically, in the fixed order below
 | `status` | int | `Status.code()` (engine/status.zig, `ok = 0 …`) — folded op outcome, engine never throws |
 | `entropy` | float | per-collection entropy estimate |
 | `risk` | object | `{ "score": float, "label": string, "flags": [string] }` — shape of `core.risk.computeRisk` |
-| `collected_at` | int | unix seconds, collection time (SignalPackage `collected_at`) |
-| `ingress_received_at` | int | unix seconds, ingress receipt time |
+| `collected_at` | int | epoch **milliseconds**, collection time (SignalPackage `collected_at`; the SDK mints it with `Date.now()`) |
+| `ingress_received_at` | int | epoch **milliseconds**, ingress receipt time; `0` when the collection did not traverse the ingress (direct TCP/loopback) |
 | `sdk_version` | string | SDK semantic version that minted the collection |
 | `signals` | object | canonicalized feature values, keys = registry names (stable; name reuse is a breaking change) |
 
@@ -84,6 +85,10 @@ describes):
 [32] core_digest       | u16 core_feature_count | u16 core_version ← appended
 ```
 
+Total payload is **72 bytes** (36-byte v1 prefix + 36-byte append); the v1
+prefix is byte-identical, so a legacy reader that stops at 36 bytes is
+unaffected and a v2 reader gates on `payload_len >= 72`.
+
 This is a result-format change, versioned via the existing schema-version
 field per ADR-012 §3 (breaking → dual-decode). The full digest stays
 byte-identical for existing consumers.
@@ -91,9 +96,49 @@ byte-identical for existing consumers.
 ### 4. New `x-fpkg-session-id` request header
 
 Add `x-fpkg-session-id` to the ingress-allow-listed headers (`ParsedHead` in
-`src/cmd/ingress/http.zig`), echoed into the frame/package metadata and the
-envelope. Today the correlation surface is only `package_id`; the envelope
-needs `session_id` for continuity/investigation queries.
+`src/cmd/ingress/http.zig`), carried through to the worker and the envelope.
+Today the correlation surface is only `package_id`; the envelope needs
+`session_id` for continuity/investigation queries.
+
+Accepted value: 1–128 bytes of `[A-Za-z0-9._:-]` (UUIDs, `tenant:session`
+pairs, IdP handles). Anything else is rejected at the ingress with 400, so
+the ledger never stores an unescaped or unbounded identifier. The header is
+also added to the CORS preflight allow-list.
+
+**Transport to the worker.** The FPKG header has no room for it: `reserved`
+is pinned to zero (R-5) and the signal package body belongs to the client and
+is hashed verbatim, so it cannot be annotated. Instead the ingress wraps the
+body in a new inbound message type:
+
+```
+signal_package_context = 11
+payload = [u16 session_len (LE)][session_id]
+          [i64 ingress_received_at (LE, epoch ms)]
+          [signal_package body]
+```
+
+The same frame carries the other thing only the ingress knows — when the
+package arrived — because the envelope requires `ingress_received_at` (§2) and
+the worker cannot observe ingress time. So the context is always present on
+HTTP traffic, while `session_len` may be `0`.
+
+Rules:
+
+- Direct frame clients (TCP, loopback) keep sending a plain `signal_package`
+  and their envelopes record `ingress_received_at = 0` — the "did not traverse
+  the ingress" case in §2. The browser→ingress body is unchanged either way.
+- The worker strips the header and hands the inner body to the engine
+  unchanged. **The digest must not depend on the context transport** — the
+  same package with and without a session id produces the same
+  `fingerprint_result` (pinned by tests on both sides).
+- `signal_package_context` is inbound only. The worker's reply is still
+  `fingerprint_result`, so the browser contract is unchanged.
+- Malformed context (truncated header, oversize session length, invalid
+  session bytes) is a protocol error: the worker drops the frame like any
+  other poison frame.
+- The context is envelope metadata only; it is not part of the package, the
+  digest, or the capability tail. Worker wiring into the envelope lands in
+  M7 D5.
 
 ### 5. Ledger contract (platform side)
 
@@ -133,17 +178,25 @@ collection_events(
   message type is additive (ADR-012's append-only rule).
 - Deterministic JSON keeps ledger bytes reproducible across platforms and
   comparable for debugging.
-- The stable-core subset is not yet defined (that is D-v1-7: registry `core`
-  metadata + `core_version`, calibrated against the M6 golden matrix). Until
-  then `core_digest`/`core_feature_count`/`core_version` are emitted from the
-  agreed selection rule; the ADR does not bake the subset itself.
+- **The stable-core subset is defined** (M6, `07-stable-core-subset.md`):
+  registry `core` metadata + `core_version = 1` over 24 features, guarded at
+  comptime and calibrated against the M6 golden matrix. `core_digest`,
+  `core_feature_count`, and `core_version` therefore have a concrete source;
+  the ADR still does not bake the subset itself — `core_version` is the seam
+  if it ever changes.
+- **The SDK's public surface stays frozen.** The two-digest result is an
+  append-extend at the wire level only. The SDK keeps parsing the 36-byte v1
+  prefix and ignores trailing bytes; exposing `core_digest` to callers is a
+  post-1.0 additive change under `SDK_DEPRECATION_POLICY.md`, not part of M7.
 
-## Open items (Week 5)
+## Open items (M7 implementation)
 
-- Full envelope ↔ `fingerprint_result` two-digest wiring + version bump.
-- `stable-core` subset definition and `core_version` policy (D-v1-7).
-- Ledger access API + workspace query surface (works with `01`-style
-  investigation needs but is platform-owned).
+- Two-digest `fingerprint_result` v2 (72 bytes) + compile-time layout pin and
+  the window-resize / subset-revision property tests (`05`).
+- `collection_event = 10` + deterministic JSON envelope encoder (`06`).
+- `x-fpkg-session-id` through the ingress and into the envelope.
+- Worker publish wiring for the envelope alongside the unchanged reply.
+- Ledger reference schema + contract fixtures for the platform repo.
 
 ## Out of scope
 

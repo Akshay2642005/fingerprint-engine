@@ -17,17 +17,43 @@ pub fn hashFingerprintBuffer(feat_list: []const Feature, out: *[32]u8) void {
     std.debug.assert(feat_list.len <= MAX_FEATURES);
     var ctx = Sha256.init(.{});
 
-    for (feat_list) |feat| {
-        var id_buf: [2]u8 = undefined;
-        std.mem.writeInt(u16, &id_buf, @intFromEnum(feat.id), .little);
-        ctx.update(&id_buf);
+    for (feat_list) |feat| updateFeature(&ctx, feat);
 
-        var value_hash: [32]u8 = undefined;
-        hashFeatureUnwrap(feat.value, &value_hash);
-        ctx.update(&value_hash);
+    ctx.final(out);
+}
+
+/// Hashes only the features flagged `core` by the registry — the stable-core
+/// digest of the two-digest `fingerprint_result` (ADR-013 §3).
+///
+/// Same composition and same input contract as `hashFingerprintBuffer`: the
+/// list MUST be sorted by FeatureID (filtering preserves that order), and
+/// metadata is excluded. Returns the number of features that contributed, i.e.
+/// `core_feature_count`. Views, window geometry, and other volatile signals are
+/// skipped, so a window resize changes the full digest but not this one.
+// story: m7-two-digest
+pub fn hashCoreFingerprintBuffer(feat_list: []const Feature, out: *[32]u8) u16 {
+    std.debug.assert(feat_list.len <= MAX_FEATURES);
+    var ctx = Sha256.init(.{});
+    var count: u16 = 0;
+
+    for (feat_list) |feat| {
+        if (!features.Registry.isCore(feat.id)) continue;
+        updateFeature(&ctx, feat);
+        count += 1;
     }
 
     ctx.final(out);
+    return count;
+}
+
+fn updateFeature(ctx: *Sha256, feat: Feature) void {
+    var id_buf: [2]u8 = undefined;
+    std.mem.writeInt(u16, &id_buf, @intFromEnum(feat.id), .little);
+    ctx.update(&id_buf);
+
+    var value_hash: [32]u8 = undefined;
+    hashFeatureUnwrap(feat.value, &value_hash);
+    ctx.update(&value_hash);
 }
 
 fn hashFeatureUnwrap(value: fingerprint.FeatureValue, out: *[32]u8) void {
