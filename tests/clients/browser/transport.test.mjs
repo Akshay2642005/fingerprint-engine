@@ -55,6 +55,55 @@ test("parseWorkerReply: truncated ok reply yields status only", () => {
 	assert.deepEqual(parseWorkerReply(new Uint8Array([0, 1, 2, 3])), { status: 0 });
 });
 
+test("parseWorkerReply: a 72-byte v2 reply is read through the 36-byte v1 path", () => {
+	// ADR-013 §3: `fingerprint_result` appends the stable-core triple
+	// (`core_digest[32]`, `core_feature_count u16`, `core_version u16`) after
+	// the untouched v1 prefix. The SDK 1.0 parse must therefore see exactly
+	// the same fields as a 36-byte v1 body and ignore the trailing bytes — no
+	// new public symbol, no changed value. This is the compatibility gate for
+	// the append-extend.
+	const digest = "db29fc13d8dad5dc0bd7b1f997155cff411f3da88a597619f5e0d67a251e6c75";
+	const v1 = new Uint8Array(1 + 32 + 2 + 2);
+	v1.set(
+		Uint8Array.from(Buffer.from(digest, "hex")),
+		1,
+	);
+	new DataView(v1.buffer).setUint16(33, 3, true); // feature_count
+	new DataView(v1.buffer).setUint16(35, 2, true); // schema_version
+
+	const v2 = new Uint8Array(v1.byteLength + 32 + 2 + 2);
+	v2.set(v1);
+	v2.fill(0xab, v1.byteLength, v1.byteLength + 32); // core_digest
+	new DataView(v2.buffer).setUint16(v1.byteLength + 32, 23, true); // core_feature_count
+	new DataView(v2.buffer).setUint16(v1.byteLength + 34, 1, true); // core_version
+
+	assert.deepEqual(parseWorkerReply(v2), parseWorkerReply(v1));
+	assert.deepEqual(parseWorkerReply(v2), {
+		status: 0,
+		digestHex: digest,
+		featureCount: 3,
+		schemaVersion: 2,
+	});
+	// The core triple is engine metadata for the ledger, not part of the SDK
+	// surface: it must not leak into the parsed reply.
+	assert.equal("coreDigestHex" in parseWorkerReply(v2), false);
+});
+
+test("parseWorkerReply: trailing bytes beyond a v2 reply are ignored", () => {
+	// Forward compatibility: a future append-extend may lengthen the result
+	// again. The SDK's contract is "gate on at least the v1 length, ignore the
+	// rest", so an unknown tail must not change or break parsing.
+	const body = new Uint8Array(1 + 32 + 2 + 2 + 12);
+	new DataView(body.buffer).setUint16(33, 5, true);
+	new DataView(body.buffer).setUint16(35, 2, true);
+	body.fill(0xcd, 37);
+	const reply = parseWorkerReply(body);
+	assert.equal(reply.status, 0);
+	assert.equal(reply.featureCount, 5);
+	assert.equal(reply.schemaVersion, 2);
+	assert.match(reply.digestHex, /^[0-9a-f]{64}$/);
+});
+
 test("sendPackage: posts raw body with headers and parses the reply", async () => {
 	const originalFetch = globalThis.fetch;
 	try {
