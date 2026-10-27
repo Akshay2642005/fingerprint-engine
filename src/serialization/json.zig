@@ -41,7 +41,10 @@ pub fn jsonEncode(w: anytype, fp: Fingerprint) !void {
     try w.writeAll("}");
 }
 
-fn writeJsonValue(w: anytype, value: FeatureValue) !void {
+/// Writes one feature value as JSON (no trailing comma/newline). Shared with
+/// the collection-event envelope so signal encoding has exactly one
+/// implementation (`envelope.zig`).
+pub fn writeJsonValue(w: anytype, value: FeatureValue) !void {
     switch (value) {
         .Boolean => |v| try w.writeAll(if (v) "true" else "false"),
         .Integer => |v| try w.print("{}", .{v}),
@@ -90,7 +93,7 @@ fn writeJsonValue(w: anytype, value: FeatureValue) !void {
 }
 
 /// Writes a JSON-escaped string (with quotes).
-fn writeJsonString(w: anytype, s: []const u8) !void {
+pub fn writeJsonString(w: anytype, s: []const u8) !void {
     try w.writeAll("\"");
     for (s) |c| {
         switch (c) {

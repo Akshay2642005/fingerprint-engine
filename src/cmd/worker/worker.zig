@@ -212,7 +212,7 @@ pub fn operationFor(message_type: io.frame.MessageType) ?engine.Operation {
         .fingerprint_result => .hash,
         .risk_result => .risk,
         .similarity_result => .similarity,
-        .diagnostics, .fingerprint_computed, .entropy_result => null,
+        .diagnostics, .fingerprint_computed, .entropy_result, .collection_event => null,
     };
 }
 

@@ -202,17 +202,21 @@ test "worker: processFrame hashes a signal package end to end" {
 }
 
 test "worker: processFrame replies invalid_request for outbound-only types" {
-    var frame_buf: [io.frame.header_size + 64]u8 = undefined;
-    const frame = try adapter.buildFrame(.diagnostics, .binary, "{}", &frame_buf);
+    // `collection_event` is the new outbound envelope; like diagnostics it is
+    // never an inbound engine operation (ADR-013 §2).
+    for ([_]io.frame.MessageType{ .diagnostics, .collection_event }) |message_type| {
+        var frame_buf: [io.frame.header_size + 64]u8 = undefined;
+        const frame = try adapter.buildFrame(message_type, .binary, "{}", &frame_buf);
 
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    var reply_buf: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
-    const reply = try worker.processFrame(frame, &reply_buf, arena.allocator());
+        var arena = std.heap.ArenaAllocator.init(testing.allocator);
+        defer arena.deinit();
+        var reply_buf: [io.frame.header_size + 1 + worker.max_result]u8 = undefined;
+        const reply = try worker.processFrame(frame, &reply_buf, arena.allocator());
 
-    const parsed = try worker.decodeReply(reply);
-    try testing.expectEqual(engine.Status.invalid_request, parsed.status);
-    try testing.expectEqual(@as(usize, 0), parsed.payload.len);
+        const parsed = try worker.decodeReply(reply);
+        try testing.expectEqual(engine.Status.invalid_request, parsed.status);
+        try testing.expectEqual(@as(usize, 0), parsed.payload.len);
+    }
 }
 
 test "worker: processFrame rejects tampered frames" {

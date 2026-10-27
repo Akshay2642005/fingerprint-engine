@@ -66,12 +66,14 @@ test "amqp: publisher routing keys are kebab-cased per message type" {
     try std.testing.expectEqualStrings("result.entropy-result", publisher.routingKey(.entropy_result));
     try std.testing.expectEqualStrings("result.diagnostics", publisher.routingKey(.diagnostics));
     try std.testing.expectEqualStrings("result.fingerprint-computed", publisher.routingKey(.fingerprint_computed));
+    try std.testing.expectEqualStrings("result.collection-event", publisher.routingKey(.collection_event));
 }
 
 test "amqp: publisher header names match the routing key message type" {
     const publisher = adapter.amqp_publisher;
     try std.testing.expectEqualStrings("fingerprint-result", publisher.messageTypeName(.fingerprint_result));
     try std.testing.expectEqualStrings("signal-package", publisher.messageTypeName(.signal_package));
+    try std.testing.expectEqualStrings("collection-event", publisher.messageTypeName(.collection_event));
 }
 
 test "amqp: publish_reply rejects frames larger than message_size_max" {

@@ -8,6 +8,12 @@ pub const decode = @import("binary.zig").decode;
 pub const DecodedFingerprint = @import("binary.zig").DecodedFingerprint;
 pub const jsonEncode = @import("json.zig").jsonEncode;
 
+/// Per-collection event envelope (ADR-013 §2): the one durable document the
+/// platform ledger stores per collection. Deterministic JSON, fixed key order.
+pub const CollectionEvent = @import("envelope.zig").CollectionEvent;
+pub const CollectionEventRisk = @import("envelope.zig").RiskSummary;
+pub const encodeCollectionEvent = @import("envelope.zig").encodeCollectionEvent;
+
 /// SHA-256 integrity helpers for serialized payloads (design §5). Defined in
 /// serialization so the layer stays transport-free; io/frame.zig implements
 /// the same digest for envelope validation.

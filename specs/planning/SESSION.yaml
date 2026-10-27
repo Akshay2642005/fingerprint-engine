@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m7/week5-two-digest
+  branch: m7/week5-collection-event
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -194,6 +194,10 @@ handoff:
     `core_feature_count` / `core_version`), guarded by a compile-time layout
     pin plus window-resize, core-subset, and golden-digest tests. The old
     86-byte figure in the specs was arithmetic drift and is corrected to 72.
-    Next: the `collection_event` JSON envelope, session-id header, worker
-    publish wiring, wire-contract tests, ledger schema fixtures, and ingress
-    HMAC + replay window.
+    D3 is done: `collection_event = 10` is an outbound-only message type (the
+    worker maps it to no engine operation and it carries no status byte), and
+    `serialization.encodeCollectionEvent` emits the ADR-013 envelope as
+    deterministic JSON in frozen key order, pinned by a byte-for-byte golden
+    plus key-order, registry-name, risk-flag, and JSON round-trip tests.
+    Next: the session-id header, worker publish wiring, wire-contract tests,
+    ledger schema fixtures, and ingress HMAC + replay window.

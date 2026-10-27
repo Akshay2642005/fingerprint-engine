@@ -11,7 +11,7 @@ const builtin = @import("builtin");
 // Module graph (dependencies flow downward, no cycles):
 //   model           - runtime data model (src/model/), depends on nothing
 //   core            - deterministic algorithms (src/core/), depends on model
-//   serialization   - codecs (src/serialization/), depends on model
+//   serialization   - codecs (src/serialization/), depends on model+core
 //   engine          - deterministic process dispatch (src/engine/), depends on model+core+serialization
 //   io              - async transport primitives (src/io/), depends on nothing
 //   adapter         - transport implementations (src/adapter/), depends on io
@@ -172,13 +172,16 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    // Serialization: binary and JSON codecs for the model. Depends on Model.
+    // Serialization: binary and JSON codecs for the model, plus the
+    // outbound collection-event envelope (which needs `core.risk` flag tags).
+    // Depends on Model + Core.
     const serialization = b.createModule(.{
         .root_source_file = b.path("src/serialization/root.zig"),
         .target = target,
         .optimize = mode,
         .imports = &.{
             .{ .name = "model", .module = model },
+            .{ .name = "core", .module = core },
         },
     });
 

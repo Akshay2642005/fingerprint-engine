@@ -54,6 +54,7 @@ comptime {
     _ = @import("serialization/abi_pin_test.zig");
     _ = @import("serialization/binary_test.zig");
     _ = @import("serialization/codec_test.zig");
+    _ = @import("serialization/envelope_test.zig");
     _ = @import("serialization/integrity_test.zig");
     _ = @import("serialization/json_test.zig");
     _ = @import("utils_test.zig");

@@ -23,6 +23,10 @@ pub const MessageType = enum(u8) {
     diagnostics = 7,
     fingerprint_computed = 8,
     entropy_result = 9,
+    /// Outbound-only: the per-collection JSON envelope (ADR-013 §2). It is not
+    /// an engine reply and carries no status byte; the payload is the JSON
+    /// document itself.
+    collection_event = 10,
 };
 
 pub const Codec = enum(u8) {
