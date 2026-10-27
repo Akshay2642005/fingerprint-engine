@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m7/week6-security
+  branch: m7/w6d5-cut-v0.6.0
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -248,4 +248,13 @@ handoff:
     names the three independent replay/idempotency layers and their owners,
     states the ledger's PII/at-rest policy, records the AMQP credentials still
     arriving as CLI flags for S5/M8, and lists what stays platform-side.
-    Next: the M7 review and the v0.6.0 cut (W6-D5).
+    W6-D5 is done and v0.6.0 is cut. The M7 review checklist
+    (`specs/quality/verifications/v0.6.0.md`) is green on every item — D1–D5
+    and W6-D1–D4 — with engine 549/549 (525 unit + 24 integration), SDK 30/30
+    plus type-level and typecheck gates, and the 3x3 browser matrix at zero
+    drift. The product snapshot (`specs/product/snapshots/v0.6.0.md`)
+    records the shipped wire contract. `build.zig.zon` is 0.6.0, the CHANGELOG
+    has a [0.6.0] section, and the release surface stays unchanged: SDK
+    1.0.0-rc.1 on npm `next`, `latest` at 0.4.1, engine tags do not publish
+    npm. Next: M8 planning (observability + ops), with the S5/M8 DLQ gap and
+    AMQP credential sourcing carried into it.
