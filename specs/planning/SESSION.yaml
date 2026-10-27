@@ -7,7 +7,7 @@ session:
 workflow_mode: solo-git
 
 git:
-  branch: m7/week5-envelope-publish
+  branch: m7/week6-contract
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
@@ -214,6 +214,10 @@ handoff:
     reply, entropy/risk via core) and carries the ingress session id and
     arrival time. Failed collections and non-collection frames emit nothing;
     build/publish failures log and drop, leaving the live `result.*` fanout as
-    the fallback.
-    Next: wire-contract/compat tests, ledger schema fixtures, and ingress
-    HMAC + replay window.
+    the fallback. W6-D1 is done: compatibility tests pin the SDK reading the
+    72-byte two-digest reply through its 36-byte path (identical status,
+    digest, counts; the core triple never reaches the public surface; unknown
+    trailing bytes are ignored) and the worker envelope's cross-build
+    byte-identity, integrity digest, and SDK-minted `package_id`.
+    Next: ledger reference schema + fixtures, and ingress HMAC + replay
+    window.
