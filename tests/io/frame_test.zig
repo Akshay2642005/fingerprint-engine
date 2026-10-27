@@ -63,7 +63,7 @@ test "frame decode rejects unknown message type" {
 
     var tampered: [io.frame.header_size]u8 = undefined;
     @memcpy(&tampered, writer.written());
-    tampered[6] = 11; // 10 is collection_event; 11 is unassigned
+    tampered[6] = 12; // 11 is signal_package_context; 12 is unassigned
     var tampered_reader = io.Reader.init(&tampered);
     try testing.expectError(error.InvalidMessageType, io.frame.FrameHeader.decode(&tampered_reader));
 }

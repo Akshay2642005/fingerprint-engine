@@ -40,3 +40,6 @@ pub const completion_capacity = @import("executor.zig").completion_capacity;
 pub const Entry = @import("dispatcher.zig").Entry;
 pub const DispatcherType = @import("dispatcher.zig").DispatcherType;
 pub const frame = @import("frame.zig");
+/// Payload codec for `frame.MessageType.signal_package_context`: the session
+/// id the ingress wraps around a client's signal package (ADR-013 §4).
+pub const session_context = @import("session_context.zig");

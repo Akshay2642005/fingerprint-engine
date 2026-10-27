@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Two-digest fingerprint result** — `fingerprint_result` v2 appends
+  `core_digest[32]`, `core_feature_count u16`, and `core_version u16` after
+  the unchanged 36-byte v1 prefix (72 bytes total). The stable-core digest is
+  the same canonical hash restricted to the registry's core subset, so the
+  full digest stays byte-identical and 1.0 consumers that stop at 36 bytes are
+  unaffected. Pinned by a compile-time layout guard plus window-resize,
+  core-subset-equivalence, and golden-digest tests.
+- **Per-collection event envelope** — new outbound-only message type
+  `collection_event = 10` carrying the ADR-013 deterministic JSON document
+  (`schema_version`, `package_id`, `session_id`, `fingerprint_id`,
+  `core_digest`, counts, status, entropy, risk, timestamps, SDK version, and
+  canonicalized signals) so a platform ledger can store one row per
+  collection without re-joining the live `result.*` fanout. Keys are emitted
+  in a frozen order; digests are lower-hex.
+- **`x-fpkg-session-id` through the ingress** — a new optional CORS-allowed
+  request header is validated at the boundary (1–128 bytes of
+  `[A-Za-z0-9._:-]`, 400 otherwise) and forwarded to the worker in the new
+  inbound message type `signal_package_context = 11`, together with the
+  ingress arrival time
+  (`[u16 session_len][session][i64 ingress_received_at][body]`). The worker
+  strips the header and hashes the inner body unchanged, so the digest never
+  depends on the context; direct TCP/loopback clients still send a plain
+  `signal_package` frame.
+
 ## [0.5.0] - 2026-10-21
 
 > Engine milestone release (M6 — API & determinism contract). The browser SDK

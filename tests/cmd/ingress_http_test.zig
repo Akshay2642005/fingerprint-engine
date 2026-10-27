@@ -43,10 +43,27 @@ test "ingress http: header names are case-insensitive" {
     const parsed = try http.parseHead(
         "POST / HTTP/1.1\r\n" ++
             "Content-Length: 42\r\n" ++
-            "X-FPKG-Schema-Version: 1\r\n",
+            "X-FPKG-Schema-Version: 1\r\n" ++
+            "X-FPKG-Session-Id: 8d56529f-0604-0b90-df4c-b25a3811a10e\r\n",
     );
     try testing.expectEqual(@as(?u64, 42), parsed.content_length);
     try testing.expectEqual(@as(?u8, 1), parsed.schema_version);
+    try testing.expectEqualStrings(
+        "8d56529f-0604-0b90-df4c-b25a3811a10e",
+        parsed.session_id.?,
+    );
+}
+
+test "ingress http: a missing session header parses as null" {
+    const parsed = try http.parseHead("POST / HTTP/1.1\r\ncontent-length: 0\r\n");
+    try testing.expectEqual(@as(?[]const u8, null), parsed.session_id);
+}
+
+test "ingress http: the CORS preflight allows x-fpkg-session-id" {
+    // ADR-013 §4: the browser SDK must be able to send the header without a
+    // preflight failure, so the allow-list is a contract, not an internal
+    // detail.
+    try testing.expect(std.mem.indexOf(u8, http.HttpServer.cors_allow_headers, "x-fpkg-session-id") != null);
 }
 
 test "ingress http: marks chunked requests" {

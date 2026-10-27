@@ -799,6 +799,32 @@ test "ingress: proxies a signal package over HTTP to a tcp worker (S4 e2e)" {
 
     try std.testing.expectEqual(@as(u16, 200), reply.status);
     try expectHashPayload(reply.body);
+
+    // ADR-013 §4: the same package carrying an `x-fpkg-session-id` must relay
+    // a byte-identical result. The ingress wraps the body, the worker strips
+    // the prefix, and the session id stays out of the digest.
+    const with_session = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+        "x-fpkg-session-id",     "tenant42:8d56529f",
+    }, fixture.body);
+    defer alloc.free(with_session.body);
+    try std.testing.expectEqual(@as(u16, 200), with_session.status);
+    try expectHashPayload(with_session.body);
+    try std.testing.expectEqualSlices(u8, reply.body, with_session.body);
+
+    // A malformed session id is the client's error and never reaches the
+    // worker: whitespace and separators are not part of the accepted charset.
+    const bad_session = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+        "x-fpkg-session-id",     "not valid!",
+    }, fixture.body);
+    defer alloc.free(bad_session.body);
+    try std.testing.expectEqual(@as(u16, 400), bad_session.status);
+    try std.testing.expectEqualStrings("invalid session id", bad_session.body);
 }
 
 test "ingress: retries a dead worker and lands on a live one" {
