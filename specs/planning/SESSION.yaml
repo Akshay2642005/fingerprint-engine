@@ -272,6 +272,7 @@ handoff:
     topology (ADR-016) and env-only AMQP credentials (ADR-017), followed by
     chaos + load/SLO and the model/weights docs. Every `stored`-service item
     in the original Month-3 plan is void (D-v1-4) and is re-assigned to the
-    carried gaps. Correction recorded: S5 shipped the outbound publisher only —
-    `basic.consume` and the dead-letter queue were never implemented, so the
-    engine has no AMQP consumer today.
+    carried gaps. Correction recorded: S5 delivered the client push-consumer and
+    the `fingerprint.dlx`/`fingerprint.dlq` topology in v0.4.0, but the engine's
+    own publish path still cannot dead-letter — `mandatory = false`, `basic_return`
+    is `fatal()`, and poison frames are acked and dropped.

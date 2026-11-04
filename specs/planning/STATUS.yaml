@@ -64,7 +64,7 @@ epics:
 
   e12-audit-backlog:
     status: done
-    summary: "2026-08-08 audit — bugs registry, hardening, ingress + logging designs; slices S1–S6 sequenced in specs/quality/audits/2026-08-08.md. S1–S4 and S6 shipped in v0.4.0; S5 shipped **partially** — the outbound result publisher landed, but `basic.consume`/QoS, the consumer-side ack/nack path and the dead-letter queue were never implemented (see specs/planning/S5-amqp-consumer-dlq.md). The engine has no AMQP consumer today; the DLQ is re-scoped into M8 as ADR-016. Follow-up PR #31 fixed compose container-name DNS resolution."
+    summary: "2026-08-08 audit — bugs registry, hardening, ingress + logging designs; slices S1–S6 sequenced in specs/quality/audits/2026-08-08.md. All six slices shipped in v0.4.0. S5 delivered the client push-consumer surface (`qos`, `consume`, `consume_next`, `consume_body`, `consumer_ack`, `consumer_nack`, `basic_deliver` dispatch; live-broker e2e in tests/adapter/amqp_test.zig), the `fingerprint.dlx` -> `fingerprint.dlq` topology declared on publisher connect, and the `amqp dlq` inspector. Residual gap carried into M8/ADR-016: the engine's **own publish path** does not dead-letter — `mandatory = false` silently discards unroutable messages, `basic_return` is handled as `fatal()`, and poison frames are acked and dropped (`worker.zig`). Follow-up PR #31 fixed compose container-name DNS resolution."
 
   m6-api-determinism:
     status: done
@@ -81,7 +81,7 @@ epics:
     status: in_progress
     started: "2026-11-04"
     target: "v0.7.0 (2026-11-27)"
-    summary: "Observability & ops, re-scoped for a store-less engine. Scope: a zero-dependency metrics registry plus a GET-only scrape endpoint in a new `src/obs/` leaf module on dedicated ports (ADR-014); `request_id` propagation through a new `signal_package_context_v2 = 12` with type 11 still accepted (ADR-015); broker-side DLX/DLQ with `mandatory = true` and the reply written before publish (ADR-016); env-only AMQP credentials (ADR-017); `/readyz` on both components; chaos for worker death and broker outage; load-test SLO numbers; model semantics, weights governance and calibration docs. Explicitly not in scope: TLS termination, rate limiting, auth/tenancy (M10), M7.1 identity anchoring, OTLP, any Zig storage (D-v1-4)."
+    summary: "Observability & ops, re-scoped for a store-less engine. Scope: a zero-dependency metrics registry plus a GET-only scrape endpoint in a new `src/obs/` leaf module on dedicated ports (ADR-014); `request_id` propagation through a new `signal_package_context_v2 = 12` with type 11 still accepted (ADR-015); a working dead-letter path for the engine's own publishes — the `fingerprint.dlx`/`fingerprint.dlq` topology already exists from S5, so ADR-016 is about `mandatory = true`, a non-fatal `basic_return`, and never losing a reply to a publish failure (ADR-016); env-only AMQP credentials (ADR-017); `/readyz` on both components; chaos for worker death and broker outage; load-test SLO numbers; model semantics, weights governance and calibration docs. Explicitly not in scope: TLS termination, rate limiting, auth/tenancy (M10), M7.1 identity anchoring, OTLP, any Zig storage (D-v1-4)."
 
 rework:
   status: done

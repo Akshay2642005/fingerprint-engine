@@ -59,10 +59,12 @@ releases:
     epics:
       - rework/distributed-engine
     summary: |
-      AMQP outbound result publisher (S5 shipped outbound only — the inbound
-      push consumer and DLQ were not implemented; see STATUS.yaml), full-stack
-      compose (rabbitmq + worker + ingress), ingress GHCR image, cross-platform
-      native binary releases (linux x86_64/aarch64 musl, macOS x86_64/aarch64).
+      AMQP push consumer (`qos`/`consume`/`consume_next`/`consumer_ack`/
+      `consumer_nack` + `basic_deliver` dispatch) and the
+      `fingerprint.dlx` → `fingerprint.dlq` topology declared on publisher
+      connect, plus the `amqp dlq` inspector. Full-stack compose (rabbitmq +
+      worker + ingress), ingress GHCR image, cross-platform native binary
+      releases (linux x86_64/aarch64 musl, macOS x86_64/aarch64).
 
   v0.3.0:
     status: released
