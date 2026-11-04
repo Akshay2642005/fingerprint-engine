@@ -23,8 +23,14 @@ extra message **after** the unchanged `fingerprint_result` reply:
 | Routing key | `result.collection-event` |
 | Header `fpkg-message-type` | `10` (`collection_event`) |
 | Header `fpkg-envelope-version` | `1` |
+| Header `fpkg-request-id` | correlation id for this collection (ADR-015); may be worker-minted for direct-frame clients |
 | Body | the **complete FPKG frame** (`magic "FPKG"` + 48-byte header + payload) |
 | Payload | the ADR-013 JSON document, UTF-8, keys in a frozen order |
+
+`fpkg-request-id` is an **AMQP header, not an envelope field**, so the frozen
+JSON document is unchanged. Persisting it is a platform-side choice: add a
+nullable `request_id text` column (Postgres) / optional field (Mongo) and copy
+the header at ingest. Consumers that ignore the header are unaffected.
 
 The reply/ledger fanout is at-least-once and best-effort: an envelope that
 fails to build (over the 64 KiB cap) or publish is logged and dropped, and the
