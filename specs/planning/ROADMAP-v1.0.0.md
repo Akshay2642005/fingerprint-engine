@@ -1,8 +1,8 @@
 # Roadmap — Fingerprint Engine v1.0.0
 
-Status: **Active** (M6 shipped at v0.5.0; M7 in progress)
-Updated: 2026-10-27
-Supersedes: nothing — extends `specs/planning/PLAN.md` (M1–M6 complete at v0.5.0). Locked decision **D-v1-3 (own Zig store) superseded by D-v1-4 (2026-09-07)**; M7/M7.1 re-scoped accordingly.
+Status: **Active** (M6 shipped at v0.5.0, M7 shipped at v0.6.0; M8 in progress)
+Updated: 2026-11-04
+Supersedes: nothing — extends `specs/planning/PLAN.md` (M1–M7 complete at v0.6.0). Locked decision **D-v1-3 (own Zig store) superseded by D-v1-4 (2026-09-07)**; M7/M7.1 re-scoped accordingly.
 Source of truth for decisions: `specs/decisions/` (ADRs) + `specs/decisions/rework/DECISIONS.md`
 
 ## Context
@@ -48,9 +48,9 @@ A **frozen public contract** + **durable event record** + **operational maturity
 | Phase | Theme | Scope | Status |
 |-------|-------|-------|--------|
 | M6 | API & determinism contract | Freeze wire + SDK; lock registry; cross-browser golden; event schema | ✅ done (v0.5.0) |
-| M7 | Event envelope + platform ledger contract | Two-digest result + `collection_event` envelope on AMQP; platform Postgres/MongoDB ledger schema (JSONB, idempotent on `package_id`); ingress HMAC + replay window; no Zig store (D-v1-4) | 🚧 in progress (Weeks 5–6 → v0.6.0) |
+| M7 | Event envelope + platform ledger contract | Two-digest result + `collection_event` envelope on AMQP; platform Postgres/MongoDB ledger schema (JSONB, idempotent on `package_id`); ingress HMAC + replay window; no Zig store (D-v1-4) | ✅ done (v0.6.0) |
 | M7.1 | Identity anchoring (platform, compute-only, optional) | Platform resolves `identity_id` from stable-core digest equality + core similarity; no matching in core | Planned (fast-follow) |
-| M8 | Observability & ops | Prometheus metrics, `request_id` tracing, probes, chaos SLO | Planned |
+| M8 | Observability & ops | Prometheus metrics, `request_id` tracing, probes, chaos SLO; plus the carried gaps — broker-side DLQ (ADR-016) and env-only AMQP credentials (ADR-017). No `stored` items (D-v1-4) | 🚧 in progress (Weeks 9–12 → v0.7.0) |
 | M9 | Signal breadth, quality & SDK ergonomics | Confidence/entropy, anti-tamper, new categories; SDK wrappers/script tag/consent | Planned |
 | M10 | Platform integration | Platform owns auth/api_key/tenant; ledger feeds platform matching | Planned |
 

@@ -22,7 +22,7 @@ build_phase:
     - Worker executable and Docker image
     - Hand-written TypeScript SDK (collect → package → POST; decision middleware)
     - HTTP ingress (S4 — worker pool, FPKG translation, /healthz, Dockerfile, compose, GHCR)
-    - AMQP consumer + DLQ (S5) and full-stack compose (S6)
+    - AMQP result publisher (S5, partial — inbound consumer and DLQ never shipped) and full-stack compose (S6)
     - Testing (491 tests, 3 fuzz targets, 12 benchmarks)
     - CI/CD (test, wasm-build, worker-build, docker-worker, docker-ingress, browser-matrix)
   total_tests: 491
@@ -51,7 +51,7 @@ release_phase:
   v0.4.0:
     status: released
     date: "2026-08-24"
-    notes: "Distributed-engine milestone M5 — AMQP consumer + DLQ, full-stack compose, ingress GHCR, cross-platform binaries. Follow-up PR #31 fixed compose container-name DNS resolution (2026-08-28)."
+    notes: "Distributed-engine milestone M5 — AMQP outbound result publisher (S5 partial: inbound consumer + DLQ never implemented, corrected 2026-11-04), full-stack compose, ingress GHCR, cross-platform binaries. Follow-up PR #31 fixed compose container-name DNS resolution (2026-08-28)."
 
   v0.3.0:
     status: released
@@ -84,11 +84,17 @@ release_phase:
 
 next_phase:
   status: planning
-  recommended_skill: elaborate-spec
+  recommended_skill: plan-work
   note: |
-    The distributed-engine roadmap (M1–M5, delivered to v0.4.1) is complete.
-    The path to v1.0.0 (M6 → M8 + platform ledger, 16 weeks, releases
-    v0.5.0 → v0.6.0 → v0.7.0) is defined in specs/planning/ROADMAP-v1.0.0.md.
-    M6 (API & determinism contract) is the active milestone; ADR-012
-    (versioning & compatibility) is drafted. Server matching / workspace / AI
-    agents remain in the Go fraud platform (separate repo).
+    M6 (v0.5.0) and M7 (v0.6.0) are complete. M8 (observability & ops) is the
+    active milestone, scoped 2026-11-04 against a v0.7.0 cut on 2026-11-27.
+    The path to v1.0.0 (M8 → v0.7.0 → hardening → v1.0.0) is defined in
+    specs/planning/ROADMAP-v1.0.0.md. M8 is re-scoped for a store-less engine
+    (D-v1-4): the original Month-3 plan's `stored`-service items are void and
+    are replaced by the carried security gaps — broker-side DLQ (ADR-016) and
+    env-only AMQP credentials (ADR-017) — alongside metrics (ADR-014),
+    request_id tracing (ADR-015), probes, chaos/SLO and the model docs.
+    Correction: S5 shipped only the outbound publisher; the engine has no AMQP
+    consumer and no dead-letter queue today.
+    Server matching / workspace / AI agents remain in the Go fraud platform
+    (separate repo).

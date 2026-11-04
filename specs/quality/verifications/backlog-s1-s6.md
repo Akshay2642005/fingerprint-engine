@@ -57,6 +57,12 @@ compiles.
 
 ## S5 — AMQP consumer + DLQ (F-4)
 
+> **Not delivered.** S5 shipped only the outbound result publisher. The push
+> consumer (`basic.consume` + QoS, ack/nack) and the dead-letter queue were
+> never implemented; the items below remain unchecked. The DLQ is re-scoped
+> into M8 (ADR-016); the inbound consumer is unplanned — the engine's AMQP
+> surface stays outbound-only. Corrected 2026-11-04.
+
 - [ ] Push consumption (`basic.consume` + QoS) works for command/control.
 - [ ] Failed/poison publishes land in a dead-letter queue instead of
       vanishing; worker no longer logs-and-drops.

@@ -1,6 +1,12 @@
 # S5 — AMQP Push Consumer + Dead-Letter Queue
 
-Status: planned
+Status: **partial** — the outbound result publisher shipped in v0.2.1; the
+push consumer (`basic.consume` + QoS, consumer-side ack/nack) and the
+dead-letter queue were **never implemented**. The engine has no AMQP consumer
+today (`src/cmd/worker/worker.zig`: "v1 has no dead-letter queue"). The DLQ is
+re-scoped into M8 as ADR-016 (broker-side DLX only); the inbound consumer
+remains unplanned — the engine's AMQP surface is outbound-only by design.
+Corrected 2026-11-04 during the M8 bookkeeping sync.
 Depends: S3 (logging), S4 (ingress)
 Spec: specs/architecture/amqp-adapter.md (existing adapter surface)
 

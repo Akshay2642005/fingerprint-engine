@@ -1,19 +1,28 @@
 # Session state — Fingerprint Engine
 session:
   started_at: "2026-07-11T00:00:00Z"
-  active_flow: complete (roadmap delivered)
+  active_flow: m8_observability (M8 planning — scoped 2026-11-04)
   tools_intro: true
 
 workflow_mode: solo-git
 
 git:
-  branch: m7/w6d5-cut-v0.6.0
+  branch: develop
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
-  latest_tag: v0.5.0
+  latest_tag: v0.6.0
 
 releases:
+  v0.6.0:
+    date: "2026-10-27"
+    status: released
+    summary: "M7 — event envelope + platform ledger contract: ADR-013 adopted (no Zig store), 72-byte two-digest fingerprint_result, deterministic collection_event JSON envelope published after the unchanged digest reply, signal_package_context carrying x-fpkg-session-id + ingress_received_at, platform-side ledger contract (Postgres DDL / MongoDB validator, idempotent on the SDK-minted package_id), optional fail-closed ingress HMAC + bounded replay window with rotation, refreshed security plan. Engine 549/549; SDK 30/30; 3x3 browser matrix zero drift."
+    artifacts:
+      - GitHub Release (WASM + native binaries for linux-x86_64, linux-aarch64, macos-x86_64, macos-aarch64)
+      - GHCR images (fingerprint-worker, fingerprint-ingress)
+      - npm untouched by the engine tag (skip path; latest stays 0.4.1, next stays 1.0.0-rc.1)
+
   v0.5.0:
     date: "2026-10-21"
     status: released
@@ -87,9 +96,9 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 488
-  unit_tests: 465
-  integration_tests: 23
+  total_tests: 549
+  unit_tests: 525
+  integration_tests: 24
   status: all_green
   fuzz_targets: 3
   benchmarks: 12
@@ -152,7 +161,7 @@ ci_cd:
   npm_publish: automated via OIDC trusted publisher (release pipeline)
 
 handoff:
-  next_skill: "elaborate-spec"
+  next_skill: "plan-work"
   note: |
     Distributed-engine roadmap complete (M1–M5); v0.4.1 shipped with the
     Docker/AMQP DNS fix (PR #31). 457 tests green. The v1.0.0 path is defined
@@ -258,3 +267,11 @@ handoff:
     1.0.0-rc.1 on npm `next`, `latest` at 0.4.1, engine tags do not publish
     npm. Next: M8 planning (observability + ops), with the S5/M8 DLQ gap and
     AMQP credential sourcing carried into it.
+    M8 is scoped (2026-11-04) for a v0.7.0 cut on 2026-11-27: observability
+    surfaces (ADR-014), request_id propagation (ADR-015), broker-side DLQ
+    topology (ADR-016) and env-only AMQP credentials (ADR-017), followed by
+    chaos + load/SLO and the model/weights docs. Every `stored`-service item
+    in the original Month-3 plan is void (D-v1-4) and is re-assigned to the
+    carried gaps. Correction recorded: S5 shipped the outbound publisher only —
+    `basic.consume` and the dead-letter queue were never implemented, so the
+    engine has no AMQP consumer today.
