@@ -9,3 +9,4 @@
 //! - `scrape` — the GET-only `/metrics` + `/readyz` listener that serves it.
 
 pub const metrics = @import("metrics.zig");
+pub const scrape = @import("scrape.zig");
