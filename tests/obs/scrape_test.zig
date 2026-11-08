@@ -193,6 +193,26 @@ test "scrape: a partial head that never terminates is also timed out" {
     try testing.expect(std.mem.startsWith(u8, buffer[0..n], "HTTP/1.1 408 Request Timeout\r\n"));
 }
 
+test "scrape: an occupied port fails instead of being shared (no SO_REUSEPORT)" {
+    var fixture = Fixture{};
+    var first: scrape.Server = undefined;
+    try startServer(&fixture, scrape.default_head_timeout_ns, &first);
+    defer first.stop();
+
+    // `std.net`'s `reuse_address` also enables SO_REUSEPORT, which would let a
+    // second process bind the same metrics port and split scrapes between
+    // them. The listener sets only SO_REUSEADDR, so this must be an error.
+    try testing.expectError(error.AddressInUse, scrape.listen(.{
+        .address = first.server.listen_address,
+        .component = "test",
+        .version = "0.7.0",
+        .metrics_context = &fixture,
+        .render_metrics = Fixture.renderMetrics,
+        .ready_context = &fixture,
+        .is_ready = Fixture.isReady,
+    }));
+}
+
 test "scrape: parseAddress handles any, IPv4, and bracketed IPv6" {
     var address = try scrape.parseAddress(testing.allocator, ":9090");
     try testing.expectEqual(@as(u16, 9090), address.getPort());

@@ -26,6 +26,7 @@ const std = @import("std");
 const io = @import("io");
 const version_info = @import("version");
 const shutdown = @import("shutdown");
+const obs = @import("obs");
 const log = @import("log");
 
 /// Routes `std.log` (the AMQP client's `std.log.scoped(.amqp)`) through the
@@ -45,6 +46,8 @@ pub const http = @import("http.zig");
 /// the same canonical string the ingress verifies.
 pub const hmac = @import("hmac.zig");
 const pool = @import("pool.zig");
+/// Metrics registry (ADR-014 §2). Exposed so tests can pin the catalog.
+pub const metrics = @import("metrics.zig");
 
 /// Product version, injected from build.zig.zon as the `version`
 /// build-options module (ADR-011/BUG-002).
@@ -53,6 +56,14 @@ pub const version = version_info.version;
 /// Default cap on accepted POST bodies. Far below the 16 MiB FPKG cap and
 /// comfortably above a real package (canvas/audio bytes are tens of KB).
 pub const default_max_body: u64 = 1024 * 1024;
+
+/// Default metrics + probe listener (ADR-014 §4). Enabled by default so a
+/// deployment cannot silently have no observability; `off` disables it.
+pub const default_metrics_listen = ":9090";
+
+/// Bound on one readiness probe connect. Short enough that a dead worker
+/// cannot stall the accept loop; the request path keeps its 5s budget.
+const probe_timeout_ns: u64 = 250 * std.time.ns_per_ms;
 
 /// Set by the shared shutdown handlers (src/cmd/shutdown.zig, H-2); the
 /// accept loop polls it so the ingress drains and exits 0 on SIGTERM/SIGINT.
@@ -82,6 +93,9 @@ pub const StartOptions = struct {
     log_level: ?log.Level = null,
     /// --log-format (text|json); null = FPKG_LOG_FORMAT, then text.
     log_format: ?log.Format = null,
+    /// --metrics-listen (host:port) for the scrape + probe surface; defaults
+    /// to `:9090`. `off` disables the surface (ADR-014 §4).
+    metrics_listen: []const u8 = default_metrics_listen,
 };
 
 /// Cap on CLI worker seeds. Parse is pure (no allocator); the S4 runtime
@@ -102,6 +116,7 @@ pub const usage =
     \\  ingress start --listen=host:port --worker=host:port [--worker=...]
     \\                [--max-body=bytes] [--log-level=level]
     \\                [--log-format=text|json]
+    \\                [--metrics-listen=host:port|off]
     \\
     \\  ingress version
     \\  ingress help
@@ -114,6 +129,8 @@ pub const usage =
     \\  --max-body    accepted POST body cap in bytes (default 1048576)
     \\  --log-level   log verbosity: debug|info|warn|error (default info)
     \\  --log-format  log encoding: text|json (default text)
+    \\  --metrics-listen  metrics + readiness listener (default :9090); never
+    \\                the HTTP port; `off` disables the surface
     \\
     \\Environment:
     \\  FPKG_WORKERS               comma-separated worker seeds (when no --worker)
@@ -157,6 +174,10 @@ pub fn parse(args: []const []const u8) CliError!Command {
         } else if (std.mem.startsWith(u8, arg, "--log-format=")) {
             options.log_format = log.parseFormat(arg["--log-format=".len..]) orelse
                 return error.InvalidOption;
+        } else if (std.mem.startsWith(u8, arg, "--metrics-listen=")) {
+            const value = arg["--metrics-listen=".len..];
+            if (value.len == 0) return error.InvalidOption;
+            options.metrics_listen = value;
         } else return error.UnknownOption;
     }
     if (options.listen == null) return error.MissingListen;
@@ -321,6 +342,13 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
         log.ingress.warn("ingress: request authentication disabled (set FPKG_HMAC_SECRET to require HMAC)", .{});
     }
 
+    var registry = metrics.Metrics{};
+    registry.replay_cache_capacity.set(if (verifier) |*active| @intCast(active.slots.len) else 0);
+    // Warm the pool before the probe starts serving: the pool connects
+    // lazily, so an ingress that has not seen traffic would otherwise report
+    // "no reachable worker" forever and /readyz could not gate a rollout.
+    registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, probe_timeout_ns)));
+
     var server = try http.HttpServer.init(
         alloc,
         host,
@@ -331,6 +359,49 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     );
     defer server.deinit();
     if (verifier) |*active| server.hmac = active;
+    server.metrics = &registry;
+
+    // ADR-014 §4: metrics + probes live on a dedicated port, served by their
+    // own thread so a stalled scraper can never touch the request loop. Bound
+    // before the API port is announced, so a supervisor never sees a listening
+    // ingress whose observability surface failed to bind.
+    var scrape_server: ?obs.scrape.Server = null;
+    defer if (scrape_server) |*scrape| scrape.stop();
+    if (std.mem.eql(u8, options.metrics_listen, "off")) {
+        log.ingress.info("ingress: metrics disabled (--metrics-listen=off)", .{});
+    } else {
+        const metrics_address = obs.scrape.parseAddress(alloc, options.metrics_listen) catch {
+            log.ingress.err("ingress: invalid --metrics-listen '{s}' (expected host:port or off)", .{options.metrics_listen});
+            std.process.exit(1);
+        };
+        scrape_server = obs.scrape.listen(.{
+            .address = metrics_address,
+            .component = "ingress",
+            .version = version,
+            .metrics_context = &registry,
+            .render_metrics = renderMetrics,
+            .ready_context = &registry,
+            .is_ready = isReady,
+        }) catch |err| {
+            // A deployment that believes it has metrics but silently does not
+            // is worse than a failed start.
+            log.ingress.err("ingress: cannot bind --metrics-listen '{s}': {s}", .{
+                options.metrics_listen,
+                @errorName(err),
+            });
+            std.process.exit(1);
+        };
+        if (scrape_server) |*scrape| {
+            scrape.start() catch |err| {
+                log.ingress.err("ingress: cannot start the metrics listener: {s}", .{@errorName(err)});
+                std.process.exit(1);
+            };
+            log.ingress.info("ingress: metrics listening on port {d} (bind {s})", .{
+                scrape.port(),
+                options.metrics_listen,
+            });
+        }
+    }
 
     // Announce the bound address so supervisors and tests can learn the
     // ephemeral port (--listen=...:0). The `ingress: listening on `
@@ -341,8 +412,25 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     // H-2: acceptWait bounds the accept so the loop observes the shutdown
     // flag while idle. In-flight requests complete synchronously before the
     // loop exits; deinit closes the pool connections.
+    //
+    // Readiness (ADR-014 §5) is a cached gauge, not a live probe: only this
+    // thread may touch the pool, and the scrape thread reads the atomic. A
+    // failing request nulls the broken slot, so the next tick reflects it;
+    // while idle we retry a bounded connect if every slot is down.
+    var idle_ticks: u32 = 0;
+    const health_refresh_interval: u32 = 8; // ~2s at accept_poll_ms
     while (!shutdown_requested.load(.acquire)) {
-        if (!try server.acceptWait(accept_poll_ms)) continue;
+        if (!try server.acceptWait(accept_poll_ms)) {
+            idle_ticks += 1;
+            if (idle_ticks >= health_refresh_interval) {
+                idle_ticks = 0;
+                if (workers.liveCount() == 0) {
+                    registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, probe_timeout_ns)));
+                }
+            }
+            continue;
+        }
+        idle_ticks = 0;
         server.handleConnection(alloc) catch |err| {
             if (!peerGone(err)) {
                 // Protocol errors (malformed HTTP, bad magic, ...) are
@@ -352,10 +440,25 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             }
         };
         log.ingress.debug("ingress: connection closed", .{});
+        registry.worker_pool_healthy.set(@intCast(workers.liveCount()));
         // HTTP/1.1 `connection: close` — the reply is complete; drop the
         // client now instead of waiting for the next accept.
         server.closeClient();
     }
+}
+
+/// Scrape callback: renders the ingress registry (ADR-014). The registry is
+/// atomic, so this runs on the scrape thread without locking.
+fn renderMetrics(context: *anyopaque, writer: std.io.AnyWriter) anyerror!void {
+    const registry: *const metrics.Metrics = @ptrCast(@alignCast(context));
+    try metrics.render(registry, writer);
+}
+
+/// Readiness callback: the ingress can serve when at least one worker slot
+/// holds a live connection. Reads the cached gauge, never the pool.
+fn isReady(context: *anyopaque) ?[]const u8 {
+    const registry: *const metrics.Metrics = @ptrCast(@alignCast(context));
+    return if (registry.worker_pool_healthy.get() > 0) null else "worker_pool";
 }
 
 pub fn main() !void {

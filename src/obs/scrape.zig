@@ -27,6 +27,7 @@
 //!   expected to read a cached state, not probe a socket on every scrape.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const metrics_mod = @import("metrics.zig");
 
 /// Body content type for `GET /metrics` (Prometheus text format 0.0.4).
@@ -110,14 +111,45 @@ pub const Server = struct {
 /// Binds the metrics socket. Fails on an invalid or occupied address; the
 /// caller decides how to surface that (startup should fail loudly).
 pub fn listen(options: Options) !Server {
-    // Non-blocking listen socket so a client that disappears between poll and
-    // accept cannot wedge the loop; accepted sockets stay blocking.
-    const server = try options.address.listen(.{
-        .reuse_address = true,
-        .kernel_backlog = 16,
-        .force_nonblocking = true,
-    });
+    const server = try bindListener(options.address);
     return .{ .options = options, .server = server };
+}
+
+/// Binds a non-blocking listener with `SO_REUSEADDR` only.
+///
+/// `std.net.Address.listen(.{ .reuse_address = true })` also turns on
+/// `SO_REUSEPORT` on POSIX, which lets a second process silently bind the same
+/// port and have the kernel split scrapes between them. An operational surface
+/// must fail loudly instead, so the option is set by hand: reuse the *address*
+/// (fast restart while old connections linger) but never the *port*.
+///
+/// Windows `SO_REUSEADDR` is permissive in the other direction — it can steal
+/// an active binding — so the option stays POSIX-only.
+fn bindListener(address: std.net.Address) !std.net.Server {
+    const sock_flags = std.posix.SOCK.STREAM | std.posix.SOCK.CLOEXEC | std.posix.SOCK.NONBLOCK;
+    const proto: u32 = if (address.any.family == std.posix.AF.UNIX) 0 else std.posix.IPPROTO.TCP;
+
+    const sockfd = try std.posix.socket(address.any.family, sock_flags, proto);
+    var server: std.net.Server = .{
+        .listen_address = undefined,
+        .stream = .{ .handle = sockfd },
+    };
+    errdefer server.stream.close();
+
+    if (builtin.os.tag != .windows) {
+        try std.posix.setsockopt(
+            sockfd,
+            std.posix.SOL.SOCKET,
+            std.posix.SO.REUSEADDR,
+            &std.mem.toBytes(@as(c_int, 1)),
+        );
+    }
+
+    var socklen = address.getOsSockLen();
+    try std.posix.bind(sockfd, &address.any, socklen);
+    try std.posix.listen(sockfd, 16);
+    try std.posix.getsockname(sockfd, &server.listen_address.any, &socklen);
+    return server;
 }
 
 fn run(self: *Server) void {

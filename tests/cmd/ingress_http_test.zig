@@ -137,3 +137,64 @@ test "ingress http: maps worker status bytes to HTTP status" {
     try testing.expectEqual(@as(u16, 502), http.statusToHttp(7)); // internal_error
     try testing.expectEqual(@as(u16, 502), http.statusToHttp(9)); // unknown
 }
+
+test "ingress http: responses classify into the three metric buckets" {
+    try testing.expectEqual(ingress.metrics.StatusClass.@"2xx", http.statusClass(200));
+    try testing.expectEqual(ingress.metrics.StatusClass.@"2xx", http.statusClass(204));
+    try testing.expectEqual(ingress.metrics.StatusClass.@"4xx", http.statusClass(400));
+    try testing.expectEqual(ingress.metrics.StatusClass.@"4xx", http.statusClass(404));
+    try testing.expectEqual(ingress.metrics.StatusClass.@"4xx", http.statusClass(413));
+    try testing.expectEqual(ingress.metrics.StatusClass.@"4xx", http.statusClass(499));
+    try testing.expectEqual(ingress.metrics.StatusClass.@"5xx", http.statusClass(500));
+    try testing.expectEqual(ingress.metrics.StatusClass.@"5xx", http.statusClass(502));
+    try testing.expectEqual(ingress.metrics.StatusClass.@"5xx", http.statusClass(503));
+}
+
+test "ingress http: auth failures map to the catalogued rejection reasons" {
+    // ADR-014 / observability.md §Ingress: missing, malformed, forged, stale,
+    // replayed, cache_full. The mapping is total over hmac.Error by design.
+    const AuthReason = ingress.metrics.AuthReason;
+    try testing.expectEqual(AuthReason.missing, http.authReason(error.MissingTimestamp));
+    try testing.expectEqual(AuthReason.missing, http.authReason(error.MissingNonce));
+    try testing.expectEqual(AuthReason.missing, http.authReason(error.MissingSignature));
+    try testing.expectEqual(AuthReason.malformed, http.authReason(error.MalformedNonce));
+    try testing.expectEqual(AuthReason.malformed, http.authReason(error.MalformedSignature));
+    try testing.expectEqual(AuthReason.stale, http.authReason(error.StaleTimestamp));
+    try testing.expectEqual(AuthReason.forged, http.authReason(error.InvalidSignature));
+    try testing.expectEqual(AuthReason.replayed, http.authReason(error.ReplayedNonce));
+    try testing.expectEqual(AuthReason.cache_full, http.authReason(error.CacheFull));
+    try testing.expectEqual(AuthReason.cache_full, http.authReason(error.OutOfMemory));
+}
+
+test "ingress http: the registry renders the ADR-014 catalog" {
+    var registry = ingress.metrics.Metrics{};
+    registry.requests_total.inc(.{ .status = .@"2xx" });
+    registry.requests_total.inc(.{ .status = .@"4xx" });
+    registry.auth_rejections_total.inc(.{ .reason = .replayed });
+    registry.request_duration_seconds.observe(0.003);
+    registry.replay_cache_entries.set(12);
+    registry.replay_cache_capacity.set(65536);
+    registry.worker_pool_healthy.set(2);
+
+    var buffer: [16 * 1024]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try ingress.metrics.render(&registry, stream.writer().any());
+    const text = stream.getWritten();
+
+    // Names, types, and label sets are the contract the scraper and alert
+    // rules depend on. `build_info` and `ready` belong to the scrape preamble,
+    // so the registry must not duplicate them.
+    try testing.expect(std.mem.indexOf(u8, text, "# TYPE fpkg_ingress_requests_total counter\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_requests_total{status=\"2xx\"} 1\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_requests_total{status=\"4xx\"} 1\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_requests_total{status=\"5xx\"} 0\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "# TYPE fpkg_ingress_request_duration_seconds histogram\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_request_duration_seconds_count 1\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "# TYPE fpkg_ingress_auth_rejections_total counter\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_auth_rejections_total{reason=\"replayed\"} 1\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_replay_cache_entries 12\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_replay_cache_capacity 65536\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_worker_pool_healthy 2\n") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_build_info") == null);
+    try testing.expect(std.mem.indexOf(u8, text, "fpkg_ingress_ready") == null);
+}
