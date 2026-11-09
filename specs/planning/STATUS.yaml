@@ -1,6 +1,6 @@
 # Execution Status — Fingerprint Engine
 current_epic: m8-observability (scoped 2026-11-04 — metrics, request_id tracing, probes, broker-side DLQ, env AMQP creds, chaos/SLO; v0.7.0 target 2026-11-27)
-active_story: "Phase 0 bookkeeping (2026-11-04) — the planning docs are synced to the shipped v0.6.0 and the S5 status is corrected in this file. M8 is re-scoped for a store-less engine (D-v1-4): every `stored`-service item from the original Month-3 plan is void and is replaced by observability plus the two carried security gaps. Code reality verified before planning: no metrics registry, no /readyz, no request_id anywhere in `src/`; graceful drain (H-2) is already shipped in `src/cmd/shutdown.zig`; publisher confirms are enabled but `mandatory = false`; the worker logs `frame dropped` with the comment 'v1 has no dead-letter queue'. Decisions queued as ADR-014..ADR-017. Next: Phase 1 — write the four ADRs plus `specs/architecture/observability.md`."
+active_story: "W9-D4 (done 2026-11-08, branch `m8/week9-metrics`) — the ingress is instrumented and serves `/metrics` + `/readyz`. Week 9 is complete: W9-D2 added `src/obs/metrics.zig` (comptime registry), W9-D3 added `src/obs/scrape.zig` (dedicated GET-only listener), W9-D4 added `src/cmd/ingress/metrics.zig` plus the choke-point instrumentation and `--metrics-listen` lifecycle (default `:9090`, `off` disables, invalid/occupied exits 1). Engine 573/573. Next: Week 10 — worker instrumentation on `:9091`, ADR-015 (`signal_package_context_v2 = 12`, `fpkg_ingress_request_id_total`), ADR-016 (`mandatory = true`, non-fatal `basic_return`), ADR-017 (env-only AMQP credentials)."
 
 epics:
   e01-core-engine:
@@ -81,6 +81,12 @@ epics:
     status: in_progress
     started: "2026-11-04"
     target: "v0.7.0 (2026-11-27)"
+    progress:
+      phase_0_bookkeeping: done (2026-11-04)
+      phase_1_adrs: "done (2026-11-04, f58a917) — ADR-014..017 + specs/architecture/observability.md"
+      w9_d2_metrics_registry: "done (39a4af0) — src/obs/metrics.zig, 9 tests"
+      w9_d3_scrape_listener: "done (c7a0e57) — src/obs/scrape.zig, 8 tests"
+      w9_d4_ingress_instrumentation: "done (530fb3f) — src/cmd/ingress/metrics.zig, instrumentation at the reply choke point, readiness gauge, --metrics-listen; 573/573 engine, manual UAT green"
     summary: "Observability & ops, re-scoped for a store-less engine. Scope: a zero-dependency metrics registry plus a GET-only scrape endpoint in a new `src/obs/` leaf module on dedicated ports (ADR-014); `request_id` propagation through a new `signal_package_context_v2 = 12` with type 11 still accepted (ADR-015); a working dead-letter path for the engine's own publishes — the `fingerprint.dlx`/`fingerprint.dlq` topology already exists from S5, so ADR-016 is about `mandatory = true`, a non-fatal `basic_return`, and never losing a reply to a publish failure (ADR-016); env-only AMQP credentials (ADR-017); `/readyz` on both components; chaos for worker death and broker outage; load-test SLO numbers; model semantics, weights governance and calibration docs. Explicitly not in scope: TLS termination, rate limiting, auth/tenancy (M10), M7.1 identity anchoring, OTLP, any Zig storage (D-v1-4)."
 
 rework:
