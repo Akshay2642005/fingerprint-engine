@@ -208,6 +208,19 @@ pub fn build(b: *std.Build) !void {
         .optimize = mode,
     });
 
+    // Obs: observability surfaces (ADR-014) — the comptime-declared metrics
+    // registry and the scrape/probe listener. Leaf module: depends on io for
+    // sockets only, never on engine/adapter/cmd, so both executables can
+    // import it without inverting the layering (ADR-002).
+    const obs = b.createModule(.{
+        .root_source_file = b.path("src/obs/root.zig"),
+        .target = target,
+        .optimize = mode,
+        .imports = &.{
+            .{ .name = "io", .module = io },
+        },
+    });
+
     // Stdx: leaf utilities shared across subsystems (copy helpers, bitsets,
     // test PRNG, casing). Depends on nothing.
     const stdx = b.createModule(.{
@@ -251,6 +264,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
             .{ .name = "log", .module = log_module },
+            .{ .name = "obs", .module = obs },
         },
     });
 
@@ -269,6 +283,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
             .{ .name = "log", .module = log_module },
+            .{ .name = "obs", .module = obs },
         },
     });
 
@@ -291,6 +306,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "version", .module = version_module },
             .{ .name = "shutdown", .module = shutdown },
             .{ .name = "log", .module = log_module },
+            .{ .name = "obs", .module = obs },
         },
     });
 
@@ -361,6 +377,7 @@ pub fn build(b: *std.Build) !void {
             .{ .name = "dist_surface", .module = dist_surface },
             .{ .name = "version", .module = version_module },
             .{ .name = "log", .module = log_module },
+            .{ .name = "obs", .module = obs },
         },
     });
 

@@ -628,7 +628,23 @@ test "worker: flow logs emit at the default info level (S3b)" {
 const IngressSpawn = struct {
     child: std.process.Child,
     port: u16,
+    /// Bound metrics/probe port when the surface is enabled (ADR-014). The
+    /// helper always requests an ephemeral one so the suite never binds the
+    /// fixed `:9090` on a developer machine or collides with a sibling test.
+    metrics_port: ?u16 = null,
+    /// The stderr lines the helper consumed to find the announcements. Startup
+    /// work (the pool warm-up) logs before `ingress: listening on`, so tests
+    /// that assert on startup logs must prepend this to the post-announcement
+    /// remainder. Bounded: the announcement block is a handful of lines.
+    early_stderr: [max_early_stderr]u8 = undefined,
+    early_stderr_len: usize = 0,
+
+    fn early(self: *const IngressSpawn) []const u8 {
+        return self.early_stderr[0..self.early_stderr_len];
+    }
 };
+
+const max_early_stderr = 8 * 1024;
 
 fn spawnIngress(args: []const []const u8, alloc: std.mem.Allocator) !IngressSpawn {
     return spawnIngressEnv(args, alloc, null);
@@ -641,7 +657,19 @@ fn spawnIngressEnv(
     alloc: std.mem.Allocator,
     env: ?*const std.process.EnvMap,
 ) !IngressSpawn {
-    var child = std.process.Child.init(args, alloc);
+    // Pin the metrics listener to port 0 unless the caller chose a value.
+    // Production defaults to :9090 (ADR-014), but a test suite must not bind
+    // a fixed host port.
+    var argv = std.ArrayList([]const u8).init(alloc);
+    defer argv.deinit();
+    try argv.appendSlice(args);
+    var has_metrics_flag = false;
+    for (args) |arg| {
+        if (std.mem.startsWith(u8, arg, "--metrics-listen=")) has_metrics_flag = true;
+    }
+    if (!has_metrics_flag) try argv.append("--metrics-listen=127.0.0.1:0");
+
+    var child = std.process.Child.init(argv.items, alloc);
     child.stdin_behavior = .Ignore;
     child.stdout_behavior = .Pipe;
     child.stderr_behavior = .Pipe;
@@ -650,17 +678,48 @@ fn spawnIngressEnv(
 
     const stderr_reader = child.stderr.?.reader();
     var announce_buf: [256]u8 = undefined;
+    var early_buf: [max_early_stderr]u8 = undefined;
+    var early_len: usize = 0;
+    var metrics_port: ?u16 = null;
     while (true) {
         const line = (try stderr_reader.readUntilDelimiterOrEof(&announce_buf, '\n')) orelse
             return error.IngressNeverListened;
+
+        // Snapshot the consumed line so a later assertion can still see it.
+        const copied = @min(line.len, early_buf.len - early_len);
+        @memcpy(early_buf[early_len..][0..copied], line[0..copied]);
+        early_len += copied;
+        if (early_len < early_buf.len) {
+            early_buf[early_len] = '\n';
+            early_len += 1;
+        }
+
+        // The metrics line is emitted before the API announcement, so it is
+        // already captured when the loop returns.
+        if (std.mem.indexOf(u8, line, "ingress: metrics listening on port ")) |idx| {
+            const rest = line[idx + "ingress: metrics listening on port ".len ..];
+            var digits: usize = 0;
+            while (digits < rest.len and std.ascii.isDigit(rest[digits])) : (digits += 1) {}
+            metrics_port = std.fmt.parseInt(u16, rest[0..digits], 10) catch
+                return error.MalformedAnnouncement;
+            continue;
+        }
         if (std.mem.indexOf(u8, line, "ingress: listening on ")) |idx| {
             const rest = line[idx + "ingress: listening on ".len ..];
             const colon = std.mem.lastIndexOfScalar(u8, rest, ':') orelse
                 return error.MalformedAnnouncement;
             const port = try std.fmt.parseInt(u16, rest[colon + 1 ..], 10);
-            return .{ .child = child, .port = port };
+            var spawn = IngressSpawn{ .child = child, .port = port, .metrics_port = metrics_port };
+            @memcpy(spawn.early_stderr[0..early_len], early_buf[0..early_len]);
+            spawn.early_stderr_len = early_len;
+            return spawn;
         }
     }
+}
+
+/// Scrapes the ingress metrics listener and returns the raw response.
+fn scrapeMetrics(alloc: std.mem.Allocator, port: u16, path: []const u8) !HttpReply {
+    return httpRequest(alloc, port, "GET", path, &.{}, &.{});
 }
 
 /// Reads the fixture body and returns it plus its `sha256-<hex>` integrity
@@ -843,6 +902,120 @@ test "ingress: proxies a signal package over HTTP to a tcp worker (S4 e2e)" {
     defer alloc.free(bad_session.body);
     try std.testing.expectEqual(@as(u16, 400), bad_session.status);
     try std.testing.expectEqualStrings("invalid session id", bad_session.body);
+}
+
+test "ingress: metrics and readiness are served on the dedicated port (W9-D3)" {
+    const alloc = std.testing.allocator;
+
+    var spawned = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    defer {
+        _ = spawned.child.kill() catch {};
+        _ = spawned.child.wait() catch {};
+    }
+
+    const worker_arg = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{spawned.port});
+    defer alloc.free(worker_arg);
+    var ingress = try spawnIngress(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        worker_arg,
+    }, alloc);
+    defer {
+        _ = ingress.child.kill() catch {};
+        _ = ingress.child.wait() catch {};
+    }
+
+    const metrics_port = ingress.metrics_port orelse return error.MetricsSurfaceMissing;
+    // ADR-014 §4: the operational surface is never the API port.
+    try std.testing.expect(metrics_port != ingress.port);
+
+    // 1. A fresh instance serves the preamble and zeroed counters; the pool
+    //    was warmed at startup, so readiness is truthful before any traffic.
+    const before = try scrapeMetrics(alloc, metrics_port, "/metrics");
+    defer alloc.free(before.body);
+    try std.testing.expectEqual(@as(u16, 200), before.status);
+    try std.testing.expect(std.mem.indexOf(u8, before.body, "fpkg_ingress_build_info{version=\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, before.body, "fpkg_ingress_ready 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, before.body, "fpkg_ingress_worker_pool_healthy 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, before.body, "fpkg_ingress_requests_total{status=\"2xx\"} 0\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, before.body, "fpkg_ingress_request_duration_seconds_count 0\n") != null);
+
+    // 2. A real collection moves the 2xx counter and observes one latency.
+    const fixture = try fixtureWithIntegrity(alloc);
+    defer alloc.free(fixture.body);
+    defer alloc.free(fixture.integrity);
+    const ok = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-package-id",     "8d56529f06040b90df4cb25a3811a10e",
+        "x-fpkg-integrity",      fixture.integrity,
+    }, fixture.body);
+    defer alloc.free(ok.body);
+    try std.testing.expectEqual(@as(u16, 200), ok.status);
+
+    // 3. A client error is counted as 4xx and never reaches the worker.
+    const bad = try httpRequest(alloc, ingress.port, "POST", "/", &.{
+        "x-fpkg-schema-version", "2",
+        "x-fpkg-integrity",      "sha256-0000000000000000000000000000000000000000000000000000000000000000",
+    }, fixture.body);
+    defer alloc.free(bad.body);
+    try std.testing.expectEqual(@as(u16, 400), bad.status);
+
+    const after = try scrapeMetrics(alloc, metrics_port, "/metrics");
+    defer alloc.free(after.body);
+    try std.testing.expectEqual(@as(u16, 200), after.status);
+    try std.testing.expect(std.mem.indexOf(u8, after.body, "fpkg_ingress_requests_total{status=\"2xx\"} 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, after.body, "fpkg_ingress_requests_total{status=\"4xx\"} 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, after.body, "fpkg_ingress_request_duration_seconds_count 2\n") != null);
+
+    // 4. /readyz agrees with the gauge the scrape preamble reports.
+    const ready = try scrapeMetrics(alloc, metrics_port, "/readyz");
+    defer alloc.free(ready.body);
+    try std.testing.expectEqual(@as(u16, 200), ready.status);
+    try std.testing.expect(std.mem.indexOf(u8, ready.body, "\"ready\":true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ready.body, "\"component\":\"ingress\"") != null);
+}
+
+test "ingress: /readyz is 503 when no worker is reachable (ADR-014 §5)" {
+    const alloc = std.testing.allocator;
+
+    // Port 1 on loopback refuses immediately, so the startup probe fails fast
+    // and the process still starts (a dead worker is an operational state, not
+    // a startup error).
+    var ingress = try spawnIngress(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        "--worker=127.0.0.1:1",
+    }, alloc);
+    defer {
+        _ = ingress.child.kill() catch {};
+        _ = ingress.child.wait() catch {};
+    }
+
+    const metrics_port = ingress.metrics_port orelse return error.MetricsSurfaceMissing;
+
+    const ready = try scrapeMetrics(alloc, metrics_port, "/readyz");
+    defer alloc.free(ready.body);
+    try std.testing.expectEqual(@as(u16, 503), ready.status);
+    try std.testing.expect(std.mem.indexOf(u8, ready.body, "\"ready\":false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, ready.body, "\"dependency\":\"worker_pool\"") != null);
+
+    // The API port still answers liveness: a failing dependency must not make
+    // the process look dead to a supervisor (ADR-014 §5).
+    const health = try httpRequest(alloc, ingress.port, "GET", "/healthz", &.{}, &.{});
+    defer alloc.free(health.body);
+    try std.testing.expectEqual(@as(u16, 200), health.status);
+
+    const metrics = try scrapeMetrics(alloc, metrics_port, "/metrics");
+    defer alloc.free(metrics.body);
+    try std.testing.expect(std.mem.indexOf(u8, metrics.body, "fpkg_ingress_ready 0\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, metrics.body, "fpkg_ingress_worker_pool_healthy 0\n") != null);
 }
 
 test "ingress: retries a dead worker and lands on a live one" {
@@ -1099,6 +1272,31 @@ test "ingress: HMAC + replay window rejects unsigned, stale, forged, and replaye
     defer alloc.free(stale_reply.body);
     try std.testing.expectEqual(@as(u16, 401), stale_reply.status);
     try std.testing.expectEqualStrings("stale request timestamp", stale_reply.body);
+
+    // 6. ADR-014: every rejection lands in its catalogued reason, and the one
+    //    accepted nonce is visible as replay-cache depth.
+    const metrics_port = ingress.metrics_port orelse return error.MetricsSurfaceMissing;
+    const scrape = try scrapeMetrics(alloc, metrics_port, "/metrics");
+    defer alloc.free(scrape.body);
+    try std.testing.expectEqual(@as(u16, 200), scrape.status);
+    try std.testing.expect(std.mem.indexOf(u8, scrape.body, "fpkg_ingress_auth_rejections_total{reason=\"missing\"} 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, scrape.body, "fpkg_ingress_auth_rejections_total{reason=\"replayed\"} 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, scrape.body, "fpkg_ingress_auth_rejections_total{reason=\"forged\"} 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, scrape.body, "fpkg_ingress_auth_rejections_total{reason=\"stale\"} 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, scrape.body, "fpkg_ingress_replay_cache_entries 1\n") != null);
+
+    var capacity_buf: [64]u8 = undefined;
+    const capacity_line = try std.fmt.bufPrint(
+        &capacity_buf,
+        "fpkg_ingress_replay_cache_capacity {d}\n",
+        .{ingress_hmac.default_capacity},
+    );
+    try std.testing.expect(std.mem.indexOf(u8, scrape.body, capacity_line) != null);
+
+    // One 2xx (the signed request) and four 4xx (unsigned, replay, forged,
+    // stale) — the classification the SLO dashboards depend on.
+    try std.testing.expect(std.mem.indexOf(u8, scrape.body, "fpkg_ingress_requests_total{status=\"2xx\"} 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, scrape.body, "fpkg_ingress_requests_total{status=\"4xx\"} 4\n") != null);
 }
 
 test "ingress: exits 0 on SIGTERM after draining (H-2)" {
@@ -1193,23 +1391,28 @@ test "ingress: --log-level=debug emits the request flow trace (S3b)" {
     const stderr_file = std.fs.File{ .handle = stderr_dup };
     const all_stderr = try stderr_file.readToEndAlloc(alloc, 1 << 16);
     defer alloc.free(all_stderr);
+    // The pool is now warmed at startup, so its connect line was consumed by
+    // the spawn helper while it waited for the port announcement. Reassemble
+    // the full stream before asserting on the trace.
+    const trace = try std.mem.concat(alloc, u8, &.{ ingress.early(), all_stderr });
+    defer alloc.free(trace);
 
     // The trace spans connection, request, pool forward, relay, and close;
     // line prefixes are `ingress: <verb>` / `pool: <verb>` (F-2). Method and
     // status tags print lowercase (`@tagName`), e.g. `ingress: post /`.
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: connection accepted from 127.0.0.1:") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: post /") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: signal received from client, forwarding to worker") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: connection accepted from 127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: post /") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: signal received from client, forwarding to worker") != null);
     // Fixture size includes the ADR-012 capability tail (DESIGN §9.4.7) —
     // story: m6-sdk-signals.
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: forwarding to worker (92 payload bytes)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: connected to worker 0 (127.0.0.1:") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: forwarding signal package to worker 0 (127.0.0.1:") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "pool: reply from worker 0 (127.0.0.1:") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: worker reply status 0 -> http 200") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: reply relayed") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: relayed reply (73 bytes)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: get /healthz (content-length 0) from 127.0.0.1:") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: healthz probe from 127.0.0.1:") != null);
-    try std.testing.expect(std.mem.indexOf(u8, all_stderr, "ingress: connection closed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: forwarding to worker (92 payload bytes)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "pool: connected to worker 0 (127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "pool: forwarding signal package to worker 0 (127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "pool: reply from worker 0 (127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: worker reply status 0 -> http 200") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: reply relayed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: relayed reply (73 bytes)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: get /healthz (content-length 0) from 127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: healthz probe from 127.0.0.1:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, trace, "ingress: connection closed") != null);
 }
