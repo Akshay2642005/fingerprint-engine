@@ -25,12 +25,20 @@ const adapter = @import("adapter");
 const io = @import("io");
 const version_info = @import("version");
 const shutdown = @import("shutdown");
+const obs = @import("obs");
 const log = @import("log");
 
 /// Per-collection envelope construction (ADR-013 §1). Publishes an extra
 /// outbound frame next to the unchanged digest reply when the publisher is
 /// enabled; see `collection_event.zig`.
 pub const collection_event = @import("collection_event.zig");
+
+/// Session context codec (ADR-013 §4, ADR-015). Handles both v1 and v2
+/// signal_package_context frames.
+const session_context = @import("io").session_context;
+
+/// Worker metric registry (ADR-014 §2). Exposed so tests can pin the catalog.
+pub const metrics = @import("metrics.zig");
 
 /// Routes `std.log` (the AMQP client's `std.log.scoped(.amqp)`) through the
 /// application logger (specs/architecture/logging.md, F-2/S3). The comptime
@@ -62,6 +70,11 @@ pub const shutdown_requested = &shutdown.requested;
 /// How long the tcp accept loop waits for a client before re-checking the
 /// shutdown flag while idle.
 const accept_poll_ms: u32 = 250;
+
+/// Default metrics + probe listener (ADR-014 §4). It is a different port from
+/// the ingress (9090) so a scrape target can never be ambiguous;
+/// `--metrics-listen=off` disables the surface.
+pub const default_metrics_listen = ":9091";
 
 /// Installs the shutdown handlers (src/cmd/shutdown.zig). Linux covers CI
 /// and the container deployment target (tini forwards SIGTERM); Windows
@@ -95,6 +108,9 @@ pub const StartOptions = struct {
     log_level: ?log.Level = null,
     /// --log-format (text|json); null = FPKG_LOG_FORMAT, then text.
     log_format: ?log.Format = null,
+    /// --metrics-listen (host:port) for the scrape + probe surface; defaults
+    /// to `:9091`. `off` disables the surface (ADR-014 §4).
+    metrics_listen: []const u8 = default_metrics_listen,
 };
 
 pub const Command = union(enum) {
@@ -114,6 +130,7 @@ pub const usage =
     \\               [--amqp-address=host:port] [--amqp-user=user]
     \\               [--amqp-password=pass] [--amqp-vhost=vhost]
     \\               [--log-level=level] [--log-format=text|json]
+    \\               [--metrics-listen=host:port|off]
     \\
     \\  worker version
     \\  worker help
@@ -146,6 +163,8 @@ pub const usage =
     \\                FPKG_LOG_LEVEL overrides the default, the flag wins)
     \\  --log-format  log encoding: text|json (default text;
     \\                FPKG_LOG_FORMAT overrides the default, the flag wins)
+    \\  --metrics-listen  metrics + readiness listener (default :9091); never
+    \\                the FPKG port; `off` disables the surface
     \\
 ;
 
@@ -189,6 +208,10 @@ pub fn parse(args: []const []const u8) CliError!Command {
         } else if (std.mem.startsWith(u8, arg, "--log-format=")) {
             options.log_format = log.parseFormat(arg["--log-format=".len..]) orelse
                 return error.InvalidOption;
+        } else if (std.mem.startsWith(u8, arg, "--metrics-listen=")) {
+            const value = arg["--metrics-listen=".len..];
+            if (value.len == 0) return error.InvalidOption;
+            options.metrics_listen = value;
         } else return error.UnknownOption;
     }
     if (options.transport == .tcp and options.listen == null) return error.MissingListen;
@@ -272,16 +295,22 @@ pub const Inbound = struct {
 /// Resolves a decoded frame into an `Inbound`. A `signal_package_context`
 /// payload is `[u16 session_len][session][i64 ingress_received_at][body]`;
 /// malformed context is a protocol error (the caller drops the frame, as for
-/// any poison frame).
+/// any poison frame). A `signal_package_context_v2` payload includes a
+/// request_id prefix (ADR-015).
 pub fn splitInbound(decoded: adapter.DecodedFrame) !Inbound {
-    if (decoded.header.message_type != .signal_package_context) {
+    if (decoded.header.message_type != .signal_package_context and
+        decoded.header.message_type != .signal_package_context_v2)
+    {
         return .{
             .message_type = decoded.header.message_type,
             .codec = decoded.header.codec,
             .body = decoded.payload,
         };
     }
-    const view = try io.session_context.unwrap(decoded.payload);
+    const view = if (decoded.header.message_type == .signal_package_context_v2)
+        try session_context.unwrapV2(decoded.payload)
+    else
+        try session_context.unwrap(decoded.payload);
     return .{
         .message_type = decoded.header.message_type,
         .codec = decoded.header.codec,
@@ -296,9 +325,26 @@ pub fn splitInbound(decoded: adapter.DecodedFrame) !Inbound {
 /// `header_size + 1 + max_result` bytes; the engine writes its result in
 /// place after the status byte.
 pub fn processFrame(frame: []const u8, buf: []u8, allocator: std.mem.Allocator) ![]const u8 {
+    return processFrameWithMetrics(frame, buf, allocator, null);
+}
+
+/// `processFrame` with a metrics registry. Instrumented at this level rather
+/// than in `serve` because the operation, the status and the engine call all
+/// exist here, so one code path records both the counter and the latency and a
+/// new caller cannot instrument only half of it.
+pub fn processFrameWithMetrics(
+    frame: []const u8,
+    buf: []u8,
+    allocator: std.mem.Allocator,
+    registry: ?*metrics.Metrics,
+) ![]const u8 {
+    const started_ns = std.time.nanoTimestamp();
     const decoded = try adapter.decodeFrame(frame);
     const inbound = try splitInbound(decoded);
     const operation = operationFor(inbound.message_type) orelse {
+        // Decoded but not an engine operation: the reply is a 400, and it
+        // still counts as a job so `jobs_total` matches the replies served.
+        if (registry) |m| m.observeJob(.unknown, .@"error", elapsedSeconds(started_ns));
         return buildReply(.diagnostics, inbound.codec, .invalid_request, &.{}, buf);
     };
 
@@ -308,9 +354,23 @@ pub fn processFrame(frame: []const u8, buf: []u8, allocator: std.mem.Allocator) 
         .codec = codecOf(inbound.codec),
         .payload = inbound.body,
     };
-    try engine.process(&request, &response, allocator);
+    engine.process(&request, &response, allocator) catch |err| {
+        if (registry) |m| m.observeJob(metrics.opOf(operation), .@"error", elapsedSeconds(started_ns));
+        return err;
+    };
 
+    if (registry) |m| {
+        const result: metrics.JobResult = if (response.status == .ok) .ok else .@"error";
+        m.observeJob(metrics.opOf(operation), result, elapsedSeconds(started_ns));
+    }
     return buildReply(resultType(operation), inbound.codec, response.status, response.slice(), buf);
+}
+
+/// Seconds between `started_ns` and now. A negative delta (clock step) is
+/// clamped to zero rather than trusted.
+fn elapsedSeconds(started_ns: i128) f64 {
+    const delta = std.time.nanoTimestamp() - started_ns;
+    return @as(f64, @floatFromInt(@max(delta, 0))) / @as(f64, @floatFromInt(std.time.ns_per_s));
 }
 
 pub const Reply = struct {
@@ -388,6 +448,7 @@ fn serve(
     t: *Transport,
     alloc: std.mem.Allocator,
     publisher: ?*adapter.amqp_publisher.Publisher,
+    registry: *metrics.Metrics,
 ) !void {
     comptime adapter.transport.check(Transport);
     var arena = std.heap.ArenaAllocator.init(alloc);
@@ -430,10 +491,11 @@ fn serve(
 
         log.worker.info("worker: processing job", .{});
         var buf: [io.frame.header_size + 1 + max_result]u8 = undefined;
-        const reply = processFrame(frame, &buf, a) catch |err| {
+        const reply = processFrameWithMetrics(frame, &buf, a, registry) catch |err| {
             // Poison frame (bad magic, integrity violation, ...): drop and
             // ack; v1 has no dead-letter queue.
             log.worker.warn("worker: frame dropped: {s}", .{@errorName(err)});
+            registry.frames_dropped_total.inc(.{ .reason = metrics.dropReasonOf(err) });
             t.ack(frame);
             _ = arena.reset(.retain_capacity);
             continue;
@@ -465,9 +527,25 @@ fn serve(
                     },
                 );
             }
-            p.publish_reply(reply) catch |err| {
-                log.worker.warn("worker: publish dropped: {s}", .{@errorName(err)});
+            const published = blk: {
+                p.publish_reply(reply) catch |err| {
+                    // ADR-016: handle unroutable messages by republishing to DLQ
+                    if (err == error.Unroutable) {
+                        p.republishToDlq(reply) catch |dlq_err| {
+                            registry.publish_total.inc(.{ .result = .dlq_failed });
+                            log.worker.warn("worker: DLQ republish failed: {s}", .{@errorName(dlq_err)});
+                            break :blk false;
+                        };
+                        registry.publish_total.inc(.{ .result = .dlq });
+                        log.worker.warn("worker: message unroutable, republished to DLQ", .{});
+                        break :blk true;
+                    }
+                    log.worker.warn("worker: publish dropped: {s}", .{@errorName(err)});
+                    break :blk false;
+                };
+                break :blk true;
             };
+            registry.publish_total.inc(.{ .result = if (published) .acked else .failed });
             log.worker.info("worker: publish confirmed", .{});
 
             // ADR-013 §1: one extra out-of-band frame per successful
@@ -475,7 +553,7 @@ fn serve(
             // built from the same package the reply was, after the reply is
             // published, so a slow/expensive envelope can never delay or
             // change the browser's reply (which was already written above).
-            publishCollectionEvent(frame, reply, a, p);
+            publishCollectionEvent(frame, reply, a, p, registry);
         }
         t.ack(frame);
         _ = arena.reset(.retain_capacity);
@@ -492,12 +570,13 @@ fn publishCollectionEvent(
     reply: []const u8,
     alloc: std.mem.Allocator,
     publisher: *adapter.amqp_publisher.Publisher,
+    registry: *metrics.Metrics,
 ) void {
     const out = alloc.alloc(u8, io.frame.header_size + collection_event.max_payload) catch {
         log.worker.warn("worker: collection event dropped: out of memory", .{});
         return;
     };
-    const event_frame = collection_event.build(frame, reply, alloc, out) catch |err| {
+    const event_frame = collection_event.buildWithMetrics(frame, reply, alloc, out, registry) catch |err| {
         log.worker.warn("worker: collection event dropped: {s}", .{@errorName(err)});
         return;
     } orelse return;
@@ -512,9 +591,11 @@ fn publishCollectionEvent(
         );
     }
     publisher.publish_reply(event_frame) catch |err| {
+        registry.publish_total.inc(.{ .result = .failed });
         log.worker.warn("worker: collection event publish dropped: {s}", .{@errorName(err)});
         return;
     };
+    registry.publish_total.inc(.{ .result = .acked });
     log.worker.info("worker: collection event confirmed", .{});
 }
 
@@ -522,6 +603,16 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     // Logging config: CLI flags > FPKG_LOG_LEVEL/FPKG_LOG_FORMAT > defaults
     // (specs/architecture/logging.md). Applied before any message is logged.
     log.initFromEnv(alloc, options.log_level, options.log_format);
+
+    // ADR-017: env-only AMQP credentials. FPKG_AMQP_USER/FPKG_AMQP_PASSWORD
+    // take precedence over deprecated CLI flags.
+    const amqp_user = readEnvCredential("FPKG_AMQP_USER", options.amqp_user);
+    const amqp_password = readEnvCredential("FPKG_AMQP_PASSWORD", options.amqp_password);
+
+    // ADR-014 §2: the registry is process-scoped and atomic; the scrape thread
+    // reads it while the serve loop writes. Created before the publisher so the
+    // scrape surface can report a failed AMQP link as `amqp_connected 0`.
+    var registry = metrics.Metrics{};
 
     var publisher: ?adapter.amqp_publisher.Publisher = null;
     if (options.publish == .amqp) {
@@ -535,8 +626,8 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
         };
         const p = adapter.amqp_publisher.Publisher.init(alloc, .{
             .address = address,
-            .user_name = options.amqp_user,
-            .password = options.amqp_password,
+            .user_name = amqp_user,
+            .password = amqp_password,
             .virtual_host = options.amqp_vhost,
             // The worker caps every reply at header + status + max_result.
             .message_size_max = @intCast(io.frame.header_size + 1 + max_result),
@@ -545,21 +636,66 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             std.process.exit(1);
         };
         publisher = p;
+        registry.amqp_connected.set(1);
         log.worker.info(
             "worker: amqp publisher ready at {s}:{d} (exchange '{s}')",
             .{ host, port, adapter.amqp_publisher.exchange_name },
         );
     }
-    defer if (publisher) |*p| p.deinit(alloc);
+    defer if (publisher) |*p| {
+        registry.amqp_connected.set(0);
+        p.deinit(alloc);
+    };
     // serve() takes the publisher by pointer so one broker connection is
     // shared across every inbound client in the accept loop.
     const publisher_ptr: ?*adapter.amqp_publisher.Publisher = if (publisher) |*p| p else null;
+
+    // ADR-014 §4: metrics + probes live on their own port and thread, bound
+    // before the FPKG port is announced so a supervisor never sees a listening
+    // worker whose observability surface failed to bind. A deployment that
+    // believes it has metrics but silently does not is worse than a failed
+    // start, so both an invalid address and an occupied port exit 1.
+    var scrape_server: ?obs.scrape.Server = null;
+    defer if (scrape_server) |*scrape| scrape.stop();
+    if (std.mem.eql(u8, options.metrics_listen, "off")) {
+        log.worker.info("worker: metrics disabled (--metrics-listen=off)", .{});
+    } else {
+        const metrics_address = obs.scrape.parseAddress(alloc, options.metrics_listen) catch {
+            log.worker.err("worker: invalid --metrics-listen '{s}' (expected host:port or off)", .{options.metrics_listen});
+            std.process.exit(1);
+        };
+        scrape_server = obs.scrape.listen(.{
+            .address = metrics_address,
+            .component = "worker",
+            .version = version,
+            .metrics_context = &registry,
+            .render_metrics = renderMetrics,
+            .ready_context = &registry,
+            .is_ready = isReady,
+        }) catch |err| {
+            log.worker.err("worker: cannot bind --metrics-listen '{s}': {s}", .{
+                options.metrics_listen,
+                @errorName(err),
+            });
+            std.process.exit(1);
+        };
+        if (scrape_server) |*scrape| {
+            scrape.start() catch |err| {
+                log.worker.err("worker: cannot start the metrics listener: {s}", .{@errorName(err)});
+                std.process.exit(1);
+            };
+            log.worker.info("worker: metrics listening on port {d} (bind {s})", .{
+                scrape.port(),
+                options.metrics_listen,
+            });
+        }
+    }
 
     switch (options.transport) {
         .loopback => {
             var t = adapter.Loopback.init(alloc, .stdio);
             defer t.deinit();
-            try serve(adapter.Loopback, &t, alloc, publisher_ptr);
+            try serve(adapter.Loopback, &t, alloc, publisher_ptr, &registry);
         },
         .tcp => {
             const listen = options.listen orelse unreachable; // parse enforces
@@ -587,7 +723,7 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             while (!shutdown_requested.load(.acquire)) {
                 if (!try t.acceptWait(accept_poll_ms)) continue;
                 log.worker.info("worker: client accepted", .{});
-                serve(adapter.Tcp, &t, alloc, publisher_ptr) catch |err| {
+                serve(adapter.Tcp, &t, alloc, publisher_ptr, &registry) catch |err| {
                     // serve() already attributes clean peer closes; only
                     // protocol errors land here.
                     // Protocol errors (InvalidMagic, Truncated,
@@ -604,6 +740,22 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     }
 }
 
+/// Scrape callback: renders the worker registry (ADR-014). The registry is
+/// atomic, so this runs on the scrape thread without locking.
+fn renderMetrics(context: *anyopaque, writer: std.io.AnyWriter) anyerror!void {
+    const registry: *const metrics.Metrics = @ptrCast(@alignCast(context));
+    try metrics.render(registry, writer);
+}
+
+/// Readiness callback (ADR-014 §5): the worker serves requests as soon as it
+/// is listening. With `--publish=amqp` it also needs the broker link, which is
+/// a startup snapshot today — ADR-016 (Week 11) owns reconnects and the
+/// dead-letter path.
+fn isReady(context: *anyopaque) ?[]const u8 {
+    const registry: *const metrics.Metrics = @ptrCast(@alignCast(context));
+    return if (registry.amqp_connected.get() > 0) null else "amqp";
+}
+
 fn splitHostPort(listen: []const u8) !struct { []const u8, u16 } {
     // R-7: support IPv6 bracket notation "[::1]:8080" in addition to IPv4 "0.0.0.0:8080".
     if (listen.len > 0 and listen[0] == '[') {
@@ -617,6 +769,24 @@ fn splitHostPort(listen: []const u8) !struct { []const u8, u16 } {
     const host = listen[0..idx];
     const port = try std.fmt.parseInt(u16, listen[idx + 1 ..], 10);
     return .{ host, port };
+}
+
+/// Reads an AMQP credential from the environment, with CLI fallback and
+/// deprecation warning (ADR-017). The env var wins if both are set.
+fn readEnvCredential(env_var: []const u8, cli_value: []const u8) []const u8 {
+    const env_val = std.process.getEnvPosix(env_var) catch "";
+    if (env_val.len > 0) {
+        // Env var set: warn if CLI flag was also present (env wins)
+        if (!std.mem.eql(u8, cli_value, "guest") and !std.mem.eql(u8, cli_value, env_val)) {
+            log.worker.warn("worker: --amqp-user/--amqp-password flags ignored (env vars take precedence)", .{});
+        }
+        return env_val;
+    }
+    // No env var: use CLI value (deprecation warning if not default)
+    if (!std.mem.eql(u8, cli_value, "guest")) {
+        log.worker.warn("worker: --amqp-user/--amqp-password are deprecated; use FPKG_AMQP_USER/FPKG_AMQP_PASSWORD env vars instead", .{});
+    }
+    return cli_value;
 }
 
 pub fn main() !void {

@@ -1,4 +1,5 @@
-//! `signal_package_context` payload codec (ADR-013 §4, story m7-session-id).
+//! `signal_package_context` payload codec (ADR-013 §4, story m7-session-id,
+//! ADR-015).
 //!
 //! The ingress learns two things the worker cannot derive: the browser/idp
 //! session id from the `x-fpkg-session-id` request header, and when the
@@ -7,15 +8,23 @@
 //! the client (it is integrity-checked and hashed verbatim), so it cannot be
 //! annotated either. The ingress therefore *wraps* the body:
 //!
+//! v1 (type 11):
 //!     payload = [u16 session_len (LE)][session_id]
 //!               [i64 ingress_received_at (LE, epoch ms)]
 //!               [signal_package body]
 //!
-//! carried in a `signal_package_context` frame. `session_len` may be 0: the
-//! session header is optional, but the ingress timestamp is not, because every
-//! HTTP collection traversed the ingress. Direct frame clients (TCP,
-//! loopback) keep sending a plain `signal_package`, where the envelope records
-//! `ingress_received_at = 0` — the ADR's "did not traverse the ingress" case.
+//! v2 (type 12, ADR-015):
+//!     payload = [u16 request_id_len (LE)][request_id]
+//!               [u16 session_len (LE)][session_id]
+//!               [i64 ingress_received_at (LE, epoch ms)]
+//!               [signal_package body]
+//!
+//! carried in a `signal_package_context` or `signal_package_context_v2` frame.
+//! `session_len` may be 0: the session header is optional, but the ingress
+//! timestamp is not, because every HTTP collection traversed the ingress. Direct
+//! frame clients (TCP, loopback) keep sending a plain `signal_package`, where
+//! the envelope records `ingress_received_at = 0` — the ADR's "did not traverse
+//! the ingress" case.
 //!
 //! The worker strips the header and hands the inner body to the engine
 //! unchanged, so the canonical digest is identical with and without a context.
@@ -31,6 +40,9 @@ const std = @import("std");
 /// wrapped frame stays far below any transport limit.
 pub const max_session_id_len: usize = 128;
 
+/// Upper bound on a request_id (ADR-015). Same validator as session_id.
+pub const max_request_id_len: usize = 128;
+
 /// Bytes of the session-length field that opens the context header.
 pub const length_prefix_len: usize = 2;
 
@@ -44,6 +56,8 @@ pub const header_len: usize = length_prefix_len + timestamp_len;
 pub const Error = error{
     SessionIdTooLong,
     InvalidSessionId,
+    RequestIdTooLong,
+    InvalidRequestId,
     /// The payload ends before the declared session id does.
     Truncated,
     /// `out` cannot hold the wrapped payload.
@@ -62,6 +76,13 @@ pub const Error = error{
 pub fn isValidSessionId(session: []const u8) bool {
     if (session.len == 0 or session.len > max_session_id_len) return false;
     return hasValidChars(session);
+}
+
+/// Same validator as session_id (ADR-015). Empty request_id is invalid in v2;
+/// absence is expressed by using type 11 instead of type 12.
+pub fn isValidRequestId(request_id: []const u8) bool {
+    if (request_id.len == 0 or request_id.len > max_request_id_len) return false;
+    return hasValidChars(request_id);
 }
 
 fn hasValidChars(session: []const u8) bool {
@@ -112,6 +133,8 @@ pub fn wrap(
 }
 
 pub const View = struct {
+    /// The request id (v2 only), borrowing from the payload; empty in v1.
+    request_id: []const u8 = "",
     /// The session id, borrowing from the payload; empty when none was sent.
     session_id: []const u8,
     /// Ingress arrival time in epoch milliseconds; 0 when the collection did
@@ -145,5 +168,93 @@ pub fn unwrap(payload: []const u8) Error!View {
         .session_id = session_id,
         .ingress_received_at = @bitCast(stamp),
         .body = payload[header_len + session_len ..],
+    };
+}
+
+/// Wraps `body` behind the ingress context v2 into `out` and returns the
+/// written slice (ADR-015). `out.len` must be at least
+/// `length_prefix_len + request_id.len + header_len + session_id.len + body.len`.
+/// `request_id` must be non-empty and satisfy `isValidRequestId`. `session_id`
+/// may be empty.
+pub fn wrapV2(
+    out: []const u8,
+    request_id: []const u8,
+    session_id: []const u8,
+    ingress_received_at: i64,
+    body: []const u8,
+) Error![]const u8 {
+    if (request_id.len == 0 or request_id.len > max_request_id_len) return error.RequestIdTooLong;
+    if (!hasValidChars(request_id)) return error.InvalidRequestId;
+    if (session_id.len > max_session_id_len) return error.SessionIdTooLong;
+    if (session_id.len > 0 and !hasValidChars(session_id)) return error.InvalidSessionId;
+
+    const total = length_prefix_len + request_id.len + header_len + session_id.len + body.len;
+    if (out.len < total) return error.BufferTooSmall;
+
+    var pos: usize = 0;
+
+    // request_id length
+    out[pos] = @intCast(request_id.len & 0xff);
+    out[pos + 1] = @intCast(request_id.len >> 8);
+    pos += length_prefix_len;
+
+    // request_id
+    @memcpy(out[pos .. pos + request_id.len], request_id);
+    pos += request_id.len;
+
+    // session_id length
+    out[pos] = @intCast(session_id.len & 0xff);
+    out[pos + 1] = @intCast(session_id.len >> 8);
+    pos += length_prefix_len;
+
+    // session_id
+    if (session_id.len > 0) {
+        @memcpy(out[pos .. pos + session_id.len], session_id);
+        pos += session_id.len;
+    }
+
+    // ingress_received_at
+    const stamp: u64 = @bitCast(ingress_received_at);
+    for (0..timestamp_len) |i| {
+        out[pos + i] = @truncate(stamp >> @intCast(8 * i));
+    }
+    pos += timestamp_len;
+
+    // body
+    @memcpy(out[pos..total], body);
+    return out[0..total];
+}
+
+/// Splits a `signal_package_context_v2` payload into its request_id,
+/// session id, ingress arrival time, and package body (ADR-015).
+pub fn unwrapV2(payload: []const u8) Error!View {
+    if (payload.len < length_prefix_len) return error.Truncated;
+
+    const request_len = @as(usize, payload[0]) | (@as(usize, payload[1]) << 8);
+    if (request_len == 0 or request_len > max_request_id_len) return error.RequestIdTooLong;
+    if (payload.len < length_prefix_len + request_len + length_prefix_len) return error.Truncated;
+
+    const request_id = payload[length_prefix_len .. length_prefix_len + request_len];
+    if (!hasValidChars(request_id)) return error.InvalidRequestId;
+
+    const session_at = length_prefix_len + request_len;
+    const session_len = @as(usize, payload[session_at]) | (@as(usize, payload[session_at + 1]) << 8);
+    if (session_len > max_session_id_len) return error.SessionIdTooLong;
+    if (payload.len < session_at + length_prefix_len + session_len + timestamp_len) return error.Truncated;
+
+    const session_id = payload[session_at + length_prefix_len .. session_at + length_prefix_len + session_len];
+    if (session_id.len > 0 and !hasValidChars(session_id)) return error.InvalidSessionId;
+
+    const stamp_at = session_at + length_prefix_len + session_len;
+    var stamp: u64 = 0;
+    for (0..timestamp_len) |i| {
+        stamp |= @as(u64, payload[stamp_at + i]) << @intCast(8 * i);
+    }
+
+    return .{
+        .request_id = request_id,
+        .session_id = session_id,
+        .ingress_received_at = @bitCast(stamp),
+        .body = payload[stamp_at + timestamp_len ..],
     };
 }

@@ -150,8 +150,12 @@ pub const Publisher = struct {
     /// Publishes one FPKG reply frame. Blocks until the broker confirms it.
     /// `reply` must be a complete frame (see transport.decodeFrame); only the
     /// header is parsed here — the body is forwarded verbatim.
+    /// Returns error.Unroutable if the broker returns basic_return (ADR-016).
     pub fn publish_reply(self: *Publisher, reply: []const u8) !void {
         if (reply.len > self.message_size_max) return error.BodyTooLarge;
+
+        // Clear any previous basic_return
+        self.client.last_basic_return = null;
 
         var reader = io.Reader.init(reply);
         const header = try io.frame.FrameHeader.decode(&reader);
@@ -163,7 +167,7 @@ pub const Publisher = struct {
         try self.client.publish(.{
             .exchange = exchange_name,
             .routing_key = routingKey(header.message_type),
-            .mandatory = false,
+            .mandatory = true, // ADR-016: detect unroutable messages
             .immediate = false,
             .properties = .{
                 .content_type = content_type,
@@ -172,6 +176,28 @@ pub const Publisher = struct {
                 .headers = message.headers(),
             },
             .body = message.body(),
+        });
+
+        // ADR-016: check if basic_return was received
+        if (self.client.last_basic_return) |*br| {
+            return error.Unroutable;
+        }
+    }
+
+    /// Republishes an unroutable frame to the DLX (ADR-016). Returns error
+    /// if the republish also fails; the caller should count it as dlq_failed.
+    pub fn republishToDlq(self: *Publisher, frame: []const u8) !void {
+        try self.client.publish(.{
+            .exchange = dlx_name,
+            .routing_key = dlq_routing_key,
+            .mandatory = true,
+            .immediate = false,
+            .properties = .{
+                .content_type = content_type,
+                .delivery_mode = .persistent,
+                .timestamp = @intCast(std.time.timestamp()),
+            },
+            .body = frame,
         });
     }
 };

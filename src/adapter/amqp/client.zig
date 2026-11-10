@@ -75,6 +75,10 @@ pub const Client = struct {
 
     heartbeat: bool = false,
 
+    /// Stores the last basic_return received (ADR-016). Cleared after each
+    /// publish batch so the publisher can check if a message was unroutable.
+    last_basic_return: ?spec.BasicReturn = null,
+
     action: union(enum) {
         none,
         connect: struct {
@@ -1134,16 +1138,9 @@ pub const Client = struct {
                 }
             },
             .basic_return => |basic_return| {
-                const soft_error: ErrorCodes = @enumFromInt(basic_return.reply_code);
-                fatal(
-                    "Message cannot be delivered: exchange=\"{s}\" routing_key=\"{s}\" {s}={s}",
-                    .{
-                        basic_return.exchange,
-                        basic_return.routing_key,
-                        @tagName(soft_error),
-                        basic_return.reply_text,
-                    },
-                );
+                // ADR-016: basic_return is an error, not a fatal. The publisher
+                // can handle unroutable messages by republishing to the DLQ.
+                self.last_basic_return = basic_return;
             },
             // Channel flow is not supported, but the command can be ignored.
             // It's up to the server to evict clients that do not respect
@@ -1163,14 +1160,16 @@ pub const Client = struct {
                 // content-header awaiter so the next frame (header) triggers
                 // the dispatch that reads properties and arms the body awaiter.
                 if (self.action == .consume_body_pending) {
-                    self.pending = .{ .delivery = .{
-                        .consumer_tag = deliver.consumer_tag,
-                        .delivery_tag = deliver.delivery_tag,
-                        .redelivered = deliver.redelivered,
-                        .exchange = deliver.exchange,
-                        .routing_key = deliver.routing_key,
-                        .properties = undefined, // set by consume_deliver_dispatch
-                    } };
+                    self.pending = .{
+                        .delivery = .{
+                            .consumer_tag = deliver.consumer_tag,
+                            .delivery_tag = deliver.delivery_tag,
+                            .redelivered = deliver.redelivered,
+                            .exchange = deliver.exchange,
+                            .routing_key = deliver.routing_key,
+                            .properties = undefined, // set by consume_deliver_dispatch
+                        },
+                    };
                     self.awaiter = .{ .await_content_header = .{
                         .channel = frame_header.channel,
                         .delivery_tag = deliver.delivery_tag,
