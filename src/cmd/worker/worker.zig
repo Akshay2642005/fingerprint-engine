@@ -523,6 +523,18 @@ fn serve(
         }
         try t.publish(reply); // transport-level outbound hook (no-op in v1)
         if (publisher) |p| {
+            if (!p.isConnected()) {
+                p.reconnect(alloc) catch |err| {
+                    registry.amqp_connected.set(0);
+                    registry.publish_total.inc(.{ .result = .failed });
+                    log.worker.warn("worker: AMQP reconnect failed: {s}", .{@errorName(err)});
+                    t.ack(frame);
+                    _ = arena.reset(.retain_capacity);
+                    continue;
+                };
+                registry.amqp_connected.set(1);
+                log.worker.info("worker: AMQP connection recovered", .{});
+            }
             if (flow_reply) |r| {
                 log.worker.info(
                     "worker: publishing reply (type={s}) to exchange '{s}' key '{s}'",
@@ -537,6 +549,7 @@ fn serve(
                 p.publish_replyWithRequestId(reply, request_id) catch |err| {
                     // ADR-016: handle unroutable messages by republishing to DLQ
                     if (err == error.Unroutable) {
+                        registry.publish_total.inc(.{ .result = .unroutable });
                         p.republishToDlq(reply, request_id) catch |dlq_err| {
                             registry.publish_total.inc(.{ .result = .dlq_failed });
                             log.worker.warn("worker: DLQ republish failed: {s}", .{@errorName(dlq_err)});
@@ -546,12 +559,15 @@ fn serve(
                         log.worker.warn("worker: message unroutable, republished to DLQ", .{});
                         break :blk true;
                     }
+                    p.markDisconnected();
+                    registry.amqp_connected.set(0);
+                    registry.publish_total.inc(.{ .result = .failed });
                     log.worker.warn("worker: publish dropped: {s}", .{@errorName(err)});
                     break :blk false;
                 };
+                registry.publish_total.inc(.{ .result = .acked });
                 break :blk true;
             };
-            registry.publish_total.inc(.{ .result = if (published) .acked else .failed });
             if (published) log.worker.info("worker: publish confirmed request_id={s}", .{request_id});
 
             // ADR-013 §1: one extra out-of-band frame per successful
@@ -559,7 +575,7 @@ fn serve(
             // built from the same package the reply was, after the reply is
             // published, so a slow/expensive envelope can never delay or
             // change the browser's reply (which was already written above).
-            publishCollectionEvent(frame, reply, a, p, registry);
+            if (published) publishCollectionEvent(frame, reply, a, p, request_id, registry);
         }
         t.ack(frame);
         _ = arena.reset(.retain_capacity);
@@ -588,6 +604,7 @@ fn publishCollectionEvent(
     reply: []const u8,
     alloc: std.mem.Allocator,
     publisher: *adapter.amqp_publisher.Publisher,
+    request_id: []const u8,
     registry: *metrics.Metrics,
 ) void {
     const out = alloc.alloc(u8, io.frame.header_size + collection_event.max_payload) catch {
@@ -608,7 +625,7 @@ fn publishCollectionEvent(
             },
         );
     }
-    publisher.publish_reply(event_frame) catch |err| {
+    publisher.publish_replyWithRequestId(event_frame, request_id) catch |err| {
         registry.publish_total.inc(.{ .result = .failed });
         log.worker.warn("worker: collection event publish dropped: {s}", .{@errorName(err)});
         return;

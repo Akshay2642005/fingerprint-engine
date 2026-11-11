@@ -86,6 +86,8 @@ pub const Options = struct {
 pub const Publisher = struct {
     client: client.Client,
     message_size_max: u32,
+    options: ?Options = null,
+    connected: bool = true,
 
     /// Connects to the broker, enables publisher confirms, and declares the
     /// result exchange (durable, idempotent). On any failure the socket and
@@ -140,7 +142,23 @@ pub const Publisher = struct {
             .routing_key = dlq_routing_key,
             .no_wait = false,
         });
-        return .{ .client = c, .message_size_max = options.message_size_max };
+        return .{ .client = c, .message_size_max = options.message_size_max, .options = options };
+    }
+
+    pub fn isConnected(self: *const Publisher) bool {
+        return self.connected;
+    }
+
+    pub fn markDisconnected(self: *Publisher) void {
+        self.connected = false;
+    }
+
+    /// Replaces a failed broker connection once. The caller owns retry policy;
+    /// this method never loops or buffers messages.
+    pub fn reconnect(self: *Publisher, allocator: std.mem.Allocator) !void {
+        const replacement = try Publisher.init(allocator, self.options orelse return error.NotConnected);
+        self.client.deinit(allocator);
+        self.* = replacement;
     }
 
     pub fn deinit(self: *Publisher, allocator: std.mem.Allocator) void {
@@ -169,7 +187,7 @@ pub const Publisher = struct {
             .message_type = header.message_type,
             .request_id = request_id,
         };
-        try self.client.publish(.{
+        self.client.publish(.{
             .exchange = exchange_name,
             .routing_key = routingKey(header.message_type),
             .mandatory = true, // ADR-016: detect unroutable messages
@@ -181,7 +199,10 @@ pub const Publisher = struct {
                 .headers = message.headers(),
             },
             .body = message.body(),
-        });
+        }) catch |err| {
+            self.connected = false;
+            return err;
+        };
 
         // ADR-016: check if basic_return was received
         if (self.client.last_basic_return) {
@@ -193,7 +214,7 @@ pub const Publisher = struct {
     /// if the republish also fails; the caller should count it as dlq_failed.
     pub fn republishToDlq(self: *Publisher, frame: []const u8, request_id: []const u8) !void {
         const body = Message{ .reply = frame, .message_type = .diagnostics, .request_id = request_id };
-        try self.client.publish(.{
+        self.client.publish(.{
             .exchange = dlx_name,
             .routing_key = dlq_routing_key,
             .mandatory = true,
@@ -204,7 +225,10 @@ pub const Publisher = struct {
                 .timestamp = @intCast(std.time.timestamp()),
             },
             .body = body.body(),
-        });
+        }) catch |err| {
+            self.connected = false;
+            return err;
+        };
     }
 };
 
