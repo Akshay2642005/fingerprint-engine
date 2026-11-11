@@ -152,6 +152,10 @@ pub const Publisher = struct {
     /// header is parsed here — the body is forwarded verbatim.
     /// Returns error.Unroutable if the broker returns basic_return (ADR-016).
     pub fn publish_reply(self: *Publisher, reply: []const u8) !void {
+        return self.publish_replyWithRequestId(reply, "");
+    }
+
+    pub fn publish_replyWithRequestId(self: *Publisher, reply: []const u8, request_id: []const u8) !void {
         if (reply.len > self.message_size_max) return error.BodyTooLarge;
 
         // Clear any previous basic_return
@@ -163,6 +167,7 @@ pub const Publisher = struct {
         const message = Message{
             .reply = reply,
             .message_type = header.message_type,
+            .request_id = request_id,
         };
         try self.client.publish(.{
             .exchange = exchange_name,
@@ -186,8 +191,8 @@ pub const Publisher = struct {
 
     /// Republishes an unroutable frame to the DLX (ADR-016). Returns error
     /// if the republish also fails; the caller should count it as dlq_failed.
-    pub fn republishToDlq(self: *Publisher, frame: []const u8) !void {
-        const body = Message{ .reply = frame, .message_type = .diagnostics };
+    pub fn republishToDlq(self: *Publisher, frame: []const u8, request_id: []const u8) !void {
+        const body = Message{ .reply = frame, .message_type = .diagnostics, .request_id = request_id };
         try self.client.publish(.{
             .exchange = dlx_name,
             .routing_key = dlq_routing_key,
@@ -209,6 +214,7 @@ pub const Publisher = struct {
 const Message = struct {
     reply: []const u8,
     message_type: io.frame.MessageType,
+    request_id: []const u8 = "",
 
     fn body(self: *const Message) client.Encoder.Body {
         const vtable: client.Encoder.Body.VTable = comptime .{
@@ -234,6 +240,9 @@ const Message = struct {
                     encoder.put("fpkg-envelope-version", .{
                         .uint16 = io.frame.current_version,
                     });
+                    if (message.request_id.len > 0) {
+                        encoder.put("request_id", .{ .string = message.request_id });
+                    }
                 }
             }.write,
         };

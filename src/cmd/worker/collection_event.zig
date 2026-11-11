@@ -154,6 +154,14 @@ fn contextOf(frame: []const u8) !?Context {
                 .ingress_received_at = view.ingress_received_at,
             };
         },
+        .signal_package_context_v2 => {
+            const view = try io.session_context.unwrapV2(decoded.payload);
+            return .{
+                .body = view.body,
+                .session_id = view.session_id,
+                .ingress_received_at = view.ingress_received_at,
+            };
+        },
         else => return null,
     }
 }

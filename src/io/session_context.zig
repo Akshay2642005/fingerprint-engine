@@ -177,7 +177,7 @@ pub fn unwrap(payload: []const u8) Error!View {
 /// `request_id` must be non-empty and satisfy `isValidRequestId`. `session_id`
 /// may be empty.
 pub fn wrapV2(
-    out: []const u8,
+    out: []u8,
     request_id: []const u8,
     session_id: []const u8,
     ingress_received_at: i64,

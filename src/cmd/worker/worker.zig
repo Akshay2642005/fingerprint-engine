@@ -287,6 +287,7 @@ pub const Inbound = struct {
     /// `x-fpkg-session-id` as forwarded by the ingress; null when the client
     /// sent none. Borrows from the frame.
     session_id: ?[]const u8 = null,
+    request_id: ?[]const u8 = null,
     /// Ingress arrival time in epoch milliseconds (0 when the frame did not
     /// traverse the ingress, e.g. a direct TCP/loopback client).
     ingress_received_at: i64 = 0,
@@ -316,6 +317,7 @@ pub fn splitInbound(decoded: adapter.DecodedFrame) !Inbound {
         .codec = decoded.header.codec,
         .body = view.body,
         .session_id = if (view.session_id.len > 0) view.session_id else null,
+        .request_id = if (view.request_id.len > 0) view.request_id else null,
         .ingress_received_at = view.ingress_received_at,
     };
 }
@@ -470,6 +472,10 @@ fn serve(
             }
             return err;
         };
+        const request_id = requestIdForFrame(frame, a) catch |err| {
+            log.worker.warn("worker: cannot establish request id: {s}", .{@errorName(err)});
+            return err;
+        };
 
         // got job: decode the request header for the flow trace. Flow
         // lifecycle lines are info (visible at the default level, S3b);
@@ -479,7 +485,7 @@ fn serve(
         // anyway.
         if (log.shouldLog(.info)) {
             if (adapter.decodeFrame(frame)) |decoded| {
-                log.worker.info("worker: got job type={s}", .{@tagName(decoded.header.message_type)});
+                log.worker.info("worker: got job type={s} request_id={s}", .{ @tagName(decoded.header.message_type), request_id });
                 if (log.shouldLog(.debug)) {
                     log.worker.debug(
                         "worker: job detail codec={s} payload_len={d}",
@@ -489,12 +495,12 @@ fn serve(
             } else |_| {} // decode errors surface in processFrame below
         }
 
-        log.worker.info("worker: processing job", .{});
+        log.worker.info("worker: processing job request_id={s}", .{request_id});
         var buf: [io.frame.header_size + 1 + max_result]u8 = undefined;
         const reply = processFrameWithMetrics(frame, &buf, a, registry) catch |err| {
             // Poison frame (bad magic, integrity violation, ...): drop and
             // ack; v1 has no dead-letter queue.
-            log.worker.warn("worker: frame dropped: {s}", .{@errorName(err)});
+            log.worker.warn("worker: frame dropped request_id={s}: {s}", .{ request_id, @errorName(err) });
             registry.frames_dropped_total.inc(.{ .reason = metrics.dropReasonOf(err) });
             t.ack(frame);
             _ = arena.reset(.retain_capacity);
@@ -505,7 +511,7 @@ fn serve(
         const flow_reply: ?Reply = if (log.shouldLog(.info)) (decodeReply(reply) catch null) else null;
 
         if (flow_reply) |r| {
-            log.worker.info("worker: job done status={s}", .{@tagName(r.status)});
+            log.worker.info("worker: job done status={s} request_id={s}", .{ @tagName(r.status), request_id });
             if (log.shouldLog(.debug)) {
                 log.worker.debug("worker: job detail result_len={d}", .{r.payload.len});
             }
@@ -513,7 +519,7 @@ fn serve(
 
         try t.writeFrame(reply);
         if (flow_reply) |r| {
-            log.worker.info("worker: reply sent to client (type={s})", .{@tagName(r.message_type)});
+            log.worker.info("worker: reply sent to client (type={s}) request_id={s}", .{ @tagName(r.message_type), request_id });
         }
         try t.publish(reply); // transport-level outbound hook (no-op in v1)
         if (publisher) |p| {
@@ -528,10 +534,10 @@ fn serve(
                 );
             }
             const published = blk: {
-                p.publish_reply(reply) catch |err| {
+                p.publish_replyWithRequestId(reply, request_id) catch |err| {
                     // ADR-016: handle unroutable messages by republishing to DLQ
                     if (err == error.Unroutable) {
-                        p.republishToDlq(reply) catch |dlq_err| {
+                        p.republishToDlq(reply, request_id) catch |dlq_err| {
                             registry.publish_total.inc(.{ .result = .dlq_failed });
                             log.worker.warn("worker: DLQ republish failed: {s}", .{@errorName(dlq_err)});
                             break :blk false;
@@ -546,7 +552,7 @@ fn serve(
                 break :blk true;
             };
             registry.publish_total.inc(.{ .result = if (published) .acked else .failed });
-            log.worker.info("worker: publish confirmed", .{});
+            if (published) log.worker.info("worker: publish confirmed request_id={s}", .{request_id});
 
             // ADR-013 §1: one extra out-of-band frame per successful
             // collection, carrying the self-contained ledger document. It is
@@ -558,6 +564,18 @@ fn serve(
         t.ack(frame);
         _ = arena.reset(.retain_capacity);
     }
+}
+
+fn requestIdForFrame(frame: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    const decoded = try adapter.decodeFrame(frame);
+    const inbound = try splitInbound(decoded);
+    if (inbound.request_id) |request_id| return request_id;
+
+    var raw: [16]u8 = undefined;
+    std.crypto.random.bytes(&raw);
+    const id = try allocator.alloc(u8, 32);
+    _ = std.fmt.bufPrint(id, "{s}", .{std.fmt.fmtSliceHexLower(&raw)}) catch unreachable;
+    return id;
 }
 
 /// Builds and publishes the collection envelope for one request/reply pair.
