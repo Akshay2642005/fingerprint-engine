@@ -84,25 +84,52 @@ pub const WorkerPool = struct {
 
     /// One frame exchange over `slot`'s connection, connecting lazily.
     fn exchange(self: *WorkerPool, slot: *Slot, allocator: std.mem.Allocator, frame: []const u8) ![]const u8 {
-        _ = self;
-        if (slot.client == null) {
-            var client = try adapter.TcpClient.init(
-                allocator,
-                slot.host,
-                slot.port,
-                read_timeout_ns,
-            );
-            errdefer client.close();
-            try client.connect(connect_timeout_ns);
-            log.pool.info("pool: connected to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
-            slot.client = client;
-        }
+        if (slot.client == null) try self.connectSlot(slot, allocator, connect_timeout_ns);
         const c = &slot.client.?;
         log.pool.debug("pool: forwarding signal package to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
         try c.writeFrame(frame);
         const reply = try c.readFrame(allocator);
         log.pool.debug("pool: reply from worker {d} ({s}:{d}) ({d} bytes)", .{ slot.id, slot.host, slot.port, reply.len });
         return reply;
+    }
+
+    /// Connects one slot if it has no live client. The connection is kept and
+    /// reused by the next request, so a probe is never throwaway work.
+    fn connectSlot(self: *WorkerPool, slot: *Slot, allocator: std.mem.Allocator, timeout_ns: u64) !void {
+        _ = self;
+        var client = try adapter.TcpClient.init(
+            allocator,
+            slot.host,
+            slot.port,
+            read_timeout_ns,
+        );
+        errdefer client.close();
+        try client.connect(timeout_ns);
+        log.pool.info("pool: connected to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
+        slot.client = client;
+    }
+
+    /// Slots holding a live client. Unsynchronized: only the accept thread may
+    /// call this (ADR-014 readiness is published through the atomic gauge).
+    pub fn liveCount(self: *const WorkerPool) usize {
+        var live: usize = 0;
+        for (self.slots) |slot| {
+            if (slot.client != null) live += 1;
+        }
+        return live;
+    }
+
+    /// Connects every slot that has no client, bounded by `timeout_ns` per
+    /// slot, and returns the number of slots now live. Used at startup and on
+    /// the idle path so `/readyz` is meaningful for a lazy pool: without it an
+    /// ingress that has not served a request yet reports zero reachable
+    /// workers forever. Failures are swallowed — a dead seed must not stop the
+    /// ingress from starting; the gauge reports the truth.
+    pub fn refresh(self: *WorkerPool, allocator: std.mem.Allocator, timeout_ns: u64) usize {
+        for (self.slots) |*slot| {
+            if (slot.client == null) self.connectSlot(slot, allocator, timeout_ns) catch {};
+        }
+        return self.liveCount();
     }
 };
 

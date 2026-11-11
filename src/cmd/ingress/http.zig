@@ -23,6 +23,7 @@ const adapter = @import("adapter");
 const version_info = @import("version");
 const worker_pool = @import("pool.zig");
 const request_hmac = @import("hmac.zig");
+const metrics_mod = @import("metrics.zig");
 const log = @import("log");
 
 const IO = io.IO;
@@ -57,6 +58,9 @@ pub const ParsedHead = struct {
     /// `signal_package_context` frame; unvalidated here — `handlePost`
     /// rejects anything `io.session_context.isValidSessionId` refuses.
     session_id: ?[]const u8 = null,
+    /// `x-request-id` (ADR-015). Honoured only when it passes the shared
+    /// bounded identifier validator; otherwise the ingress mints one.
+    request_id: ?[]const u8 = null,
     /// `x-fpkg-collected-at`: epoch milliseconds, the freshness input to the
     /// request signature (M7 W6-D3). Parsed here, range-checked in `handlePost`
     /// against the replay window.
@@ -120,6 +124,8 @@ pub fn parseHead(head: []const u8) ParseError!ParsedHead {
             result.integrity = value;
         } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-session-id")) {
             result.session_id = value;
+        } else if (std.ascii.eqlIgnoreCase(name, "x-request-id")) {
+            result.request_id = value;
         } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-collected-at")) {
             result.collected_at = std.fmt.parseInt(i64, value, 10) catch return error.MalformedHeader;
         } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-nonce")) {
@@ -194,6 +200,12 @@ pub const HttpServer = struct {
     /// ingress trusts the network (D-v1-2); when set, every POST must carry a
     /// valid `x-fpkg-*` signature triple or it is rejected before framing.
     hmac: ?*request_hmac.Verifier = null,
+    /// Metrics registry (ADR-014). `null` = not instrumented, which is how the
+    /// parser/status unit tests exercise the server without a registry.
+    metrics: ?*metrics_mod.Metrics = null,
+    /// Wall-clock start of the connection currently being served, used by the
+    /// latency histogram. Zero means "no request in flight".
+    request_started_ns: i128 = 0,
 
     accept_ctx: AcceptContext = .{},
     read_ctx: ReadContext = .{},
@@ -370,6 +382,7 @@ pub const HttpServer = struct {
     /// caller closes the client afterwards (or on error).
     pub fn handleConnection(self: *HttpServer, allocator: std.mem.Allocator) !void {
         const client = self.client orelse return error.NotConnected;
+        self.request_started_ns = std.time.nanoTimestamp();
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
         const a = arena.allocator();
@@ -493,17 +506,29 @@ pub const HttpServer = struct {
         // the ingress is configured with a secret: an unsigned request is a
         // 401, never a pass-through. The nonce and the secret are never logged.
         if (self.hmac) |verifier| {
-            verifier.verify(
+            const verified = verifier.verify(
                 parsed.collected_at,
                 std.time.milliTimestamp(),
                 parsed.nonce,
                 body_digest,
                 parsed.signature,
-            ) catch |err| {
+            );
+            // Publish the cache depth after every attempt, accepted or not:
+            // `verify` may compact, and an operator watching saturation needs
+            // the number before the first `cache_full`, not after it. The
+            // gauge is atomic, so the scrape thread never reads the verifier's
+            // plain `count` field.
+            if (self.metrics) |registry| {
+                registry.replay_cache_entries.set(@intCast(verifier.count));
+            }
+            verified catch |err| {
                 log.ingress.warn("ingress: request authentication rejected ({s}) from {s}", .{
                     @errorName(err),
                     parsed.origin orelse "unknown",
                 });
+                if (self.metrics) |registry| {
+                    registry.auth_rejections_total.inc(.{ .reason = authReason(err) });
+                }
                 const rejection = hmacRejection(err);
                 try self.replyError(client, rejection.status, rejection.reason, null);
                 return;
@@ -524,6 +549,8 @@ pub const HttpServer = struct {
                 return;
             }
         }
+        const request_id = try requestId(a, parsed.request_id, self.metrics);
+
         // ADR-013 §4: the session id rides in the frame payload, so it is
         // validated here rather than in the worker — a bad one is the
         // client's error (400), not a poison frame. The value is never
@@ -542,9 +569,10 @@ pub const HttpServer = struct {
         // in the FPKG header. The inner body is copied verbatim so the worker
         // hashes exactly what the client signed.
         const session_id = parsed.session_id orelse "";
-        const wrapped = try a.alloc(u8, io.session_context.header_len + session_id.len + body.len);
-        const frame_payload = io.session_context.wrap(
+        const wrapped = try a.alloc(u8, io.session_context.length_prefix_len + request_id.len + io.session_context.header_len + session_id.len + body.len);
+        const frame_payload = io.session_context.wrapV2(
             wrapped,
+            request_id,
             session_id,
             std.time.milliTimestamp(),
             body,
@@ -553,10 +581,10 @@ pub const HttpServer = struct {
             try self.replyError(client, 400, "invalid session id", null);
             return;
         };
-        log.ingress.debug("ingress: session context attached ({d} session bytes)", .{session_id.len});
+        log.ingress.debug("ingress: session context attached ({d} request id bytes, {d} session bytes)", .{ request_id.len, session_id.len });
 
         const frame_buf = try a.alloc(u8, io.frame.header_size + frame_payload.len);
-        const frame = adapter.buildFrame(.signal_package_context, .binary, frame_payload, frame_buf) catch {
+        const frame = adapter.buildFrame(.signal_package_context_v2, .binary, frame_payload, frame_buf) catch {
             try self.replyError(client, 400, "invalid body", null);
             return;
         };
@@ -578,6 +606,22 @@ pub const HttpServer = struct {
         try self.reply(client, http_status, "application/octet-stream", payload, "fingerprint-result", parsed.origin);
         log.ingress.info("ingress: reply relayed", .{});
         log.ingress.debug("ingress: relayed reply ({d} bytes)", .{payload.len});
+    }
+
+    fn requestId(allocator: std.mem.Allocator, supplied: ?[]const u8, registry: ?*metrics_mod.Metrics) ![]const u8 {
+        if (supplied) |value| {
+            if (io.session_context.isValidRequestId(value)) {
+                if (registry) |metrics| metrics.request_id_total.inc(.{ .source = .honoured });
+                return value;
+            }
+        }
+
+        var raw: [16]u8 = undefined;
+        std.crypto.random.bytes(&raw);
+        const id = try allocator.alloc(u8, 32);
+        _ = std.fmt.bufPrint(id, "{s}", .{std.fmt.fmtSliceHexLower(&raw)}) catch unreachable;
+        if (registry) |metrics| metrics.request_id_total.inc(.{ .source = .minted });
+        return id;
     }
 
     /// Reads the request head up to the CRLFCRLF terminator, bounded by
@@ -680,7 +724,7 @@ pub const HttpServer = struct {
     /// `x-fpkg-session-id` is public because the preflight list is a contract
     /// the browser SDK depends on (ADR-013 §4); it is pinned by
     /// `tests/cmd/ingress_http_test.zig`.
-    pub const cors_allow_headers = "content-type, x-fpkg-schema-version, x-fpkg-sdk-version, x-fpkg-package-id, x-fpkg-integrity, x-fpkg-session-id, x-fpkg-collected-at, x-fpkg-nonce, x-fpkg-signature";
+    pub const cors_allow_headers = "content-type, x-fpkg-schema-version, x-fpkg-sdk-version, x-fpkg-package-id, x-fpkg-integrity, x-fpkg-session-id, x-request-id, x-fpkg-collected-at, x-fpkg-nonce, x-fpkg-signature";
     const cors_allow_methods = "POST, OPTIONS";
     const cors_max_age_seconds = 86400;
 
@@ -694,7 +738,10 @@ pub const HttpServer = struct {
         }
     }
 
-    /// Sends a complete HTTP response with `connection: close`.
+    /// Sends a complete HTTP response with `connection: close`, then records
+    /// it in the registry. This is the single choke point — `replyError` and
+    /// the success paths all funnel through it — so a status class can never
+    /// be forgotten by a new branch.
     fn reply(
         self: *HttpServer,
         client: socket_t,
@@ -714,6 +761,7 @@ pub const HttpServer = struct {
 
         try self.sendAll(client, stream.getWritten());
         if (body.len > 0) try self.sendAll(client, body);
+        self.recordRequest(status);
     }
 
     fn replyError(self: *HttpServer, client: socket_t, status: u16, reason: []const u8, origin: ?[]const u8) !void {
@@ -731,8 +779,41 @@ pub const HttpServer = struct {
             .{ cors_allow_methods, cors_allow_headers, cors_max_age_seconds },
         );
         try self.sendAll(client, stream.getWritten());
+        self.recordRequest(204);
+    }
+
+    /// Counts a completed response and its latency. Called once per connection
+    /// that produced a reply, after the bytes are on the wire — a reply the
+    /// client never received is not a completed request.
+    ///
+    /// `request_started_ns == 0` means no timestamp was taken (a direct
+    /// `reply` call in a unit test): the status is still counted, the sample
+    /// is simply not observed.
+    fn recordRequest(self: *HttpServer, status: u16) void {
+        const started_ns = self.request_started_ns;
+        self.request_started_ns = 0;
+        const registry = self.metrics orelse return;
+        registry.requests_total.inc(.{ .status = statusClass(status) });
+
+        if (started_ns != 0) {
+            // Wall clock, not a monotonic timer: the connection is short and a
+            // clock step would at worst skew one sample, so a negative delta is
+            // clamped rather than trusted.
+            const elapsed_ns = std.time.nanoTimestamp() - started_ns;
+            const seconds = @as(f64, @floatFromInt(@max(elapsed_ns, 0))) /
+                @as(f64, @floatFromInt(std.time.ns_per_s));
+            registry.request_duration_seconds.observe(seconds);
+        }
     }
 };
+
+/// Metric classification for a completed response (ADR-014): the three
+/// catalogued status classes, not the individual code. 1xx/3xx do not occur on
+/// this surface today, and folding them into `2xx`/`4xx` respectively is
+/// preferable to inventing an unbounded label value if they ever do.
+pub fn statusClass(status: u16) metrics_mod.StatusClass {
+    return if (status < 300) .@"2xx" else if (status < 500) .@"4xx" else .@"5xx";
+}
 
 /// Compares `x-fpkg-integrity` (`sha256-<64 hex>`, case-insensitive) against
 /// the request body's digest (computed once by the caller and shared with the
@@ -744,6 +825,28 @@ fn integrityMatches(expected: []const u8, digest: [32]u8) bool {
     var hex_buf: [64]u8 = undefined;
     const actual = std.fmt.bufPrint(&hex_buf, "{s}", .{std.fmt.fmtSliceHexLower(&digest)}) catch unreachable;
     return std.ascii.eqlIgnoreCase(expected_hex, actual);
+}
+
+/// Maps a verification failure to a metric category (ADR-014). Deliberately
+/// coarser than the error set: an operator alerts on "rejections are spiking,
+/// mostly forged", not on eleven error names, and the categories cannot grow
+/// with the error enum.
+pub fn authReason(err: request_hmac.Error) metrics_mod.AuthReason {
+    return switch (err) {
+        error.MissingTimestamp,
+        error.MissingNonce,
+        error.MissingSignature,
+        => .missing,
+        error.MalformedNonce,
+        error.MalformedSignature,
+        => .malformed,
+        error.StaleTimestamp => .stale,
+        error.InvalidSignature => .forged,
+        error.ReplayedNonce => .replayed,
+        error.CacheFull,
+        error.OutOfMemory,
+        => .cache_full,
+    };
 }
 
 /// Maps a verification failure to a status and a client-facing reason. Errors

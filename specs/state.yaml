@@ -1,0 +1,23 @@
+active_flow: fix_ci
+active_epic_id: null
+active_story_id: null
+active_bug_id: null
+release:
+  target_version: null
+  last_tag: null
+  last_publish: null
+epic_cycle:
+  current_step: null
+  next_skill: null
+  completed_steps: []
+bug_cycle:
+  current_step: null
+  completed_steps: []
+git:
+  branch: m8/week10-worker-metrics
+  hash: d0c07e6
+handoff:
+  last_step_completed: "Fixed CI failure in TS SDK Tests by adding node_modules/.bin to PATH"
+  open_decisions:
+    - "Verify CI passes on the new commit d0c07e6"
+  next_skill: verify-work

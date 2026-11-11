@@ -1,10 +1,17 @@
 # Fingerprint Engine — Plan
 
-Current: **v0.5.0** (2026-10-21) — M6 "API & determinism contract": wire ABI
-and SDK 1.0 surface frozen, registry and stable-core guarded, cross-browser
-golden digests gated in CI, SDK `1.0.0-rc.1` canary on npm `@next`. Follows
-**v0.4.1** (2026-08-29), the compose/Docker AMQP + DNS patch. The full
-distributed-engine roadmap (M1–M5) is **complete**. The next milestones (M7→M10, toward v1.0.0) are defined in [`specs/planning/ROADMAP-v1.0.0.md`](./ROADMAP-v1.0.0.md).
+Current: **v0.6.0** (2026-10-27) — M7 "Event envelope + platform ledger
+contract": 72-byte two-digest `fingerprint_result`, a deterministic
+`collection_event` JSON envelope published after the unchanged digest reply,
+`signal_package_context` carrying the session id and ingress arrival time, a
+platform-side ledger contract (Postgres DDL / MongoDB validator, idempotent on
+the SDK-minted `package_id`), and an optional fail-closed ingress HMAC with a
+bounded replay window. Follows **v0.5.0** (2026-10-21, M6 "API & determinism
+contract") and **v0.4.1** (2026-08-29, the compose/Docker AMQP + DNS patch).
+The full distributed-engine roadmap (M1–M7) is **complete**. **M8
+(observability & ops) is active**, targeting v0.7.0 on 2026-11-27; the
+remaining milestones (M8→M10, toward v1.0.0) are defined in
+[`specs/planning/ROADMAP-v1.0.0.md`](./ROADMAP-v1.0.0.md).
 (see `specs/planning/PHASES.yaml` → next_phase). This file
 replaces the pre-rework M1–M4 integration/quality plan (see
 `specs/archive/` for the superseded items).
@@ -17,11 +24,11 @@ replaces the pre-rework M1–M4 integration/quality plan (see
 | M2 — Integration SDKs | npm browser package; PyPI/Cargo dropped with the native SDK | ✅ done |
 | M3 — Production readiness | benchmarks, fuzz, docs, security | ✅ done |
 | M4 — Distributed rework | Zig 0.14.1, layered repo, engine/io/adapter/worker, AMQP, TS SDK, Docker | ✅ done (v0.2.0–v0.2.2) |
-| M5 — Platform integration | **ingress** + full-stack compose + AMQP consumer/DLQ + release surface | ✅ done (v0.4.0) |
+| M5 — Platform integration | **ingress** + full-stack compose + AMQP result publisher + release surface | ✅ done (v0.4.0) |
 | M6 — API & determinism contract | Freeze wire + SDK; lock registry; cross-browser golden; event schema | ✅ done (v0.5.0) |
-| M7 — Event envelope + platform ledger contract | Two-digest result + `collection_event` envelope on AMQP; platform Postgres/MongoDB ledger (idempotent on `package_id`); no Zig store (D-v1-4) | ⏳ planned |
+| M7 — Event envelope + platform ledger contract | Two-digest result + `collection_event` envelope on AMQP; platform Postgres/MongoDB ledger (idempotent on `package_id`); no Zig store (D-v1-4) | ✅ done (v0.6.0) |
 | M7.1 — Identity anchoring (platform, compute-only, optional) | Platform resolves `identity_id` from stable-core digest equality + core similarity; no matching in core | ⏳ planned |
-| M8 — Observability & ops | Prometheus metrics, `request_id` tracing, probes, chaos SLO | ⏳ planned |
+| M8 — Observability & ops | Prometheus metrics, `request_id` tracing, probes, chaos SLO; plus broker-side DLQ (ADR-016) and env-only AMQP creds (ADR-017) | 🚧 active (→ v0.7.0) |
 | M9 — Signal breadth, quality & SDK ergonomics | Confidence/entropy, anti-tamper, new categories; SDK wrappers/consent | ⏳ planned |
 | M10 — Platform integration (auth/api_key) | Platform owns auth/api_key/tenant; ledger feeds platform matching | ⏳ planned |
 

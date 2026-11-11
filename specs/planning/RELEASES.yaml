@@ -1,17 +1,29 @@
 # Release Plan — Fingerprint Engine
-target_version: 0.6.0
-next_target: 0.7.0
+target_version: 0.7.0
+next_target: 1.0.0
 note: |
-  v0.6.0 is the current shipped release (M7 — event envelope + platform
-  ledger contract). The path to v1.0.0 is defined in
-  specs/planning/ROADMAP-v1.0.0.md: next cuts are v0.7.0 (M8, Month 3), then
-  v1.0.0.
+  v0.7.0 is the current shipped release (M8 — observability and operations).
+  The path to v1.0.0 is defined in specs/planning/ROADMAP-v1.0.0.md: the next
+  cut is v1.0.0 after hardening and platform integration.
   The browser SDK is versioned independently: `1.0.0-rc.1` is live under the
   npm `next` dist-tag, and engine tags no longer publish npm.
   M7 was re-dated 2026-10-27 to Weeks 5–6 (Oct 27 – Nov 6) after the
   superseded Zig store work was removed, and shipped early on 2026-10-27.
 
 releases:
+  v0.7.0:
+    status: released
+    date: "2026-11-11"
+    epics:
+      - m8-observability
+    summary: |
+      M8 — observability and operations. Dedicated Prometheus metrics and
+      readiness probes, request_id propagation through context v2 and AMQP
+      headers, mandatory publish with explicit DLQ routing for unroutable
+      events, bounded reconnect after broker failure, environment sourced
+      compose credentials, and the chaos/SLO acceptance record. Engine suite
+      577/577; SDK suite 30/30.
+
   v0.6.0:
     status: released
     date: "2026-10-27"
@@ -59,7 +71,10 @@ releases:
     epics:
       - rework/distributed-engine
     summary: |
-      AMQP push consumer + DLQ topology, full-stack compose (rabbitmq +
+      AMQP push consumer (`qos`/`consume`/`consume_next`/`consumer_ack`/
+      `consumer_nack` + `basic_deliver` dispatch) and the
+      `fingerprint.dlx` → `fingerprint.dlq` topology declared on publisher
+      connect, plus the `amqp dlq` inspector. Full-stack compose (rabbitmq +
       worker + ingress), ingress GHCR image, cross-platform native binary
       releases (linux x86_64/aarch64 musl, macOS x86_64/aarch64).
 

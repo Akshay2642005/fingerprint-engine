@@ -104,3 +104,41 @@ test "ingress: parse rejects unknown subcommands, options, and bad values" {
         ingress.parse(&.{ "ingress", "start", "--listen=127.0.0.1:8080", "--log-format=xml" }),
     );
 }
+
+test "ingress: --metrics-listen defaults to :9090 and accepts off" {
+    const defaults = try ingress.parse(&.{ "ingress", "start", "--listen=127.0.0.1:8080" });
+    switch (defaults) {
+        .start => |options| try testing.expectEqualStrings(":9090", options.metrics_listen),
+        else => unreachable,
+    }
+
+    const explicit = try ingress.parse(&.{
+        "ingress",
+        "start",
+        "--listen=127.0.0.1:8080",
+        "--metrics-listen=127.0.0.1:19090",
+    });
+    switch (explicit) {
+        .start => |options| try testing.expectEqualStrings("127.0.0.1:19090", options.metrics_listen),
+        else => unreachable,
+    }
+
+    const disabled = try ingress.parse(&.{
+        "ingress",
+        "start",
+        "--listen=127.0.0.1:8080",
+        "--metrics-listen=off",
+    });
+    switch (disabled) {
+        .start => |options| try testing.expectEqualStrings("off", options.metrics_listen),
+        else => unreachable,
+    }
+
+    // An empty value is a configuration error, not "use the default".
+    try testing.expectError(error.InvalidOption, ingress.parse(&.{
+        "ingress",
+        "start",
+        "--listen=127.0.0.1:8080",
+        "--metrics-listen=",
+    }));
+}

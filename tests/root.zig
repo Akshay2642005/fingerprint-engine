@@ -54,6 +54,8 @@ comptime {
     _ = @import("model/model_test.zig");
     _ = @import("model/registry_test.zig");
     _ = @import("model/value_test.zig");
+    _ = @import("obs/metrics_test.zig");
+    _ = @import("obs/scrape_test.zig");
     _ = @import("serialization/abi_pin_test.zig");
     _ = @import("serialization/binary_test.zig");
     _ = @import("serialization/codec_test.zig");
@@ -62,6 +64,7 @@ comptime {
     _ = @import("serialization/json_test.zig");
     _ = @import("utils_test.zig");
     _ = @import("worker/collection_event_test.zig");
+    _ = @import("worker/metrics_test.zig");
     _ = @import("worker/worker_test.zig");
 }
 

@@ -33,6 +33,11 @@ pub const MessageType = enum(u8) {
     /// `session_context.zig`. The worker strips the header and hashes the body
     /// unchanged, so the digest never depends on the context transport.
     signal_package_context = 11,
+    /// Inbound-only: signal package with context + request_id (ADR-015).
+    /// The payload is `[u16 request_id_len][request_id][u16 session_len][session_id]
+    /// [i64 ingress_received_at][signal_package body]`. Type 11 remains
+    /// accepted for backward compatibility.
+    signal_package_context_v2 = 12,
 };
 
 pub const Codec = enum(u8) {

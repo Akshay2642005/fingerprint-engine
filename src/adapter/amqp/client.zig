@@ -75,6 +75,11 @@ pub const Client = struct {
 
     heartbeat: bool = false,
 
+    /// Stores the last basic_return received (ADR-016). Cleared after each
+    /// publish batch so the publisher can check if a message was unroutable.
+    last_basic_return: bool = false,
+    returned_body_remaining: u64 = 0,
+
     action: union(enum) {
         none,
         connect: struct {
@@ -233,6 +238,17 @@ pub const Client = struct {
         self.publish_confirms.deinit(allocator);
         allocator.free(self.send_buffer.buffer);
         allocator.free(self.receive_buffer.buffer);
+    }
+
+    /// Aborts an in-flight operation before releasing the client. Network
+    /// failures can leave publisher confirms waiting for acknowledgements, so
+    /// the normal deinit invariant is not applicable here.
+    pub fn abort(
+        self: *Client,
+        allocator: std.mem.Allocator,
+    ) void {
+        self.reset();
+        self.deinit(allocator);
     }
 
     /// Connects to the broker and runs the AMQP handshake to completion:
@@ -978,6 +994,7 @@ pub const Client = struct {
         self.receive_buffer.state = .idle;
         self.pending = .none;
         self.body_pending = null;
+        self.publish_confirms.reset();
     }
 
     fn send_and_await_reply(
@@ -1134,16 +1151,12 @@ pub const Client = struct {
                 }
             },
             .basic_return => |basic_return| {
-                const soft_error: ErrorCodes = @enumFromInt(basic_return.reply_code);
-                fatal(
-                    "Message cannot be delivered: exchange=\"{s}\" routing_key=\"{s}\" {s}={s}",
-                    .{
-                        basic_return.exchange,
-                        basic_return.routing_key,
-                        @tagName(soft_error),
-                        basic_return.reply_text,
-                    },
-                );
+                // ADR-016: basic_return is an error, not a fatal. The publisher
+                // can handle unroutable messages by republishing to the DLQ.
+                _ = basic_return;
+                self.last_basic_return = true;
+                self.returned_body_remaining = 1;
+                return;
             },
             // Channel flow is not supported, but the command can be ignored.
             // It's up to the server to evict clients that do not respect
@@ -1163,14 +1176,16 @@ pub const Client = struct {
                 // content-header awaiter so the next frame (header) triggers
                 // the dispatch that reads properties and arms the body awaiter.
                 if (self.action == .consume_body_pending) {
-                    self.pending = .{ .delivery = .{
-                        .consumer_tag = deliver.consumer_tag,
-                        .delivery_tag = deliver.delivery_tag,
-                        .redelivered = deliver.redelivered,
-                        .exchange = deliver.exchange,
-                        .routing_key = deliver.routing_key,
-                        .properties = undefined, // set by consume_deliver_dispatch
-                    } };
+                    self.pending = .{
+                        .delivery = .{
+                            .consumer_tag = deliver.consumer_tag,
+                            .delivery_tag = deliver.delivery_tag,
+                            .redelivered = deliver.redelivered,
+                            .exchange = deliver.exchange,
+                            .routing_key = deliver.routing_key,
+                            .properties = undefined, // set by consume_deliver_dispatch
+                        },
+                    };
                     self.awaiter = .{ .await_content_header = .{
                         .channel = frame_header.channel,
                         .delivery_tag = deliver.delivery_tag,
@@ -1231,7 +1246,10 @@ pub const Client = struct {
         header: Decoder.Header,
     ) Decoder.Error!void {
         assert(frame_header.type == .header);
-        maybe(header.body_size == 0);
+        if (self.returned_body_remaining > 0) {
+            self.returned_body_remaining = header.body_size;
+            return;
+        }
         if (self.awaiter == .await_content_header) {
             const awaiter = self.awaiter.await_content_header;
             if (frame_header.channel == awaiter.channel) {
@@ -1261,6 +1279,10 @@ pub const Client = struct {
     ) Decoder.Error!void {
         assert(frame_header.type == .body);
         assert(body.len > 0);
+        if (self.returned_body_remaining > 0) {
+            self.returned_body_remaining -|= body.len;
+            return;
+        }
         if (self.awaiter == .await_body) {
             const awaiter = self.awaiter.await_body;
             if (frame_header.channel == awaiter.channel) {
@@ -1545,6 +1567,11 @@ const Confirms = struct {
         assert(self.state == .idle);
         assert(self.processed.count() == 0);
         self.processed.deinit(allocator);
+    }
+
+    fn reset(self: *Confirms) void {
+        self.processed.unsetAll();
+        self.state = .{ .idle = .{ .sequence = 1 } };
     }
 
     /// Waits until `count` published messages have been acknowledged by the server.

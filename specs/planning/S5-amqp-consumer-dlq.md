@@ -1,6 +1,21 @@
 # S5 — AMQP Push Consumer + Dead-Letter Queue
 
-Status: planned
+Status: **partial** — the client push-consumer surface and the DLQ topology
+shipped in v0.4.0 (`qos`, `consume`, `consume_next`, `consume_body`,
+`consumer_ack`, `consumer_nack`, `basic_deliver` dispatch in
+`src/adapter/amqp/client.zig`; `fingerprint.dlx` → `fingerprint.dlq` declared on
+publisher connect; `amqp dlq` inspector; live-broker e2e in
+`tests/adapter/amqp_test.zig`).
+What was **not** delivered is the engine's own publish failure path:
+`publish_reply` sends `mandatory = false`, so an unroutable message is
+discarded by the broker without a trace; `basic_return` is handled as
+`fatal()` (`client.zig`), so enabling `mandatory` today would abort the
+process; and the worker still acks-and-drops poison frames
+(`src/cmd/worker/worker.zig`: "v1 has no dead-letter queue"). That residual is
+re-scoped into M8 as ADR-016. No worker-side queue consumer is planned — the
+worker's inbound path stays FPKG request/response (ADR-006).
+Corrected 2026-11-04 during the M8 bookkeeping sync (an earlier revision of
+this note understated S5; the delivery above is verified against `904cf81`).
 Depends: S3 (logging), S4 (ingress)
 Spec: specs/architecture/amqp-adapter.md (existing adapter surface)
 

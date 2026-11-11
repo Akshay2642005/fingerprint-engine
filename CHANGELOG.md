@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [0.7.0] - 2026-11-11
+
+### Added
+
+- **M8 observability and operations** — request IDs are minted or honored at
+  ingress, carried through `signal_package_context_v2`, logged by the worker,
+  and attached to AMQP headers without changing the frozen event envelope.
+- **AMQP publish recovery** — mandatory publishing detects unroutable events,
+  sends them once to the broker DLQ, reports truthful publish metrics, and
+  reconnects once before the next collection after a transport outage.
+- **Chaos and SLO acceptance record** — `specs/quality/m8-slo.md` defines the
+  availability, latency, readiness, broker outage, worker death, and DLQ gates.
+
+### Changed
+
+- Compose supplies AMQP credentials through `FPKG_AMQP_USER` and
+  `FPKG_AMQP_PASSWORD`; the legacy CLI flags remain deprecated for compatibility.
+
 ## [0.6.0] - 2026-10-27
 
 ### Added
