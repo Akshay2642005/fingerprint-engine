@@ -86,6 +86,8 @@ pub const Options = struct {
 pub const Publisher = struct {
     client: client.Client,
     message_size_max: u32,
+    options: ?Options = null,
+    connected: bool = true,
 
     /// Connects to the broker, enables publisher confirms, and declares the
     /// result exchange (durable, idempotent). On any failure the socket and
@@ -140,7 +142,23 @@ pub const Publisher = struct {
             .routing_key = dlq_routing_key,
             .no_wait = false,
         });
-        return .{ .client = c, .message_size_max = options.message_size_max };
+        return .{ .client = c, .message_size_max = options.message_size_max, .options = options };
+    }
+
+    pub fn isConnected(self: *const Publisher) bool {
+        return self.connected;
+    }
+
+    pub fn markDisconnected(self: *Publisher) void {
+        self.connected = false;
+    }
+
+    /// Replaces a failed broker connection once. The caller owns retry policy;
+    /// this method never loops or buffers messages.
+    pub fn reconnect(self: *Publisher, allocator: std.mem.Allocator) !void {
+        const replacement = try Publisher.init(allocator, self.options orelse return error.NotConnected);
+        self.client.abort(allocator);
+        self.* = replacement;
     }
 
     pub fn deinit(self: *Publisher, allocator: std.mem.Allocator) void {
@@ -150,8 +168,16 @@ pub const Publisher = struct {
     /// Publishes one FPKG reply frame. Blocks until the broker confirms it.
     /// `reply` must be a complete frame (see transport.decodeFrame); only the
     /// header is parsed here — the body is forwarded verbatim.
+    /// Returns error.Unroutable if the broker returns basic_return (ADR-016).
     pub fn publish_reply(self: *Publisher, reply: []const u8) !void {
+        return self.publish_replyWithRequestId(reply, "");
+    }
+
+    pub fn publish_replyWithRequestId(self: *Publisher, reply: []const u8, request_id: []const u8) !void {
         if (reply.len > self.message_size_max) return error.BodyTooLarge;
+
+        // Clear any previous basic_return
+        self.client.last_basic_return = false;
 
         var reader = io.Reader.init(reply);
         const header = try io.frame.FrameHeader.decode(&reader);
@@ -159,11 +185,12 @@ pub const Publisher = struct {
         const message = Message{
             .reply = reply,
             .message_type = header.message_type,
+            .request_id = request_id,
         };
-        try self.client.publish(.{
+        self.client.publish(.{
             .exchange = exchange_name,
             .routing_key = routingKey(header.message_type),
-            .mandatory = false,
+            .mandatory = true, // ADR-016: detect unroutable messages
             .immediate = false,
             .properties = .{
                 .content_type = content_type,
@@ -172,7 +199,36 @@ pub const Publisher = struct {
                 .headers = message.headers(),
             },
             .body = message.body(),
-        });
+        }) catch |err| {
+            self.connected = false;
+            return err;
+        };
+
+        // ADR-016: check if basic_return was received
+        if (self.client.last_basic_return) {
+            return error.Unroutable;
+        }
+    }
+
+    /// Republishes an unroutable frame to the DLX (ADR-016). Returns error
+    /// if the republish also fails; the caller should count it as dlq_failed.
+    pub fn republishToDlq(self: *Publisher, frame: []const u8, request_id: []const u8) !void {
+        const body = Message{ .reply = frame, .message_type = .diagnostics, .request_id = request_id };
+        self.client.publish(.{
+            .exchange = dlx_name,
+            .routing_key = dlq_routing_key,
+            .mandatory = true,
+            .immediate = false,
+            .properties = .{
+                .content_type = content_type,
+                .delivery_mode = .persistent,
+                .timestamp = @intCast(std.time.timestamp()),
+            },
+            .body = body.body(),
+        }) catch |err| {
+            self.connected = false;
+            return err;
+        };
     }
 };
 
@@ -182,6 +238,7 @@ pub const Publisher = struct {
 const Message = struct {
     reply: []const u8,
     message_type: io.frame.MessageType,
+    request_id: []const u8 = "",
 
     fn body(self: *const Message) client.Encoder.Body {
         const vtable: client.Encoder.Body.VTable = comptime .{
@@ -207,6 +264,9 @@ const Message = struct {
                     encoder.put("fpkg-envelope-version", .{
                         .uint16 = io.frame.current_version,
                     });
+                    if (message.request_id.len > 0) {
+                        encoder.put("request_id", .{ .string = message.request_id });
+                    }
                 }
             }.write,
         };

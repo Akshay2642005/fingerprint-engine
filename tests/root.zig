@@ -64,6 +64,7 @@ comptime {
     _ = @import("serialization/json_test.zig");
     _ = @import("utils_test.zig");
     _ = @import("worker/collection_event_test.zig");
+    _ = @import("worker/metrics_test.zig");
     _ = @import("worker/worker_test.zig");
 }
 

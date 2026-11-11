@@ -54,6 +54,15 @@ test "ingress http: header names are case-insensitive" {
     );
 }
 
+test "ingress http: parses request id" {
+    const parsed = try http.parseHead(
+        "POST / HTTP/1.1\r\n" ++
+            "content-length: 42\r\n" ++
+            "X-Request-Id: edge-123\r\n",
+    );
+    try testing.expectEqualStrings("edge-123", parsed.request_id.?);
+}
+
 test "ingress http: a missing session header parses as null" {
     const parsed = try http.parseHead("POST / HTTP/1.1\r\ncontent-length: 0\r\n");
     try testing.expectEqual(@as(?[]const u8, null), parsed.session_id);
@@ -64,6 +73,7 @@ test "ingress http: the CORS preflight allows x-fpkg-session-id" {
     // preflight failure, so the allow-list is a contract, not an internal
     // detail.
     try testing.expect(std.mem.indexOf(u8, http.HttpServer.cors_allow_headers, "x-fpkg-session-id") != null);
+    try testing.expect(std.mem.indexOf(u8, http.HttpServer.cors_allow_headers, "x-request-id") != null);
 }
 
 test "ingress http: parses the request-signature headers" {

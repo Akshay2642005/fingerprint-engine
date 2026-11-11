@@ -112,6 +112,29 @@ test "worker: parse rejects invalid log level and format values" {
     try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--log-format=xml" }));
 }
 
+test "worker: --metrics-listen defaults to :9091 and accepts off" {
+    const defaults = try worker.parse(&.{ "worker", "start" });
+    switch (defaults) {
+        .start => |options| try testing.expectEqualStrings(":9091", options.metrics_listen),
+        else => unreachable,
+    }
+
+    const explicit = try worker.parse(&.{ "worker", "start", "--metrics-listen=127.0.0.1:19091" });
+    switch (explicit) {
+        .start => |options| try testing.expectEqualStrings("127.0.0.1:19091", options.metrics_listen),
+        else => unreachable,
+    }
+
+    const disabled = try worker.parse(&.{ "worker", "start", "--metrics-listen=off" });
+    switch (disabled) {
+        .start => |options| try testing.expectEqualStrings("off", options.metrics_listen),
+        else => unreachable,
+    }
+
+    // An empty value is a configuration error, not "use the default".
+    try testing.expectError(error.InvalidOption, worker.parse(&.{ "worker", "start", "--metrics-listen=" }));
+}
+
 test "worker: parse amqp options default to the local broker" {
     const command = try worker.parse(&.{ "worker", "start", "--publish=amqp" });
     switch (command) {
@@ -150,6 +173,7 @@ test "worker: parse amqp options override broker settings" {
 test "worker: operationFor maps inbound message types" {
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package).?);
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package_context).?);
+    try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package_context_v2).?);
     try testing.expectEqual(engine.Operation.validate, worker.operationFor(.validation_result).?);
     try testing.expectEqual(engine.Operation.normalize, worker.operationFor(.normalization_result).?);
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.fingerprint_result).?);

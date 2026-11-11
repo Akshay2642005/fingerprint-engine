@@ -25,6 +25,7 @@ const serialization = @import("serialization");
 const engine = @import("engine");
 const adapter = @import("adapter");
 const io = @import("io");
+const metrics = @import("metrics.zig");
 
 /// Upper bound on the encoded JSON payload (64 KiB, matching the reply cap).
 /// A package with unusually many/large feature values can exceed it; the
@@ -61,6 +62,19 @@ pub fn build(
     allocator: std.mem.Allocator,
     out: []u8,
 ) !?[]const u8 {
+    return buildWithMetrics(frame, reply_frame, allocator, out, null);
+}
+
+/// `build` with a metrics registry: the coverage/entropy/risk histograms are
+/// observed at the point the envelope computes those values, so they describe
+/// exactly what was emitted and cannot drift from the envelope.
+pub fn buildWithMetrics(
+    frame: []const u8,
+    reply_frame: []const u8,
+    allocator: std.mem.Allocator,
+    out: []u8,
+    registry: ?*metrics.Metrics,
+) !?[]const u8 {
     if (out.len < io.frame.header_size) return error.BufferTooSmall;
 
     const context = try contextOf(frame) orelse return null;
@@ -79,6 +93,13 @@ pub fn build(
     const assessment = try core.risk.computeRisk(fp, allocator);
     defer allocator.free(assessment.flags);
 
+    const entropy = core.entropy.fingerprintEntropy(fp);
+    if (registry) |m| {
+        m.signals_present.observe(@floatFromInt(fp.features.len));
+        m.entropy.observe(entropy);
+        m.risk_score.observe(assessment.score);
+    }
+
     const event = serialization.CollectionEvent{
         .schema_version = result.schema_version,
         .package_id = fp.metadata.package_id,
@@ -89,7 +110,7 @@ pub fn build(
         .feature_count = result.feature_count,
         .core_feature_count = result.core_feature_count,
         .status = status.code(),
-        .entropy = core.entropy.fingerprintEntropy(fp),
+        .entropy = entropy,
         .risk = .{
             .score = assessment.score,
             .label = assessment.label,
@@ -127,6 +148,14 @@ fn contextOf(frame: []const u8) !?Context {
         .signal_package => return .{ .body = decoded.payload },
         .signal_package_context => {
             const view = try io.session_context.unwrap(decoded.payload);
+            return .{
+                .body = view.body,
+                .session_id = view.session_id,
+                .ingress_received_at = view.ingress_received_at,
+            };
+        },
+        .signal_package_context_v2 => {
+            const view = try io.session_context.unwrapV2(decoded.payload);
             return .{
                 .body = view.body,
                 .session_id = view.session_id,

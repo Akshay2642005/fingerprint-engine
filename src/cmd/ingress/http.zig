@@ -58,6 +58,9 @@ pub const ParsedHead = struct {
     /// `signal_package_context` frame; unvalidated here — `handlePost`
     /// rejects anything `io.session_context.isValidSessionId` refuses.
     session_id: ?[]const u8 = null,
+    /// `x-request-id` (ADR-015). Honoured only when it passes the shared
+    /// bounded identifier validator; otherwise the ingress mints one.
+    request_id: ?[]const u8 = null,
     /// `x-fpkg-collected-at`: epoch milliseconds, the freshness input to the
     /// request signature (M7 W6-D3). Parsed here, range-checked in `handlePost`
     /// against the replay window.
@@ -121,6 +124,8 @@ pub fn parseHead(head: []const u8) ParseError!ParsedHead {
             result.integrity = value;
         } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-session-id")) {
             result.session_id = value;
+        } else if (std.ascii.eqlIgnoreCase(name, "x-request-id")) {
+            result.request_id = value;
         } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-collected-at")) {
             result.collected_at = std.fmt.parseInt(i64, value, 10) catch return error.MalformedHeader;
         } else if (std.ascii.eqlIgnoreCase(name, "x-fpkg-nonce")) {
@@ -544,6 +549,8 @@ pub const HttpServer = struct {
                 return;
             }
         }
+        const request_id = try requestId(a, parsed.request_id, self.metrics);
+
         // ADR-013 §4: the session id rides in the frame payload, so it is
         // validated here rather than in the worker — a bad one is the
         // client's error (400), not a poison frame. The value is never
@@ -562,9 +569,10 @@ pub const HttpServer = struct {
         // in the FPKG header. The inner body is copied verbatim so the worker
         // hashes exactly what the client signed.
         const session_id = parsed.session_id orelse "";
-        const wrapped = try a.alloc(u8, io.session_context.header_len + session_id.len + body.len);
-        const frame_payload = io.session_context.wrap(
+        const wrapped = try a.alloc(u8, io.session_context.length_prefix_len + request_id.len + io.session_context.header_len + session_id.len + body.len);
+        const frame_payload = io.session_context.wrapV2(
             wrapped,
+            request_id,
             session_id,
             std.time.milliTimestamp(),
             body,
@@ -573,10 +581,10 @@ pub const HttpServer = struct {
             try self.replyError(client, 400, "invalid session id", null);
             return;
         };
-        log.ingress.debug("ingress: session context attached ({d} session bytes)", .{session_id.len});
+        log.ingress.debug("ingress: session context attached ({d} request id bytes, {d} session bytes)", .{ request_id.len, session_id.len });
 
         const frame_buf = try a.alloc(u8, io.frame.header_size + frame_payload.len);
-        const frame = adapter.buildFrame(.signal_package_context, .binary, frame_payload, frame_buf) catch {
+        const frame = adapter.buildFrame(.signal_package_context_v2, .binary, frame_payload, frame_buf) catch {
             try self.replyError(client, 400, "invalid body", null);
             return;
         };
@@ -598,6 +606,22 @@ pub const HttpServer = struct {
         try self.reply(client, http_status, "application/octet-stream", payload, "fingerprint-result", parsed.origin);
         log.ingress.info("ingress: reply relayed", .{});
         log.ingress.debug("ingress: relayed reply ({d} bytes)", .{payload.len});
+    }
+
+    fn requestId(allocator: std.mem.Allocator, supplied: ?[]const u8, registry: ?*metrics_mod.Metrics) ![]const u8 {
+        if (supplied) |value| {
+            if (io.session_context.isValidRequestId(value)) {
+                if (registry) |metrics| metrics.request_id_total.inc(.{ .source = .honoured });
+                return value;
+            }
+        }
+
+        var raw: [16]u8 = undefined;
+        std.crypto.random.bytes(&raw);
+        const id = try allocator.alloc(u8, 32);
+        _ = std.fmt.bufPrint(id, "{s}", .{std.fmt.fmtSliceHexLower(&raw)}) catch unreachable;
+        if (registry) |metrics| metrics.request_id_total.inc(.{ .source = .minted });
+        return id;
     }
 
     /// Reads the request head up to the CRLFCRLF terminator, bounded by
@@ -700,7 +724,7 @@ pub const HttpServer = struct {
     /// `x-fpkg-session-id` is public because the preflight list is a contract
     /// the browser SDK depends on (ADR-013 §4); it is pinned by
     /// `tests/cmd/ingress_http_test.zig`.
-    pub const cors_allow_headers = "content-type, x-fpkg-schema-version, x-fpkg-sdk-version, x-fpkg-package-id, x-fpkg-integrity, x-fpkg-session-id, x-fpkg-collected-at, x-fpkg-nonce, x-fpkg-signature";
+    pub const cors_allow_headers = "content-type, x-fpkg-schema-version, x-fpkg-sdk-version, x-fpkg-package-id, x-fpkg-integrity, x-fpkg-session-id, x-request-id, x-fpkg-collected-at, x-fpkg-nonce, x-fpkg-signature";
     const cors_allow_methods = "POST, OPTIONS";
     const cors_max_age_seconds = 86400;
 

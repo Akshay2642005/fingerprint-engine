@@ -1,19 +1,17 @@
 # Session state — Fingerprint Engine
 session:
   started_at: "2026-07-11T00:00:00Z"
-  active_flow: m8_observability (M8 planning — scoped 2026-11-04)
+  active_flow: v0_7_0_release (M8 shipped — v0.7.0 release)
   tools_intro: true
 
 workflow_mode: solo-git
 
 git:
-  branch: m8/week9-metrics
+  branch: develop
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
-    from develop after full gate); develop is the integration branch. Week 9
-    code work is on m8/week9-metrics (W9-D2 registry, W9-D3 scrape listener,
-    W9-D4 ingress instrumentation); develop is at f58a917 (Phase 1 ADRs)."
-  latest_tag: v0.6.0
+    from develop after full gate); develop is the integration branch."
+  latest_tag: v0.7.0
 
 releases:
   v0.6.0:
@@ -98,9 +96,9 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 573
-  unit_tests: 547
-  integration_tests: 26
+  total_tests: 549
+  unit_tests: 525
+  integration_tests: 24
   status: all_green
   fuzz_targets: 3
   benchmarks: 12
@@ -149,10 +147,6 @@ modules:
   ingress:
     - delivered (M5/S4 — specs/architecture/ingress.md; worker pool + HTTP server)
     - logging (--log-level= --log-format=, F-2/S3)
-    - metrics + readiness (M8/W9 — --metrics-listen default :9090, /readyz from a cached worker_pool gauge, warmed at startup)
-  obs:
-    - metrics (comptime registry: counter/gauge/histogram, enum-only labels, Prometheus text 0.0.4)
-    - scrape (GET-only /metrics + /readyz on a dedicated thread; SO_REUSEADDR only, never SO_REUSEPORT)
   logging:
     - src/log.zig leaf module (Level/Scope/Format, text/json, UTC timestamps)
     - std_options.logFn routing (TigerBeetle pattern) in worker/ingress/fingerprint/scripts
@@ -282,20 +276,3 @@ handoff:
     the `fingerprint.dlx`/`fingerprint.dlq` topology in v0.4.0, but the engine's
     own publish path still cannot dead-letter — `mandatory = false`, `basic_return`
     is `fatal()`, and poison frames are acked and dropped.
-    M8 Week 9 is done on branch `m8/week9-metrics` (2026-11-08): W9-D2 ships
-    `src/obs/metrics.zig` (comptime registry, enum-only labels, row-major series,
-    atomic storage, Prometheus render); W9-D3 ships `src/obs/scrape.zig` (GET-only
-    `/metrics` + `/readyz` on a dedicated blocking thread with total head
-    deadlines, `build_info`/`ready` preamble, `listen`/`start`/`stop`, and an
-    `SO_REUSEADDR`-only bind so an occupied port fails instead of being shared);
-    W9-D4 instruments the ingress (`src/cmd/ingress/metrics.zig` catalog,
-    `reply`/`replyPreflight` choke-point counting after the bytes are on the
-    wire, status/duration/auth-reason recording, replay-cache depth published
-    after every verify, pool warm-up plus idle health refresh feeding a cached
-    `worker_pool_healthy` gauge) and serves both surfaces on `--metrics-listen`
-    (default `:9090`, `off` disables, invalid or occupied exits 1). Engine is
-    573/573 (547 unit + 26 integration); manual UAT confirmed counters move,
-    `/readyz` flips 200/503, and both failure paths exit 1. Next: Week 10 —
-    worker instrumentation on `:9091`, ADR-015 `signal_package_context_v2 = 12`
-    plus `fpkg_ingress_request_id_total`, ADR-016 (`mandatory = true`, non-fatal
-    `basic_return`), ADR-017 env credentials.

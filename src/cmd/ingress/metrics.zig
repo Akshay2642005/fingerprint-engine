@@ -8,9 +8,6 @@
 //! the scrape listener emits both from its own preamble, and declaring them in
 //! the registry too would emit duplicate `# TYPE` lines.
 //!
-//! `fpkg_ingress_request_id_total` is deliberately absent until ADR-015 lands
-//! (Week 10 D3); a counter that can never move is worse than no counter.
-
 const std = @import("std");
 const obs = @import("obs");
 
@@ -21,6 +18,7 @@ pub const StatusClass = enum { @"2xx", @"4xx", @"5xx" };
 /// categories, never the error name, so cardinality stays clamped even if a
 /// new error is added.
 pub const AuthReason = enum { missing, malformed, forged, stale, replayed, cache_full };
+pub const RequestIdSource = enum { minted, honoured };
 
 /// Request latency buckets in seconds (observability.md §Ingress). HTTP-in to
 /// reply-out covers the worker round trip, which is the number an SLO cares
@@ -38,6 +36,7 @@ pub const Metrics = struct {
     replay_cache_entries: obs.metrics.Gauge() = .{},
     replay_cache_capacity: obs.metrics.Gauge() = .{},
     worker_pool_healthy: obs.metrics.Gauge() = .{},
+    request_id_total: obs.metrics.CounterLabeled(struct { source: RequestIdSource }) = .{},
 };
 
 /// Renders the registry under the ingress prefix, as the scrape callback

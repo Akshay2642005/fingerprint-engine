@@ -83,7 +83,9 @@ jobs:
         working-directory: src/clients/browser
 
       - name: Build TS SDK dist
-        run: zig build clients:browser
+        run: |
+          export PATH="$PWD/src/clients/browser/node_modules/.bin:$PATH"
+          zig build clients:browser
 
       - name: Run TS SDK tests
         run: npm test
@@ -139,7 +141,9 @@ jobs:
 
       - name: Build TS SDK dist
         if: steps.pins.outputs.present == 'true'
-        run: zig build clients:browser
+        run: |
+          export PATH="$PWD/src/clients/browser/node_modules/.bin:$PATH"
+          zig build clients:browser
 
       - name: "Layer 1: replay committed snapshots through SDK + engine hash"
         if: steps.pins.outputs.present == 'true'
