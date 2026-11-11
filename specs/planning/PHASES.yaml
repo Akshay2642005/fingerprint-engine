@@ -33,6 +33,11 @@ verify_phase:
   release_green: true
 
 release_phase:
+  v0.7.0:
+    status: released
+    date: "2026-11-11"
+    notes: "M8 — observability and operations: metrics, readiness, request_id propagation, mandatory AMQP publish with broker DLQ routing, bounded reconnect, env sourced compose credentials, and chaos/SLO acceptance record. Engine 577/577; SDK 30/30."
+
   v0.6.0:
     status: released
     date: "2026-10-27"

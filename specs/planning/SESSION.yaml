@@ -1,7 +1,7 @@
 # Session state — Fingerprint Engine
 session:
   started_at: "2026-07-11T00:00:00Z"
-  active_flow: m8_observability (M8 planning — scoped 2026-11-04)
+  active_flow: v0_7_0_release (M8 shipped — v0.7.0 release)
   tools_intro: true
 
 workflow_mode: solo-git
@@ -11,7 +11,7 @@ git:
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
-  latest_tag: v0.6.0
+  latest_tag: v0.7.0
 
 releases:
   v0.6.0:

@@ -157,7 +157,7 @@ pub const Publisher = struct {
     /// this method never loops or buffers messages.
     pub fn reconnect(self: *Publisher, allocator: std.mem.Allocator) !void {
         const replacement = try Publisher.init(allocator, self.options orelse return error.NotConnected);
-        self.client.deinit(allocator);
+        self.client.abort(allocator);
         self.* = replacement;
     }
 
