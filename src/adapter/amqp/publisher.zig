@@ -155,7 +155,7 @@ pub const Publisher = struct {
         if (reply.len > self.message_size_max) return error.BodyTooLarge;
 
         // Clear any previous basic_return
-        self.client.last_basic_return = null;
+        self.client.last_basic_return = false;
 
         var reader = io.Reader.init(reply);
         const header = try io.frame.FrameHeader.decode(&reader);
@@ -179,7 +179,7 @@ pub const Publisher = struct {
         });
 
         // ADR-016: check if basic_return was received
-        if (self.client.last_basic_return) |*br| {
+        if (self.client.last_basic_return) {
             return error.Unroutable;
         }
     }
@@ -187,6 +187,7 @@ pub const Publisher = struct {
     /// Republishes an unroutable frame to the DLX (ADR-016). Returns error
     /// if the republish also fails; the caller should count it as dlq_failed.
     pub fn republishToDlq(self: *Publisher, frame: []const u8) !void {
+        const body = Message{ .reply = frame, .message_type = .diagnostics };
         try self.client.publish(.{
             .exchange = dlx_name,
             .routing_key = dlq_routing_key,
@@ -197,7 +198,7 @@ pub const Publisher = struct {
                 .delivery_mode = .persistent,
                 .timestamp = @intCast(std.time.timestamp()),
             },
-            .body = frame,
+            .body = body.body(),
         });
     }
 };

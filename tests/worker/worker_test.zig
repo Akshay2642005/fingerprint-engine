@@ -173,6 +173,7 @@ test "worker: parse amqp options override broker settings" {
 test "worker: operationFor maps inbound message types" {
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package).?);
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package_context).?);
+    try testing.expectEqual(engine.Operation.hash, worker.operationFor(.signal_package_context_v2).?);
     try testing.expectEqual(engine.Operation.validate, worker.operationFor(.validation_result).?);
     try testing.expectEqual(engine.Operation.normalize, worker.operationFor(.normalization_result).?);
     try testing.expectEqual(engine.Operation.hash, worker.operationFor(.fingerprint_result).?);

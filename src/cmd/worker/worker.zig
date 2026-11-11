@@ -240,7 +240,7 @@ pub fn operationFor(message_type: io.frame.MessageType) ?engine.Operation {
         .signal_package => .hash, // canonical digest — the worker's core path
         // A signal package wrapped with an ingress session id (ADR-013 §4):
         // same operation, the prefix is stripped before the engine sees it.
-        .signal_package_context => .hash,
+        .signal_package_context, .signal_package_context_v2 => .hash,
         .validation_result => .validate,
         .normalization_result => .normalize,
         .fingerprint_result => .hash,
@@ -774,7 +774,7 @@ fn splitHostPort(listen: []const u8) !struct { []const u8, u16 } {
 /// Reads an AMQP credential from the environment, with CLI fallback and
 /// deprecation warning (ADR-017). The env var wins if both are set.
 fn readEnvCredential(env_var: []const u8, cli_value: []const u8) []const u8 {
-    const env_val = std.process.getEnvPosix(env_var) catch "";
+    const env_val = std.posix.getenv(env_var) orelse "";
     if (env_val.len > 0) {
         // Env var set: warn if CLI flag was also present (env wins)
         if (!std.mem.eql(u8, cli_value, "guest") and !std.mem.eql(u8, cli_value, env_val)) {

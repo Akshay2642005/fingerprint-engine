@@ -77,7 +77,7 @@ pub const Client = struct {
 
     /// Stores the last basic_return received (ADR-016). Cleared after each
     /// publish batch so the publisher can check if a message was unroutable.
-    last_basic_return: ?spec.BasicReturn = null,
+    last_basic_return: bool = false,
 
     action: union(enum) {
         none,
@@ -1140,7 +1140,8 @@ pub const Client = struct {
             .basic_return => |basic_return| {
                 // ADR-016: basic_return is an error, not a fatal. The publisher
                 // can handle unroutable messages by republishing to the DLQ.
-                self.last_basic_return = basic_return;
+                _ = basic_return;
+                self.last_basic_return = true;
             },
             // Channel flow is not supported, but the command can be ignored.
             // It's up to the server to evict clients that do not respect
