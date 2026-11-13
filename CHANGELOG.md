@@ -15,14 +15,23 @@ Nothing yet.
 
 - **Ingress readiness no longer trusts a dead connection.** `/readyz` and
   `fpkg_ingress_worker_pool_healthy` counted pooled client objects rather than
-  reachable workers, and the idle refresh only ran when the pool was empty, so
-  an ingress whose workers all died kept reporting ready until the next
-  request failed. The pool now stamps each connection and drops/reconnects
-  connections idle past a 30 s readiness TTL on every idle tick.
+  reachable workers, and the refresh only ran when the pool was empty, so an
+  ingress whose workers all died kept reporting ready until the next request
+  failed. The health tick is now gated on elapsed time (~2 s) and runs on every
+  iteration, not just idle ones; each tick drops and reconnects connections
+  idle past a readiness TTL (default 30 s, configurable via
+  `--readiness-ttl-ms`). Failed probes back off per slot (5 s doubling to a
+  60 s cap) so dead seeds cannot stall the accept loop.
 - **Metrics and probe ports are no longer published to the host.** `compose.yml`
   declares the ingress (`9090`) and worker (`9091`) operational ports with
   `expose:` per ADR-014 §4. A new `compose.override.yml` publishes them on
   loopback for local development only.
+
+### Added
+
+- `--readiness-ttl-ms` ingress flag: how long a pooled worker connection counts
+  as proof of liveness before the health tick re-probes it (default 30000).
+  `/readyz` lags a dead worker by at most this plus one health tick.
 
 ## [0.7.0] - 2026-11-11
 

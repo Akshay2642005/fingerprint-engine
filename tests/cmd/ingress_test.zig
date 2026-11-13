@@ -142,3 +142,44 @@ test "ingress: --metrics-listen defaults to :9090 and accepts off" {
         "--metrics-listen=",
     }));
 }
+
+test "ingress: --readiness-ttl-ms defaults to 30s and rejects 0" {
+    const defaults = try ingress.parse(&.{ "ingress", "start", "--listen=127.0.0.1:8080" });
+    switch (defaults) {
+        .start => |options| try testing.expectEqual(
+            @as(u64, 30 * std.time.ns_per_s),
+            options.readiness_ttl_ns,
+        ),
+        else => unreachable,
+    }
+
+    const explicit = try ingress.parse(&.{
+        "ingress",
+        "start",
+        "--listen=127.0.0.1:8080",
+        "--readiness-ttl-ms=500",
+    });
+    switch (explicit) {
+        .start => |options| try testing.expectEqual(
+            @as(u64, 500 * std.time.ns_per_ms),
+            options.readiness_ttl_ns,
+        ),
+        else => unreachable,
+    }
+
+    // 0 would mark every pooled connection stale on every tick, turning the
+    // health tick into a reconnect storm, so it is rejected rather than
+    // silently clamped.
+    try testing.expectError(error.InvalidOption, ingress.parse(&.{
+        "ingress",
+        "start",
+        "--listen=127.0.0.1:8080",
+        "--readiness-ttl-ms=0",
+    }));
+    try testing.expectError(error.InvalidOption, ingress.parse(&.{
+        "ingress",
+        "start",
+        "--listen=127.0.0.1:8080",
+        "--readiness-ttl-ms=soon",
+    }));
+}

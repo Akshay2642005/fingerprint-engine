@@ -308,7 +308,20 @@ fn spawnWorker(args: []const []const u8, alloc: std.mem.Allocator) !struct {
     child: std.process.Child,
     port: u16,
 } {
-    var child = std.process.Child.init(args, alloc);
+    // Pin the metrics listener to port 0 unless the caller chose a value.
+    // Production defaults to :9091 (ADR-014), but a test suite must not bind a
+    // fixed host port: two `zig build test` runs used to collide there and
+    // fail 15 of 26 integration tests.
+    var argv = std.ArrayList([]const u8).init(alloc);
+    defer argv.deinit();
+    try argv.appendSlice(args);
+    var has_metrics_flag = false;
+    for (args) |arg| {
+        if (std.mem.startsWith(u8, arg, "--metrics-listen=")) has_metrics_flag = true;
+    }
+    if (!has_metrics_flag) try argv.append("--metrics-listen=127.0.0.1:0");
+
+    var child = std.process.Child.init(argv.items, alloc);
     child.stdin_behavior = .Ignore;
     child.stdout_behavior = .Pipe;
     child.stderr_behavior = .Pipe;
@@ -1016,6 +1029,63 @@ test "ingress: /readyz is 503 when no worker is reachable (ADR-014 §5)" {
     defer alloc.free(metrics.body);
     try std.testing.expect(std.mem.indexOf(u8, metrics.body, "fpkg_ingress_ready 0\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, metrics.body, "fpkg_ingress_worker_pool_healthy 0\n") != null);
+}
+
+test "ingress: /readyz drops to 503 after a worker dies while idle (ADR-014 §5)" {
+    const alloc = std.testing.allocator;
+
+    var worker = try spawnWorker(&.{
+        worker_exe,
+        "start",
+        "--transport=tcp",
+        "--listen=127.0.0.1:0",
+    }, alloc);
+    var worker_alive = true;
+    defer if (worker_alive) {
+        _ = worker.child.kill() catch {};
+        _ = worker.child.wait() catch {};
+    };
+
+    const seed = try std.fmt.allocPrint(alloc, "--worker=127.0.0.1:{d}", .{worker.port});
+    defer alloc.free(seed);
+
+    // A short TTL keeps the test fast; the health tick itself is ~2s.
+    var ingress = try spawnIngress(&.{
+        ingress_exe,
+        "start",
+        "--listen=127.0.0.1:0",
+        "--readiness-ttl-ms=300",
+        seed,
+    }, alloc);
+    defer {
+        _ = ingress.child.kill() catch {};
+        _ = ingress.child.wait() catch {};
+    }
+
+    const metrics_port = ingress.metrics_port orelse return error.MetricsSurfaceMissing;
+
+    const before = try scrapeMetrics(alloc, metrics_port, "/readyz");
+    defer alloc.free(before.body);
+    try std.testing.expectEqual(@as(u16, 200), before.status);
+
+    // The ingress holds the worker's socket, and no request is sent
+    // afterwards: only the health tick can notice the death. This is the
+    // exact case that used to keep /readyz green forever, because the tick
+    // only ran when the pool was empty.
+    _ = worker.child.kill() catch {};
+    _ = worker.child.wait() catch {};
+    worker_alive = false;
+
+    var status: u16 = 200;
+    var attempt: usize = 0;
+    while (attempt < 30) : (attempt += 1) {
+        std.time.sleep(200 * std.time.ns_per_ms);
+        const reply = try scrapeMetrics(alloc, metrics_port, "/readyz");
+        status = reply.status;
+        alloc.free(reply.body);
+        if (status == 503) break;
+    }
+    try std.testing.expectEqual(@as(u16, 503), status);
 }
 
 test "ingress: retries a dead worker and lands on a live one" {
