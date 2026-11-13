@@ -1,7 +1,7 @@
 # Session state — Fingerprint Engine
 session:
   started_at: "2026-07-11T00:00:00Z"
-  active_flow: v0_7_0_release (M8 shipped — v0.7.0 release)
+  active_flow: v0_7_1_release (v0.7.1 shipped — engine released to master)
   tools_intro: true
 
 workflow_mode: solo-git
@@ -11,9 +11,18 @@ git:
   status: clean
   note: "Git Flow adopted: master is locked (branch protection, merges only
     from develop after full gate); develop is the integration branch."
-  latest_tag: v0.7.0
+  latest_tag: v0.7.1
 
 releases:
+  v0.7.1:
+    date: "2026-11-13"
+    status: released
+    summary: "Patch release closing the M8 review findings (PR #79 → develop, PR #80 → master). R1: compose.yml 9090/9091 moved from ports: to expose: (ADR-014 §4) with compose.override.yml publishing on 127.0.0.1 for local dev. R2 readiness staleness: time-gated ~2s health tick (replacing an idle-counter gate starved by steady connections), 30s readiness TTL (--readiness-ttl-ms, default 30000 = 3× the frame deadline), drop-and-reconnect of idle-stale connections, per-slot exponential probe backoff (5s→60s cap, reset on success, ProbeBackoff struct), RefreshOptions struct (two-u64-callers rule), probe failures logged at warn, nowNs() pub. spawnWorker pins --metrics-listen=127.0.0.1:0 (fixes concurrent-run :9091 collision). Tests: 6 pool tests, e2e /readyz-drops-to-503-after-worker-death, compose YAML section-scanner, --readiness-ttl-ms parse test. Engine 587/587. npm: the engine tag does not publish the SDK (Publish to npm job lacked the version-differ guard and failed on tsc FileNotFound) — workflow fixed in PR #81 (guard added to the publish step); the tag was NOT re-moved (user decision) and SDK npm publish stays independent via the manual SDK Publish workflow."
+    artifacts:
+      - GitHub Release (WASM + native binaries for linux-x86_64, linux-aarch64, macos-x86_64, macos-aarch64)
+      - GHCR images (fingerprint-worker, fingerprint-ingress)
+      - npm untouched by the engine tag (version-differ skip; PR #81 fixed release.yml publish step)
+
   v0.6.0:
     date: "2026-10-27"
     status: released
@@ -96,9 +105,9 @@ releases:
       - npm package (@fingerprint/sdk v0.1.0)
 
 testing:
-  total_tests: 549
-  unit_tests: 525
-  integration_tests: 24
+  total_tests: 587
+  unit_tests: 560
+  integration_tests: 27
   status: all_green
   fuzz_targets: 3
   benchmarks: 12
