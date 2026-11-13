@@ -25,6 +25,13 @@ pub const connect_timeout_ns: u64 = 5 * std.time.ns_per_s;
 /// replies in milliseconds; anything slower than this is wedged or gone.
 pub const read_timeout_ns: u64 = 10 * std.time.ns_per_s;
 
+/// How long a pooled connection may sit unused before the health tick
+/// re-probes it (readiness TTL, ADR-014 §5). A socket to a worker that died
+/// while connected stays valid at the kernel level, so only a fresh connect
+/// proves the seed is still reachable. Bounds `/readyz` staleness to roughly
+/// this plus one idle tick.
+pub const idle_probe_after_ns: u64 = 30 * std.time.ns_per_s;
+
 pub const WorkerPool = struct {
     allocator: std.mem.Allocator,
     slots: []Slot,
@@ -89,6 +96,9 @@ pub const WorkerPool = struct {
         log.pool.debug("pool: forwarding signal package to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
         try c.writeFrame(frame);
         const reply = try c.readFrame(allocator);
+        // A completed exchange is the strongest liveness signal the pool has;
+        // stamp it so the readiness re-probe stays off this slot's back.
+        slot.last_used_ns = nowNs();
         log.pool.debug("pool: reply from worker {d} ({s}:{d}) ({d} bytes)", .{ slot.id, slot.host, slot.port, reply.len });
         return reply;
     }
@@ -107,6 +117,7 @@ pub const WorkerPool = struct {
         try client.connect(timeout_ns);
         log.pool.info("pool: connected to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
         slot.client = client;
+        slot.last_used_ns = nowNs();
     }
 
     /// Slots holding a live client. Unsynchronized: only the accept thread may
@@ -119,19 +130,43 @@ pub const WorkerPool = struct {
         return live;
     }
 
-    /// Connects every slot that has no client, bounded by `timeout_ns` per
-    /// slot, and returns the number of slots now live. Used at startup and on
-    /// the idle path so `/readyz` is meaningful for a lazy pool: without it an
-    /// ingress that has not served a request yet reports zero reachable
-    /// workers forever. Failures are swallowed — a dead seed must not stop the
-    /// ingress from starting; the gauge reports the truth.
-    pub fn refresh(self: *WorkerPool, allocator: std.mem.Allocator, timeout_ns: u64) usize {
+    /// Connects every slot that has no client, and re-probes every slot whose
+    /// connection has been idle for at least `stale_after_ns`, bounded by
+    /// `timeout_ns` per slot. Returns the number of slots now live.
+    ///
+    /// `liveCount` alone is not readiness: a worker that died while the pool
+    /// held its connection leaves a non-null client behind until the next
+    /// request fails. Reconnecting an idle slot is the only cheap proof that
+    /// the seed still answers, so `/readyz` cannot stay green on a stale
+    /// socket (ADR-014 §5). Failures are swallowed — a dead seed must not stop
+    /// the ingress from starting; the returned count reports the truth.
+    pub fn refresh(
+        self: *WorkerPool,
+        allocator: std.mem.Allocator,
+        timeout_ns: u64,
+        stale_after_ns: u64,
+    ) usize {
+        const now = nowNs();
         for (self.slots) |*slot| {
-            if (slot.client == null) self.connectSlot(slot, allocator, timeout_ns) catch {};
+            if (slot.client != null and !slot.isStale(now, stale_after_ns)) continue;
+            // Drop the old connection before probing so a half-open socket can
+            // never be mistaken for a reachable worker.
+            if (slot.client) |*client| client.close();
+            slot.client = null;
+            self.connectSlot(slot, allocator, timeout_ns) catch {};
         }
         return self.liveCount();
     }
 };
+
+/// Wall-clock nanoseconds, clamped at zero so a pre-epoch clock cannot wrap
+/// the staleness comparison. Only differences matter, and the probe horizon
+/// (seconds) is far above any clock adjustment.
+fn nowNs() u64 {
+    const timestamp = std.time.nanoTimestamp();
+    if (timestamp < 0) return 0;
+    return @intCast(timestamp);
+}
 
 const Slot = struct {
     /// Stable worker index (0-based `--worker=` seed position) used in logs
@@ -140,6 +175,16 @@ const Slot = struct {
     host: []const u8,
     port: u16,
     client: ?adapter.TcpClient = null,
+    /// When this slot last connected or completed an exchange (`nowNs`).
+    /// Drives the readiness re-probe in `refresh`.
+    last_used_ns: u64 = 0,
+
+    /// True when the slot has gone `stale_after_ns` without useful work. The
+    /// wrapping subtraction treats a backwards clock jump as "stale", which
+    /// costs at most one extra reconnect.
+    fn isStale(self: *const Slot, now_ns: u64, stale_after_ns: u64) bool {
+        return now_ns -% self.last_used_ns >= stale_after_ns;
+    }
 };
 
 fn splitHostPort(seed: []const u8) !struct { []const u8, u16 } {

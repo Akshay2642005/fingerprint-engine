@@ -45,7 +45,9 @@ pub const http = @import("http.zig");
 /// Request authentication (M7 W6-D3). Exposed so tests can sign requests with
 /// the same canonical string the ingress verifies.
 pub const hmac = @import("hmac.zig");
-const pool = @import("pool.zig");
+/// Worker pool and readiness re-probe. Exposed so tests can exercise the
+/// stale-connection logic without spawning a full ingress.
+pub const pool = @import("pool.zig");
 /// Metrics registry (ADR-014 §2). Exposed so tests can pin the catalog.
 pub const metrics = @import("metrics.zig");
 
@@ -347,7 +349,7 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     // Warm the pool before the probe starts serving: the pool connects
     // lazily, so an ingress that has not seen traffic would otherwise report
     // "no reachable worker" forever and /readyz could not gate a rollout.
-    registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, probe_timeout_ns)));
+    registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, probe_timeout_ns, pool.idle_probe_after_ns)));
 
     var server = try http.HttpServer.init(
         alloc,
@@ -414,9 +416,11 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     // loop exits; deinit closes the pool connections.
     //
     // Readiness (ADR-014 §5) is a cached gauge, not a live probe: only this
-    // thread may touch the pool, and the scrape thread reads the atomic. A
-    // failing request nulls the broken slot, so the next tick reflects it;
-    // while idle we retry a bounded connect if every slot is down.
+    // thread may touch the pool, and the scrape thread reads the atomic. Every
+    // idle tick re-probes: reconnect missing slots and drop-and-reconnect
+    // slots idle past the TTL, because a socket to a worker that died while
+    // connected still looks live. That bounds /readyz staleness to roughly the
+    // TTL plus one tick instead of "until the next request fails".
     var idle_ticks: u32 = 0;
     const health_refresh_interval: u32 = 8; // ~2s at accept_poll_ms
     while (!shutdown_requested.load(.acquire)) {
@@ -424,9 +428,11 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             idle_ticks += 1;
             if (idle_ticks >= health_refresh_interval) {
                 idle_ticks = 0;
-                if (workers.liveCount() == 0) {
-                    registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, probe_timeout_ns)));
-                }
+                registry.worker_pool_healthy.set(@intCast(workers.refresh(
+                    alloc,
+                    probe_timeout_ns,
+                    pool.idle_probe_after_ns,
+                )));
             }
             continue;
         }
