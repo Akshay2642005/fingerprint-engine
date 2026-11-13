@@ -23,8 +23,12 @@ services:
     container_name: fingerprint-worker
     restart: always
     ports:
+      # Public FPKG surface (worker is also reached through the ingress).
       - "8081:8080"
-      - "9091:9091"
+    expose:
+      # ADR-014 §4: the metrics/probe surface stays network-internal. Local
+      # development publishes it through compose.override.yml.
+      - "9091"
     environment:
       - FPKG_LOG_LEVEL=info
       - FPKG_AMQP_USER=guest
@@ -45,8 +49,12 @@ services:
     container_name: fingerprint-ingress
     restart: always
     ports:
+      # Public HTTP surface.
       - "8080:8080"
-      - "9090:9090"
+    expose:
+      # ADR-014 §4: the metrics/probe surface stays network-internal. Local
+      # development publishes it through compose.override.yml.
+      - "9090"
     environment:
       - FPKG_LOG_LEVEL=info
       - FPKG_WORKERS=worker:8080

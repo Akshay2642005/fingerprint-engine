@@ -99,6 +99,17 @@ not `ports:` — reachable inside the network, never published to the host. A
 Enabled by default so a deployment cannot silently have no observability;
 `off` is explicit and logged at startup.
 
+**Threat model.** The metrics/probe ports stay network-internal (`expose:`)
+because they are unauthenticated by design. The worker's FPKG port remains
+published on all host interfaces in `compose.yml` (`8081:8080`) by
+*deliberate* decision: the worker itself has no auth (ADR-007 is a tiny
+stateless worker) and every request must pass the ingress's HMAC check on the
+ingress port before being forwarded. Publishing the worker FPKG port is
+therefore not an auth bypass for `compose.yml` deployments where callers route
+through the ingress on `8080`; it is documented in
+`website/src/docs/operating/deployment.md:30,239`. Deployments that do not
+route through the ingress should bind `--listen` loopback instead.
+
 ### 5. Naming and the ready-semantics split
 
 `fpkg_<component>_<subject>_<unit>`, e.g. `fpkg_ingress_request_duration_seconds`,
@@ -113,6 +124,17 @@ owners:
 - `/readyz` (new, both components, on the metrics port) — readiness: this
   instance can serve traffic *now*. Ingress checks that at least one worker is
   reachable; the worker checks its AMQP link when `--publish=amqp` is active.
+  Ingress reachability is a cached gauge refreshed by a **time-gated health
+  tick (~2 s)** that runs whether or not requests arrive; the idle-counter
+  gate was removed because any steady connection stream starves it. Each tick
+  re-probes slots with no connection and connections idle longer than the
+  readiness TTL (`--readiness-ttl-ms`, default 30 s = 3 × the frame deadline):
+  a socket to a worker that died while connected looks alive at the kernel
+  level, so an idle connection is dropped and re-established before it may
+  keep reporting readiness. Failed probes back off per slot (5 s doubling to a
+  60 s cap) so a pool of dead workers cannot spend the tick's connect budget
+  on the same unreachable seeds. A successful probe proves the seed's **kernel
+  is listening**, not that a wedged worker is un-wedged.
 
 **Rejected alternatives:** (a) an external Prometheus client or HTTP library —
 violates the zero-dependency hedge; (b) metrics on the existing API port — mixes

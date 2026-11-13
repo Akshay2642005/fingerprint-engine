@@ -45,7 +45,9 @@ pub const http = @import("http.zig");
 /// Request authentication (M7 W6-D3). Exposed so tests can sign requests with
 /// the same canonical string the ingress verifies.
 pub const hmac = @import("hmac.zig");
-const pool = @import("pool.zig");
+/// Worker pool and readiness re-probe. Exposed so tests can exercise the
+/// stale-connection logic without spawning a full ingress.
+pub const pool = @import("pool.zig");
 /// Metrics registry (ADR-014 §2). Exposed so tests can pin the catalog.
 pub const metrics = @import("metrics.zig");
 
@@ -96,6 +98,11 @@ pub const StartOptions = struct {
     /// --metrics-listen (host:port) for the scrape + probe surface; defaults
     /// to `:9090`. `off` disables the surface (ADR-014 §4).
     metrics_listen: []const u8 = default_metrics_listen,
+    /// How long a pooled worker connection counts as proof of liveness
+    /// (`--readiness-ttl-ms`). Lower values make /readyz react faster to a
+    /// dead worker at the cost of more reconnects; ADR-014 §5 bounds the
+    /// staleness to this plus one health tick.
+    readiness_ttl_ns: u64 = pool.idle_probe_after_ns,
 };
 
 /// Cap on CLI worker seeds. Parse is pure (no allocator); the S4 runtime
@@ -117,6 +124,7 @@ pub const usage =
     \\                [--max-body=bytes] [--log-level=level]
     \\                [--log-format=text|json]
     \\                [--metrics-listen=host:port|off]
+    \\                [--readiness-ttl-ms=ms]
     \\
     \\  ingress version
     \\  ingress help
@@ -131,6 +139,9 @@ pub const usage =
     \\  --log-format  log encoding: text|json (default text)
     \\  --metrics-listen  metrics + readiness listener (default :9090); never
     \\                the HTTP port; `off` disables the surface
+    \\  --readiness-ttl-ms  how long a pooled worker connection counts as
+    \\                proof of liveness (default 30000); /readyz lags a dead
+    \\                worker by at most this plus one health tick
     \\
     \\Environment:
     \\  FPKG_WORKERS               comma-separated worker seeds (when no --worker)
@@ -178,6 +189,13 @@ pub fn parse(args: []const []const u8) CliError!Command {
             const value = arg["--metrics-listen=".len..];
             if (value.len == 0) return error.InvalidOption;
             options.metrics_listen = value;
+        } else if (std.mem.startsWith(u8, arg, "--readiness-ttl-ms=")) {
+            const value = std.fmt.parseInt(u64, arg["--readiness-ttl-ms=".len..], 10) catch
+                return error.InvalidOption;
+            // 0 would mark every connection stale on every tick, turning the
+            // health tick into a reconnect storm.
+            if (value == 0) return error.InvalidOption;
+            options.readiness_ttl_ns = value * std.time.ns_per_ms;
         } else return error.UnknownOption;
     }
     if (options.listen == null) return error.MissingListen;
@@ -344,10 +362,16 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
 
     var registry = metrics.Metrics{};
     registry.replay_cache_capacity.set(if (verifier) |*active| @intCast(active.slots.len) else 0);
+    // The probe budget and the staleness horizon travel together: both the
+    // startup warm-up and the health tick use the same pair.
+    const readiness = pool.RefreshOptions{
+        .timeout_ns = probe_timeout_ns,
+        .stale_after_ns = options.readiness_ttl_ns,
+    };
     // Warm the pool before the probe starts serving: the pool connects
     // lazily, so an ingress that has not seen traffic would otherwise report
     // "no reachable worker" forever and /readyz could not gate a rollout.
-    registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, probe_timeout_ns)));
+    registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, readiness)));
 
     var server = try http.HttpServer.init(
         alloc,
@@ -414,23 +438,26 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
     // loop exits; deinit closes the pool connections.
     //
     // Readiness (ADR-014 §5) is a cached gauge, not a live probe: only this
-    // thread may touch the pool, and the scrape thread reads the atomic. A
-    // failing request nulls the broken slot, so the next tick reflects it;
-    // while idle we retry a bounded connect if every slot is down.
-    var idle_ticks: u32 = 0;
-    const health_refresh_interval: u32 = 8; // ~2s at accept_poll_ms
+    // thread may touch the pool, and the scrape thread reads the atomic. The
+    // health tick re-probes: reconnect missing slots and drop-and-reconnect
+    // slots idle past the TTL, because a socket to a worker that died while
+    // connected still looks live. That bounds /readyz staleness to the TTL
+    // plus one tick instead of "until the next request fails".
+    //
+    // The tick is gated on elapsed time, not on an idle counter: a steady
+    // stream of connections would otherwise reset the counter forever and a
+    // busy ingress would never re-probe. Probing before the request keeps the
+    // gate independent of whether this iteration accepted anything.
+    var last_health_ns = pool.nowNs();
+    const health_interval_ns: u64 = 2 * std.time.ns_per_s;
     while (!shutdown_requested.load(.acquire)) {
-        if (!try server.acceptWait(accept_poll_ms)) {
-            idle_ticks += 1;
-            if (idle_ticks >= health_refresh_interval) {
-                idle_ticks = 0;
-                if (workers.liveCount() == 0) {
-                    registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, probe_timeout_ns)));
-                }
-            }
-            continue;
+        const accepted = try server.acceptWait(accept_poll_ms);
+        const now = pool.nowNs();
+        if (now -% last_health_ns >= health_interval_ns) {
+            last_health_ns = now;
+            registry.worker_pool_healthy.set(@intCast(workers.refresh(alloc, readiness)));
         }
-        idle_ticks = 0;
+        if (!accepted) continue;
         server.handleConnection(alloc) catch |err| {
             if (!peerGone(err)) {
                 // Protocol errors (malformed HTTP, bad magic, ...) are

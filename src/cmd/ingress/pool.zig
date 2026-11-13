@@ -25,6 +25,69 @@ pub const connect_timeout_ns: u64 = 5 * std.time.ns_per_s;
 /// replies in milliseconds; anything slower than this is wedged or gone.
 pub const read_timeout_ns: u64 = 10 * std.time.ns_per_s;
 
+/// How long a pooled connection may sit unused before the health tick
+/// re-probes it (readiness TTL, ADR-014 §5). A socket to a worker that died
+/// while connected stays valid at the kernel level, so only a fresh connect
+/// proves the seed is still reachable. Bounds `/readyz` staleness to this plus
+/// one health tick.
+///
+/// The value is three `read_timeout_ns`: a worker that is merely slow still
+/// answers within one frame deadline, so a TTL below that would churn healthy
+/// connections. A slot that serves traffic is never re-probed — the exchange
+/// stamps it — so the cost is at most one connect per worker per silent 30s.
+/// Operators can lower it with `--readiness-ttl-ms` when a rollout needs
+/// faster failure detection.
+pub const idle_probe_after_ns: u64 = 3 * read_timeout_ns;
+
+/// First delay before re-probing a seed whose connect failed, doubled per
+/// consecutive failure up to `retry_max_ns`. Without it a dead seed costs one
+/// `probe_timeout_ns` connect inside the accept loop on every health tick.
+pub const retry_base_ns: u64 = 5 * std.time.ns_per_s;
+
+/// Ceiling for the probe backoff.
+pub const retry_max_ns: u64 = 60 * std.time.ns_per_s;
+
+/// Knobs for `refresh`. Two bare `u64`s would let a caller transpose the
+/// connect budget and the staleness horizon — 30s per connect against a 250ms
+/// TTL — and still compile, so the pair travels as a struct with defaults.
+pub const RefreshOptions = struct {
+    /// Budget for one connect attempt.
+    timeout_ns: u64 = connect_timeout_ns,
+    /// Age at which a held connection stops counting as proof of liveness.
+    stale_after_ns: u64 = idle_probe_after_ns,
+};
+
+/// Exponential backoff for one seed's readiness probe. Kept as a value type
+/// so the schedule (first delay, doubling, cap, reset) is testable without a
+/// socket.
+pub const ProbeBackoff = struct {
+    /// When the last probe failed.
+    failed_at_ns: u64 = 0,
+    /// Current suppression window; 0 means "not backing off".
+    delay_ns: u64 = 0,
+
+    /// True while a failed probe still suppresses the next one.
+    pub fn active(self: *const ProbeBackoff, now_ns: u64) bool {
+        if (self.delay_ns == 0) return false;
+        return now_ns -% self.failed_at_ns < self.delay_ns;
+    }
+
+    /// Doubles the delay on every consecutive failure, capped at
+    /// `retry_max_ns`, so a long-dead seed is probed about once a minute.
+    pub fn recordFailure(self: *ProbeBackoff, now_ns: u64) void {
+        self.failed_at_ns = now_ns;
+        self.delay_ns = if (self.delay_ns == 0)
+            retry_base_ns
+        else
+            @min(self.delay_ns * 2, retry_max_ns);
+    }
+
+    /// Any successful connect or exchange proves the seed is healthy again.
+    pub fn reset(self: *ProbeBackoff) void {
+        self.delay_ns = 0;
+    }
+};
+
 pub const WorkerPool = struct {
     allocator: std.mem.Allocator,
     slots: []Slot,
@@ -89,6 +152,9 @@ pub const WorkerPool = struct {
         log.pool.debug("pool: forwarding signal package to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
         try c.writeFrame(frame);
         const reply = try c.readFrame(allocator);
+        // A completed exchange is the strongest liveness signal the pool has;
+        // stamp it so the readiness re-probe stays off this slot's back.
+        slot.recordSuccess(nowNs());
         log.pool.debug("pool: reply from worker {d} ({s}:{d}) ({d} bytes)", .{ slot.id, slot.host, slot.port, reply.len });
         return reply;
     }
@@ -107,6 +173,7 @@ pub const WorkerPool = struct {
         try client.connect(timeout_ns);
         log.pool.info("pool: connected to worker {d} ({s}:{d})", .{ slot.id, slot.host, slot.port });
         slot.client = client;
+        slot.recordSuccess(nowNs());
     }
 
     /// Slots holding a live client. Unsynchronized: only the accept thread may
@@ -119,19 +186,55 @@ pub const WorkerPool = struct {
         return live;
     }
 
-    /// Connects every slot that has no client, bounded by `timeout_ns` per
-    /// slot, and returns the number of slots now live. Used at startup and on
-    /// the idle path so `/readyz` is meaningful for a lazy pool: without it an
-    /// ingress that has not served a request yet reports zero reachable
-    /// workers forever. Failures are swallowed — a dead seed must not stop the
-    /// ingress from starting; the gauge reports the truth.
-    pub fn refresh(self: *WorkerPool, allocator: std.mem.Allocator, timeout_ns: u64) usize {
+    /// Connects every slot that has no client, and re-probes every slot whose
+    /// connection has been idle for at least `options.stale_after_ns`, bounded
+    /// by `options.timeout_ns` per slot. Returns the number of slots now live.
+    ///
+    /// `liveCount` alone is not readiness: a worker that died while the pool
+    /// held its connection leaves a non-null client behind until the next
+    /// request fails. Reconnecting an idle slot is the only cheap proof that
+    /// the seed's host still answers, so `/readyz` cannot stay green on a stale
+    /// socket (ADR-014 §5). A failed probe backs the slot off, because this
+    /// runs inside the accept loop: without it a dead seed would cost
+    /// `timeout_ns` of request latency on every tick.
+    pub fn refresh(
+        self: *WorkerPool,
+        allocator: std.mem.Allocator,
+        options: RefreshOptions,
+    ) usize {
+        const now = nowNs();
         for (self.slots) |*slot| {
-            if (slot.client == null) self.connectSlot(slot, allocator, timeout_ns) catch {};
+            if (slot.backoff.active(now)) continue;
+            if (slot.client) |*client| {
+                if (!slot.isStale(now, options.stale_after_ns)) continue;
+                // Drop the old connection before probing so a half-open socket
+                // can never be mistaken for a reachable worker.
+                client.close();
+                slot.client = null;
+            }
+            self.connectSlot(slot, allocator, options.timeout_ns) catch |err| {
+                slot.backoff.recordFailure(now);
+                log.pool.warn(
+                    "pool: readiness probe failed for worker {d} ({s}:{d}): {s}",
+                    .{ slot.id, slot.host, slot.port, @errorName(err) },
+                );
+            };
         }
         return self.liveCount();
     }
 };
+
+/// Wall-clock nanoseconds, clamped at zero so a pre-epoch clock cannot wrap
+/// the staleness comparison. Only differences matter, and the probe horizon
+/// (seconds) is far above any clock adjustment.
+///
+/// Shared with the accept loop, which time-gates the health tick on the same
+/// clock so the tick cannot be starved by a steady stream of connections.
+pub fn nowNs() u64 {
+    const timestamp = std.time.nanoTimestamp();
+    if (timestamp < 0) return 0;
+    return @intCast(timestamp);
+}
 
 const Slot = struct {
     /// Stable worker index (0-based `--worker=` seed position) used in logs
@@ -140,6 +243,25 @@ const Slot = struct {
     host: []const u8,
     port: u16,
     client: ?adapter.TcpClient = null,
+    /// When this slot last connected or completed an exchange (`nowNs`).
+    /// Drives the readiness re-probe in `refresh`.
+    last_used_ns: u64 = 0,
+    /// Suppresses probing a seed whose connect keeps failing.
+    backoff: ProbeBackoff = .{},
+
+    /// True when the slot has gone `stale_after_ns` without useful work. The
+    /// wrapping subtraction treats a backwards clock jump as "stale", which
+    /// costs at most one extra reconnect.
+    fn isStale(self: *const Slot, now_ns: u64, stale_after_ns: u64) bool {
+        return now_ns -% self.last_used_ns >= stale_after_ns;
+    }
+
+    /// Any successful connect or exchange resets the backoff: readiness should
+    /// follow a recovered worker without waiting out the delay.
+    fn recordSuccess(self: *Slot, now_ns: u64) void {
+        self.last_used_ns = now_ns;
+        self.backoff.reset();
+    }
 };
 
 fn splitHostPort(seed: []const u8) !struct { []const u8, u16 } {
