@@ -41,7 +41,22 @@ listener runs on its own thread and the registry is atomic.
 - **`/healthz`** (ingress, API port) — the process is up. **Never** checks
   dependencies: a failing dependency must not cause a restart loop.
 - **`/readyz`** (both, metrics port) — this instance can serve traffic now.
-  - ingress: at least one worker in the pool is reachable.
+  - ingress: at least one worker in the pool is reachable. Reachability is
+    re-probed by a **time-gated health tick (~2 s)** that runs whether or not
+    requests arrive — an idle-counter gate would be starved by a steady
+    connection stream (e.g. kubelet probing the API port) and never refresh.
+    On each tick, slots with no connection and connections idle longer than
+    the **readiness TTL** (`--readiness-ttl-ms`, default `pool.idle_probe_after_ns`
+    = 30 s = 3 × the 10 s frame deadline) are dropped and re-connected: a
+    socket to a worker that died while connected still looks alive at the
+    kernel level, so a fresh connect is the only cheap proof. `/readyz`
+    therefore lags a worker death by at most the TTL plus one tick.
+  - failed probes back off per slot (5 s doubling to a 60 s cap, reset on a
+    successful connect or exchange), so a pool with several dead workers does
+    not spend the health tick's connect budget on the same unreachable seeds.
+  - a successful probe proves the seed's **kernel is listening**, not that the
+    worker is un-wedged: a process that accepts but never replies still probes
+    green until a request times out (`pool.read_timeout_ns`).
   - worker: the AMQP link is up **when** `--publish=amqp` is active; with
     `--publish=none` the worker is ready as soon as it is listening.
 

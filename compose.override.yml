@@ -1,0 +1,18 @@
+# Local-development overlay (ADR-014 §4).
+#
+# `compose.yml` keeps the metrics/probe ports on `expose:` so the operational
+# surface is never published to a host interface. This overlay publishes them
+# on loopback only, so a developer can `curl http://127.0.0.1:9090/metrics`
+# without turning an unauthenticated endpoint into a network service.
+#
+# Docker Compose loads this file automatically when it is present. Loopback
+# binding is deliberate: even an accidental production `docker compose up`
+# cannot expose the surface beyond the host itself.
+services:
+  worker:
+    ports:
+      - "127.0.0.1:9091:9091"
+
+  ingress:
+    ports:
+      - "127.0.0.1:9090:9090"
