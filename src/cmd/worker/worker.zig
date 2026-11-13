@@ -677,6 +677,12 @@ fn start(options: StartOptions, alloc: std.mem.Allocator) !void {
             .{ host, port, adapter.amqp_publisher.exchange_name },
         );
     }
+    if (options.publish == .none) {
+        // No broker link is required: readiness tracks liveness only
+        // (ADR-014 §5). Treat the absent link as connected so /readyz is
+        // truthful for a worker that was never given a broker.
+        registry.amqp_connected.set(1);
+    }
     defer if (publisher) |*p| {
         registry.amqp_connected.set(0);
         p.deinit(alloc);
