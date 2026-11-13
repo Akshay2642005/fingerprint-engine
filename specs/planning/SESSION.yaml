@@ -23,6 +23,15 @@ releases:
       - GHCR images (fingerprint-worker, fingerprint-ingress)
       - npm untouched by the engine tag (version-differ skip; PR #81 fixed release.yml publish step)
 
+  v0.7.0:
+    date: "2026-11-11"
+    status: released
+    summary: "M8 — observability and operations: ADR-014 observability surfaces (comptime-declared atomic metrics registry, dedicated scrape thread, metrics/probe ports on separate ports, compose.yml expose-only per ADR-014 §4), request_id minted/honored at ingress and carried through signal_package_context_v2 and AMQP headers (ADR-015), broker-side DLX/DLQ topology with engine-side mandatory publish + single-reconnect recovery and publish-failure counters (ADR-016), env-only AMQP credential sourcing (ADR-017), plus full-stack compose and chaos/SLO record (specs/quality/m8-slo.md). Engine 577/577. release: PR #76 develop→master (M8 shipped via PR #75); release.yml run 42986556208 failed only on Publish to npm (missing version-differ guard — the SDK package is 1.0.0-rc.1, not 0.7.0); artifacts all published."
+    artifacts:
+      - GitHub Release (WASM + native binaries for linux-x86_64, linux-aarch64, macos-x86_64, macos-aarch64)
+      - GHCR images (fingerprint-worker:v0.7.0, fingerprint-ingress:v0.7.0)
+      - npm untouched by the engine tag (release.yml run failed only on the Publish to npm step, same missing version-differ guard fixed later in v0.7.1's PR #81)
+
   v0.6.0:
     date: "2026-10-27"
     status: released
