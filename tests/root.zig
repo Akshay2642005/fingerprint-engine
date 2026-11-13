@@ -11,6 +11,7 @@ comptime {
     _ = @import("cmd/ingress_hmac_test.zig");
     _ = @import("cmd/ingress_http_test.zig");
     _ = @import("cmd/ingress_test.zig");
+    _ = @import("build/compose_surface_test.zig");
     _ = @import("cmd/pool_test.zig");
     _ = @import("core/bounds_test.zig");
     _ = @import("core/entropy_test.zig");
