@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [0.7.1] - 2026-11-13
+
+### Fixed
+
+- **Ingress readiness no longer trusts a dead connection.** `/readyz` and
+  `fpkg_ingress_worker_pool_healthy` counted pooled client objects rather than
+  reachable workers, and the idle refresh only ran when the pool was empty, so
+  an ingress whose workers all died kept reporting ready until the next
+  request failed. The pool now stamps each connection and drops/reconnects
+  connections idle past a 30 s readiness TTL on every idle tick.
+- **Metrics and probe ports are no longer published to the host.** `compose.yml`
+  declares the ingress (`9090`) and worker (`9091`) operational ports with
+  `expose:` per ADR-014 §4. A new `compose.override.yml` publishes them on
+  loopback for local development only.
+
 ## [0.7.0] - 2026-11-11
 
 ### Added

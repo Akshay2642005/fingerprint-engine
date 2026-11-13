@@ -113,6 +113,10 @@ owners:
 - `/readyz` (new, both components, on the metrics port) — readiness: this
   instance can serve traffic *now*. Ingress checks that at least one worker is
   reachable; the worker checks its AMQP link when `--publish=amqp` is active.
+  Ingress reachability is a cached gauge refreshed on the idle tick, with a
+  30 s readiness TTL on pooled connections: a socket to a worker that died
+  while connected looks alive at the kernel level, so an idle connection is
+  dropped and re-established before it may keep reporting readiness.
 
 **Rejected alternatives:** (a) an external Prometheus client or HTTP library —
 violates the zero-dependency hedge; (b) metrics on the existing API port — mixes
